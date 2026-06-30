@@ -277,17 +277,11 @@ llama.ModelSpec _localLlamaSpec({
 ///
 /// Defaults to Gemma when unset for backwards compatibility.
 llama.ChatFormat _chatFormatFor(String? format) {
-  switch (format == null || format.isEmpty ? 'gemma' : format) {
-    case 'gemma':
-      return const llama.GemmaChatFormat();
-    case 'lfm2':
-    case 'lfm2-vl':
-      return const llama.Lfm2ChatFormat();
-    default:
-      throw ConfiguredAgentException(
-        'Unsupported local llama format "$format".',
-      );
+  final resolved = llama.resolveChatFormat(format);
+  if (resolved == null) {
+    throw ConfiguredAgentException('Unsupported local llama format "$format".');
   }
+  return resolved;
 }
 
 Future<String> _downloadLocalModel(

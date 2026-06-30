@@ -119,6 +119,10 @@ class _SourceEditorState extends State<SourceEditor> {
                       value: ProviderType.anthropic,
                       child: Text(strings.anthropicProvider),
                     ),
+                    DropdownMenuItem(
+                      value: ProviderType.google,
+                      child: Text(strings.googleProvider),
+                    ),
                     const DropdownMenuItem(
                       value: ProviderType.localLlama,
                       child: Text('Local llama'),

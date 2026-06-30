@@ -40,6 +40,7 @@ class ConfiguredAgentsStrings {
     this.maxOutputTokensLabel = 'Max output tokens (optional)',
     this.openAiCompatibleProvider = 'OpenAI-compatible',
     this.anthropicProvider = 'Anthropic',
+    this.googleProvider = 'Google (Gemini)',
     this.save = 'Save',
     this.cancel = 'Cancel',
     this.delete = 'Delete',
@@ -132,6 +133,9 @@ class ConfiguredAgentsStrings {
   /// Display label for the Anthropic provider.
   final String anthropicProvider;
 
+  /// Display label for the Google (Gemini) provider.
+  final String googleProvider;
+
   /// Label for the save action.
   final String save;
 
@@ -204,6 +208,7 @@ class ConfiguredAgentsStrings {
     String? maxOutputTokensLabel,
     String? openAiCompatibleProvider,
     String? anthropicProvider,
+    String? googleProvider,
     String? save,
     String? cancel,
     String? delete,
@@ -246,6 +251,7 @@ class ConfiguredAgentsStrings {
     openAiCompatibleProvider:
         openAiCompatibleProvider ?? this.openAiCompatibleProvider,
     anthropicProvider: anthropicProvider ?? this.anthropicProvider,
+    googleProvider: googleProvider ?? this.googleProvider,
     save: save ?? this.save,
     cancel: cancel ?? this.cancel,
     delete: delete ?? this.delete,

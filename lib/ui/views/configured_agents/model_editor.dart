@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:agents_llama/agents_llama.dart' as llama;
 import 'package:file_selector/file_selector.dart' as file_selector;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -333,10 +334,13 @@ class _ModelEditorState extends State<ModelEditor> {
               hintText: 'gemma',
               validator: (value) {
                 final text = (value ?? '').trim();
-                const supported = {'', 'gemma', 'lfm2', 'lfm2-vl'};
-                return supported.contains(text)
-                    ? null
-                    : 'Supported formats: gemma, lfm2, lfm2-vl.';
+                if (text.isEmpty ||
+                    llama.supportedChatFormatNames.contains(text)) {
+                  return null;
+                }
+                final names = (llama.supportedChatFormatNames.toList()..sort())
+                    .join(', ');
+                return 'Supported formats: $names.';
               },
             ),
           ] else
