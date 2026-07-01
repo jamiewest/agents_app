@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 
@@ -73,6 +75,13 @@ abstract class LlmProvider implements Listenable {
 /// attachments.
 typedef LlmStreamGenerator =
     Stream<String> Function(
+      String prompt, {
+      required Iterable<Attachment> attachments,
+    });
+
+/// A callback invoked when a chat prompt is submitted.
+typedef LlmSubmissionCallback =
+    FutureOr<void> Function(
       String prompt, {
       required Iterable<Attachment> attachments,
     });

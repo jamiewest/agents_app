@@ -70,8 +70,9 @@ class ConfiguredAgentsController extends ChangeNotifier {
   Future<String?> saveAgent(SavedAgentConfig agent) =>
       _run(() => manager.saveAgent(agent));
 
-  /// Deletes the agent [id] then reloads.
-  Future<String?> deleteAgent(String id) => _run(() => manager.deleteAgent(id));
+  /// Deletes the agent [id], optionally cascading, then reloads.
+  Future<String?> deleteAgent(String id, {bool cascade = false}) =>
+      _run(() => manager.deleteAgent(id, cascade: cascade));
 
   /// Runs [action], reloading on success. Returns `null` on success or the
   /// [ConfiguredAgentException] message when the action was rejected.

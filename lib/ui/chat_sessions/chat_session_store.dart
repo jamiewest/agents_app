@@ -36,13 +36,21 @@ class ChatSessionStore {
 
   /// Lists saved conversations for [agentId], newest first.
   Future<List<ChatSessionRecord>> list(String agentId) async {
+    final conversations = await listAll();
+    return conversations
+        .where((record) => record.agentId == agentId)
+        .toList(growable: false);
+  }
+
+  /// Lists every saved conversation, newest first.
+  Future<List<ChatSessionRecord>> listAll() async {
     final keys = await _store.keys(prefix: keyPrefix);
     final conversations = <ChatSessionRecord>[];
     for (final key in keys) {
       final raw = await _store.read(key);
       if (raw == null) continue;
       final record = _decode(raw, key);
-      if (record == null || record.agentId != agentId) continue;
+      if (record == null) continue;
       conversations.add(record);
     }
     conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));

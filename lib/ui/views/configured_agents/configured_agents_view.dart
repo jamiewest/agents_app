@@ -393,6 +393,7 @@ class _ConfiguredAgentsViewState extends State<ConfiguredAgentsView> {
       builder: (close) => AgentEditor(
         initial: agent,
         models: _controller.models,
+        agents: _controller.agents,
         style: style,
         strings: strings,
         onCancel: close,
@@ -410,7 +411,14 @@ class _ConfiguredAgentsViewState extends State<ConfiguredAgentsView> {
     SavedAgentConfig agent,
   ) async {
     if (!await _confirm(strings, agent.name)) return;
-    await _controller.deleteAgent(agent.id);
+    final error = await _controller.deleteAgent(agent.id);
+    if (error != null && mounted) {
+      await _offerCascade(
+        strings,
+        error,
+        () => _controller.deleteAgent(agent.id, cascade: true),
+      );
+    }
   }
 
   // --- Shared helpers ------------------------------------------------------

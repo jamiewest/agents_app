@@ -71,6 +71,9 @@ class ConfiguredAgentsStrings {
     this.noModels = 'No models yet. Add a source, then a model.',
     this.noAgents = 'No agents yet. Add a model, then an agent.',
     this.selectModelFirst = 'Add a model before creating an agent.',
+    this.delegationLabel = 'Delegates',
+    this.delegationGuidanceLabel = 'Delegation guidance (optional)',
+    this.delegationGuidanceHint = 'When should this agent be used?',
   });
 
   /// Label for the sources tab.
@@ -241,6 +244,15 @@ class ConfiguredAgentsStrings {
   /// Message shown in the agent editor when no models exist yet.
   final String selectModelFirst;
 
+  /// Section label for an agent's delegate agents.
+  final String delegationLabel;
+
+  /// Field label for a delegate's routing guidance.
+  final String delegationGuidanceLabel;
+
+  /// Hint for a delegate's routing guidance field.
+  final String delegationGuidanceHint;
+
   /// Returns a copy with the given fields replaced.
   ConfiguredAgentsStrings copyWith({
     String? sourcesTab,
@@ -299,6 +311,9 @@ class ConfiguredAgentsStrings {
     String? noModels,
     String? noAgents,
     String? selectModelFirst,
+    String? delegationLabel,
+    String? delegationGuidanceLabel,
+    String? delegationGuidanceHint,
   }) => ConfiguredAgentsStrings(
     sourcesTab: sourcesTab ?? this.sourcesTab,
     modelsTab: modelsTab ?? this.modelsTab,
@@ -359,5 +374,10 @@ class ConfiguredAgentsStrings {
     noModels: noModels ?? this.noModels,
     noAgents: noAgents ?? this.noAgents,
     selectModelFirst: selectModelFirst ?? this.selectModelFirst,
+    delegationLabel: delegationLabel ?? this.delegationLabel,
+    delegationGuidanceLabel:
+        delegationGuidanceLabel ?? this.delegationGuidanceLabel,
+    delegationGuidanceHint:
+        delegationGuidanceHint ?? this.delegationGuidanceHint,
   );
 }

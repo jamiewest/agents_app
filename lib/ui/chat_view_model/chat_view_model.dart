@@ -33,6 +33,7 @@ class ChatViewModel {
     required this.welcomeMessage,
     required this.responseBuilder,
     required this.messageSender,
+    required this.onMessageSubmitted,
     required this.speechToText,
     required this.enableAttachments,
     required this.enableVoiceNotes,
@@ -76,6 +77,9 @@ class ChatViewModel {
   /// asynchronous communication and response handling.
   final LlmStreamGenerator? messageSender;
 
+  /// Called after the user submits a message and before response streaming.
+  final LlmSubmissionCallback? onMessageSubmitted;
+
   /// The speech to text converter for the chat interface.
   ///
   /// This converter is used to convert speech to text, allowing for
@@ -112,6 +116,7 @@ class ChatViewModel {
           other.welcomeMessage == welcomeMessage &&
           other.responseBuilder == responseBuilder &&
           other.messageSender == messageSender &&
+          other.onMessageSubmitted == onMessageSubmitted &&
           other.speechToText == speechToText &&
           other.enableAttachments == enableAttachments &&
           other.enableVoiceNotes == enableVoiceNotes &&
@@ -126,6 +131,7 @@ class ChatViewModel {
     welcomeMessage,
     responseBuilder,
     messageSender,
+    onMessageSubmitted,
     speechToText,
     enableAttachments,
     enableVoiceNotes,

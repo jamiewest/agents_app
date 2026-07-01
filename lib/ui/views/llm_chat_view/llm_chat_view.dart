@@ -84,6 +84,7 @@ class LlmChatView extends StatefulWidget {
     LlmChatViewStyle? style,
     ResponseBuilder? responseBuilder,
     LlmStreamGenerator? messageSender,
+    LlmSubmissionCallback? onMessageSubmitted,
     SpeechToTextConverter? speechToText,
     List<String> suggestions = const [],
     String? welcomeMessage,
@@ -100,6 +101,7 @@ class LlmChatView extends StatefulWidget {
          provider: provider,
          responseBuilder: responseBuilder,
          messageSender: messageSender,
+         onMessageSubmitted: onMessageSubmitted,
          speechToText: speechToText,
          style: style,
          suggestions: suggestions,
@@ -263,6 +265,11 @@ class _LlmChatViewState extends State<LlmChatView>
     final sendMessageStream =
         widget.viewModel.messageSender ??
         widget.viewModel.provider.sendMessageStream;
+
+    await widget.viewModel.onMessageSubmitted?.call(
+      prompt,
+      attachments: attachments,
+    );
 
     _pendingPromptResponse = LlmResponse(
       stream: sendMessageStream(prompt, attachments: attachments),

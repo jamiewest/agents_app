@@ -127,6 +127,32 @@ void main() {
       );
     });
 
+    test('lists all conversations newest first', () async {
+      await store.save(
+        _record(
+          id: 'older',
+          agentId: 'agent-1',
+          title: 'older',
+          updatedAt: DateTime.utc(2026, 6, 30, 9),
+        ),
+      );
+      await store.save(
+        _record(
+          id: 'newer',
+          agentId: 'agent-2',
+          title: 'newer',
+          updatedAt: DateTime.utc(2026, 6, 30, 11),
+        ),
+      );
+
+      final conversations = await store.listAll();
+
+      expect(
+        [for (final record in conversations) record.id],
+        ['newer', 'older'],
+      );
+    });
+
     test('returns null when nothing is stored', () async {
       expect(await store.load('missing'), isNull);
     });

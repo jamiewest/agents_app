@@ -20,6 +20,7 @@ class AgentEditor extends StatefulWidget {
     required this.onSubmit,
     required this.onCancel,
     this.initial,
+    this.agents = const [],
     super.key,
   });
 
@@ -28,6 +29,10 @@ class AgentEditor extends StatefulWidget {
 
   /// Models the agent may run on. Must be non-empty.
   final List<ModelConfig> models;
+
+  /// Saved agents offered as delegate targets. The agent being edited is
+  /// excluded automatically.
+  final List<SavedAgentConfig> agents;
 
   /// Resolved style.
   final ConfiguredAgentsStyle style;
@@ -54,11 +59,27 @@ class _AgentEditorState extends State<AgentEditor> {
   late final TextEditingController _maxOutputTokens;
   late String _modelId;
   late AgentAccessConfig _access;
+  late List<SavedAgentConfig> _delegateCandidates;
+  final Set<String> _selectedDelegates = {};
+  final Map<String, TextEditingController> _delegationGuidance = {};
 
   @override
   void initState() {
     super.initState();
     final initial = widget.initial;
+    _delegateCandidates = [
+      for (final agent in widget.agents)
+        if (agent.id != initial?.id) agent,
+    ];
+    final candidateIds = {for (final agent in _delegateCandidates) agent.id};
+    for (final delegation
+        in initial?.delegations ?? const <AgentDelegationConfig>[]) {
+      if (!candidateIds.contains(delegation.agentId)) continue;
+      _selectedDelegates.add(delegation.agentId);
+      _delegationGuidance[delegation.agentId] = TextEditingController(
+        text: delegation.instructions,
+      );
+    }
     _name = TextEditingController(text: initial?.name ?? '');
     _description = TextEditingController(text: initial?.description ?? '');
     _instructions = TextEditingController(text: initial?.instructions ?? '');
@@ -82,6 +103,9 @@ class _AgentEditorState extends State<AgentEditor> {
     _instructions.dispose();
     _temperature.dispose();
     _maxOutputTokens.dispose();
+    for (final controller in _delegationGuidance.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -99,6 +123,15 @@ class _AgentEditorState extends State<AgentEditor> {
         temperature: double.tryParse(_temperature.text.trim()),
         maxOutputTokens: int.tryParse(_maxOutputTokens.text.trim()),
         access: _access,
+        delegations: [
+          for (final candidate in _delegateCandidates)
+            if (_selectedDelegates.contains(candidate.id))
+              AgentDelegationConfig(
+                agentId: candidate.id,
+                instructions:
+                    _delegationGuidance[candidate.id]?.text.trim() ?? '',
+              ),
+        ],
       ),
     );
   }
@@ -268,6 +301,8 @@ class _AgentEditorState extends State<AgentEditor> {
               ),
             ],
           ),
+          if (_delegateCandidates.isNotEmpty)
+            _buildDelegationSection(style, strings),
           const SizedBox(height: 12),
           EditorActions(
             style: style,
@@ -283,6 +318,50 @@ class _AgentEditorState extends State<AgentEditor> {
   void _updateAccess(AgentAccessConfig access) {
     setState(() => _access = access);
   }
+
+  void _toggleDelegate(String agentId, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedDelegates.add(agentId);
+        _delegationGuidance.putIfAbsent(agentId, TextEditingController.new);
+      } else {
+        _selectedDelegates.remove(agentId);
+      }
+    });
+  }
+
+  Widget _buildDelegationSection(
+    ConfiguredAgentsStyle style,
+    ConfiguredAgentsStrings strings,
+  ) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(strings.delegationLabel, style: style.labelTextStyle),
+        const SizedBox(height: 6),
+        for (final candidate in _delegateCandidates) ...[
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(candidate.name, style: style.bodyTextStyle),
+            subtitle: candidate.description.isEmpty
+                ? null
+                : Text(candidate.description, style: style.bodyTextStyle),
+            value: _selectedDelegates.contains(candidate.id),
+            onChanged: (value) => _toggleDelegate(candidate.id, value),
+          ),
+          if (_selectedDelegates.contains(candidate.id))
+            ConfiguredAgentsFormField(
+              label: strings.delegationGuidanceLabel,
+              controller: _delegationGuidance[candidate.id]!,
+              style: style,
+              hintText: strings.delegationGuidanceHint,
+            ),
+        ],
+      ],
+    ),
+  );
 
   Widget _buildAccessSection({
     required String label,

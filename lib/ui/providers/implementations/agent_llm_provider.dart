@@ -51,12 +51,20 @@ class AgentLlmProvider extends LlmProvider with ChangeNotifier {
   Stream<String> sendMessageStream(
     String prompt, {
     Iterable<Attachment> attachments = const [],
-  }) async* {
+  }) {
     final userMessage = ChatMessage.user(prompt, attachments);
     final llmMessage = ChatMessage.llm();
     _history.addAll([userMessage, llmMessage]);
     if (!_disposed) notifyListeners();
 
+    return _appendAgentResponse(prompt, attachments, llmMessage);
+  }
+
+  Stream<String> _appendAgentResponse(
+    String prompt,
+    Iterable<Attachment> attachments,
+    ChatMessage llmMessage,
+  ) async* {
     try {
       yield* _runAgent(prompt, attachments: attachments).smoothed().map((
         chunk,

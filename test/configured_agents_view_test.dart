@@ -129,14 +129,16 @@ void main() {
     expect(find.text('GGUF model URL'), findsOneWidget);
     expect(find.text('Model id'), findsNothing);
 
+    // URL-mode fields in order: model URL (0), projector URL (1), draft URL
+    // (2), context size (3), GPU layers (4), format (5), display name (6).
     final fields = find.byType(TextFormField);
     await tester.enterText(
       fields.at(0),
       'https://huggingface.co/google/gemma/resolve/main/model.gguf',
     );
-    await tester.enterText(fields.at(1), '2048');
-    await tester.enterText(fields.at(2), '0');
-    await tester.enterText(fields.at(4), 'Gemma local');
+    await tester.enterText(fields.at(3), '2048');
+    await tester.enterText(fields.at(4), '0');
+    await tester.enterText(fields.at(6), 'Gemma local');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -148,9 +150,49 @@ void main() {
     expect(model.settings['llama.modelUrl'], contains('model.gguf'));
     expect(model.settings.containsKey('llama.modelPath'), isFalse);
     expect(model.settings.containsKey('llama.modelFileName'), isFalse);
+    // Empty optional artifact fields persist no keys.
+    expect(model.settings.containsKey('llama.mmprojUrl'), isFalse);
+    expect(model.settings.containsKey('llama.draftModelUrl'), isFalse);
     expect(model.settings['llama.contextSize'], '2048');
     expect(model.settings['llama.gpuLayers'], '0');
     expect(model.settings['llama.format'], 'gemma');
+  });
+
+  testWidgets('local llama URL-mode projector and draft URLs persist', (
+    tester,
+  ) async {
+    final manager = _buildManager();
+    await _saveLocalSource(manager);
+    await tester.pumpWidget(
+      _host(manager, initialTab: ConfiguredAgentsTab.models),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add model'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(
+      fields.at(0),
+      'https://huggingface.co/org/repo/resolve/main/model.gguf',
+    );
+    await tester.enterText(
+      fields.at(1),
+      'https://huggingface.co/org/repo/resolve/main/mmproj.gguf',
+    );
+    await tester.enterText(
+      fields.at(2),
+      'https://huggingface.co/org/repo/resolve/main/draft.gguf',
+    );
+    await tester.enterText(fields.at(6), 'Vision local');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    final model = (await manager.sources.listModels()).single;
+    expect(model.settings['llama.mmprojUrl'], contains('mmproj.gguf'));
+    expect(model.settings['llama.draftModelUrl'], contains('draft.gguf'));
   });
 
   testWidgets('local llama file model fields persist', (tester) async {
@@ -200,6 +242,124 @@ void main() {
     expect(model.settings['llama.format'], 'gemma');
   });
 
+  testWidgets('local llama file-mode projector and draft selections persist', (
+    tester,
+  ) async {
+    final manager = _buildManager();
+    await _saveLocalSource(manager);
+    const selections = [
+      LlamaModelFileSelection(path: '/models/main.gguf', name: 'main.gguf'),
+      LlamaModelFileSelection(
+        path: '/models/mmproj.gguf',
+        name: 'mmproj.gguf',
+      ),
+      LlamaModelFileSelection(path: '/models/draft.gguf', name: 'draft.gguf'),
+    ];
+    var pickCount = 0;
+    await tester.pumpWidget(
+      _host(
+        manager,
+        initialTab: ConfiguredAgentsTab.models,
+        pickLlamaModelFile: () async => selections[pickCount++],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add model'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('URL'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('File').last);
+    await tester.pumpAndSettle();
+
+    // Choose file buttons in order: main model, projector, draft.
+    final chooseButtons = find.widgetWithText(OutlinedButton, 'Choose file');
+    for (var i = 0; i < 3; i++) {
+      await tester.ensureVisible(chooseButtons.at(i));
+      await tester.pumpAndSettle();
+      await tester.tap(chooseButtons.at(i));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('mmproj.gguf'), findsOneWidget);
+    expect(find.text('draft.gguf'), findsOneWidget);
+
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    final model = (await manager.sources.listModels()).single;
+    expect(model.settings['llama.modelSource'], 'file');
+    expect(model.settings['llama.mmprojPath'], '/models/mmproj.gguf');
+    expect(model.settings['llama.mmprojFileName'], 'mmproj.gguf');
+    expect(model.settings['llama.draftModelPath'], '/models/draft.gguf');
+    expect(model.settings['llama.draftModelFileName'], 'draft.gguf');
+    expect(
+      selectedLlamaModelFilePathFor(model.id, kind: LlamaArtifactKind.mmproj),
+      '/models/mmproj.gguf',
+    );
+    expect(
+      selectedLlamaModelFilePathFor(model.id, kind: LlamaArtifactKind.draft),
+      '/models/draft.gguf',
+    );
+    clearSelectedLlamaModelFile(model.id);
+  });
+
+  testWidgets('clearing an optional file artifact drops its settings', (
+    tester,
+  ) async {
+    final manager = _buildManager();
+    await _saveLocalSource(manager);
+    const selections = [
+      LlamaModelFileSelection(path: '/models/main.gguf', name: 'main.gguf'),
+      LlamaModelFileSelection(path: '/models/draft.gguf', name: 'draft.gguf'),
+    ];
+    var pickCount = 0;
+    await tester.pumpWidget(
+      _host(
+        manager,
+        initialTab: ConfiguredAgentsTab.models,
+        pickLlamaModelFile: () async => selections[pickCount++],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add model'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('URL'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('File').last);
+    await tester.pumpAndSettle();
+
+    final chooseButtons = find.widgetWithText(OutlinedButton, 'Choose file');
+    await tester.tap(chooseButtons.at(0));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(chooseButtons.at(2));
+    await tester.pumpAndSettle();
+    await tester.tap(chooseButtons.at(2));
+    await tester.pumpAndSettle();
+    expect(find.text('draft.gguf'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    expect(find.text('draft.gguf'), findsNothing);
+
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    final model = (await manager.sources.listModels()).single;
+    expect(model.settings['llama.modelFileName'], 'main.gguf');
+    expect(model.settings.containsKey('llama.draftModelPath'), isFalse);
+    expect(model.settings.containsKey('llama.draftModelFileName'), isFalse);
+    expect(
+      selectedLlamaModelFilePathFor(model.id, kind: LlamaArtifactKind.draft),
+      isNull,
+    );
+    clearSelectedLlamaModelFile(model.id);
+  });
+
   testWidgets('local llama file mode requires a selected file', (tester) async {
     final manager = _buildManager();
     await _saveLocalSource(manager);
@@ -238,11 +398,20 @@ void main() {
           'llama.modelSource': 'file',
           'llama.modelPath': '/models/old.gguf',
           'llama.modelFileName': 'old.gguf',
+          'llama.mmprojPath': '/models/old-mmproj.gguf',
+          'llama.mmprojFileName': 'old-mmproj.gguf',
+          'llama.draftModelPath': '/models/old-draft.gguf',
+          'llama.draftModelFileName': 'old-draft.gguf',
           'llama.contextSize': '4096',
           'llama.gpuLayers': '999',
           'llama.format': 'gemma',
         },
       ),
+    );
+    registerSelectedLlamaModelFile(
+      'file-model',
+      '/models/old-mmproj.gguf',
+      kind: LlamaArtifactKind.mmproj,
     );
     await tester.pumpWidget(
       _host(manager, initialTab: ConfiguredAgentsTab.models),
@@ -269,6 +438,17 @@ void main() {
     expect(model.settings['llama.modelUrl'], contains('new.gguf'));
     expect(model.settings.containsKey('llama.modelPath'), isFalse);
     expect(model.settings.containsKey('llama.modelFileName'), isFalse);
+    expect(model.settings.containsKey('llama.mmprojPath'), isFalse);
+    expect(model.settings.containsKey('llama.mmprojFileName'), isFalse);
+    expect(model.settings.containsKey('llama.draftModelPath'), isFalse);
+    expect(model.settings.containsKey('llama.draftModelFileName'), isFalse);
+    expect(
+      selectedLlamaModelFilePathFor(
+        'file-model',
+        kind: LlamaArtifactKind.mmproj,
+      ),
+      isNull,
+    );
   });
 
   testWidgets('blocked source delete offers cascade', (tester) async {
@@ -377,5 +557,111 @@ void main() {
     expect(agent.access?.enableLocation, isTrue);
     expect(agent.access?.enableWakeLock, isTrue);
     expect(agent.access?.enableFileMemory, isTrue);
+  });
+
+  testWidgets('agent editor persists a delegate with guidance', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final manager = _buildManager();
+    await manager.saveSource(
+      const ModelSourceConfig(
+        id: 's1',
+        providerType: ProviderType.anthropic,
+        displayName: 'Anthropic',
+      ),
+      apiKey: 'sk-1',
+    );
+    await manager.saveModel(
+      const ModelConfig(id: 'm1', sourceId: 's1', modelId: 'claude'),
+    );
+    await manager.saveAgent(
+      const SavedAgentConfig(id: 'a2', name: 'Accounting', modelId: 'm1'),
+    );
+
+    await tester.pumpWidget(
+      _host(manager, initialTab: ConfiguredAgentsTab.agents),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add agent'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).first, 'Helper');
+    await _tapAccessSwitch(tester, 'Accounting');
+
+    final guidanceField = find.byType(TextFormField).last;
+    await tester.ensureVisible(guidanceField);
+    await tester.pumpAndSettle();
+    await tester.enterText(guidanceField, 'Use for cost schedules.');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    final agents = await manager.agents.listAgents();
+    final helper = agents.singleWhere((agent) => agent.name == 'Helper');
+    expect(helper.delegations, hasLength(1));
+    expect(helper.delegations.single.agentId, 'a2');
+    expect(helper.delegations.single.instructions, 'Use for cost schedules.');
+  });
+
+  testWidgets('agent editor omits itself from delegate candidates', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final manager = _buildManager();
+    await manager.saveSource(
+      const ModelSourceConfig(
+        id: 's1',
+        providerType: ProviderType.anthropic,
+        displayName: 'Anthropic',
+      ),
+      apiKey: 'sk-1',
+    );
+    await manager.saveModel(
+      const ModelConfig(id: 'm1', sourceId: 's1', modelId: 'claude'),
+    );
+    await manager.saveAgent(
+      const SavedAgentConfig(id: 'a1', name: 'Helper', modelId: 'm1'),
+    );
+    await manager.saveAgent(
+      const SavedAgentConfig(id: 'a2', name: 'Accounting', modelId: 'm1'),
+    );
+
+    await tester.pumpWidget(
+      _host(manager, initialTab: ConfiguredAgentsTab.agents),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.edit_outlined).first);
+    await tester.pumpAndSettle();
+
+    // The list behind the dialog uses plain ListTiles, so SwitchListTile
+    // ancestors identify the delegate candidates inside the editor.
+    expect(
+      find.ancestor(
+        of: find.text('Accounting'),
+        matching: find.byType(SwitchListTile),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.ancestor(
+        of: find.text('Helper'),
+        matching: find.byType(SwitchListTile),
+      ),
+      findsNothing,
+    );
   });
 }

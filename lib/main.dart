@@ -96,11 +96,15 @@ class _LocalLlamaModelLocation {
   const _LocalLlamaModelLocation({
     required this.modelUrl,
     this.localPath,
+    this.mmprojLocalPath,
+    this.draftLocalPath,
     this.isSelectedFile = false,
   });
 
   final Uri modelUrl;
   final String? localPath;
+  final String? mmprojLocalPath;
+  final String? draftLocalPath;
   final bool isSelectedFile;
 }
 
@@ -132,7 +136,12 @@ ai.ChatClient _createLocalLlamaClient(
             message: 'Loading selected local model...',
           ),
         );
-        loaded = await runtime.loadModel(spec, localPath: selectedLocalPath);
+        loaded = await runtime.loadModel(
+          spec,
+          localPath: selectedLocalPath,
+          localMmprojPath: location.mmprojLocalPath,
+          localDraftPath: location.draftLocalPath,
+        );
       } else if (kIsWeb) {
         _localLlamaProgress.update(
           model.id,
@@ -157,7 +166,7 @@ ai.ChatClient _createLocalLlamaClient(
           },
         );
       } else {
-        final localPath = await _downloadLocalModel(services, spec, model.id);
+        final paths = await _downloadLocalModel(services, spec, model.id);
         _localLlamaProgress.update(
           model.id,
           const _LocalLlamaStatus(
@@ -165,7 +174,12 @@ ai.ChatClient _createLocalLlamaClient(
             message: 'Loading local model...',
           ),
         );
-        loaded = await runtime.loadModel(spec, localPath: localPath);
+        loaded = await runtime.loadModel(
+          spec,
+          localPath: paths.modelPath,
+          localMmprojPath: paths.mmprojPath,
+          localDraftPath: paths.draftPath,
+        );
       }
       _localLlamaProgress.update(
         model.id,
@@ -205,11 +219,55 @@ _LocalLlamaModelLocation _localLlamaModelLocation(ModelConfig model) {
       : configuredSource;
 
   if (modelSource == 'file') {
+    // Optional artifacts resolve like the main model: prefer the
+    // runtime-selected file, then the persisted native path. A persisted
+    // file name without a resolvable path (a web restart) is an error so a
+    // configured artifact is never silently dropped.
+    String? artifactPath({
+      required LlamaArtifactKind kind,
+      required String pathKey,
+      required String fileNameKey,
+      required String label,
+    }) {
+      final selected = selectedLlamaModelFilePathFor(
+        model.id,
+        kind: kind,
+      )?.trim();
+      if (selected != null && selected.isNotEmpty) return selected;
+
+      final persisted = settings[pathKey]?.trim();
+      if (!kIsWeb && persisted != null && persisted.isNotEmpty) {
+        return persisted;
+      }
+
+      final fileName = settings[fileNameKey]?.trim();
+      if (fileName == null || fileName.isEmpty) return null;
+      throw ConfiguredAgentException(
+        'Reselect the $label file "$fileName" before running this local '
+        'llama model.',
+      );
+    }
+
+    final mmprojPath = artifactPath(
+      kind: LlamaArtifactKind.mmproj,
+      pathKey: 'llama.mmprojPath',
+      fileNameKey: 'llama.mmprojFileName',
+      label: 'projector (mmproj) GGUF',
+    );
+    final draftPath = artifactPath(
+      kind: LlamaArtifactKind.draft,
+      pathKey: 'llama.draftModelPath',
+      fileNameKey: 'llama.draftModelFileName',
+      label: 'draft/MTP GGUF',
+    );
+
     final selectedPath = selectedLlamaModelFilePathFor(model.id)?.trim();
     if (selectedPath != null && selectedPath.isNotEmpty) {
       return _LocalLlamaModelLocation(
         modelUrl: kIsWeb ? Uri.parse(selectedPath) : Uri.file(selectedPath),
         localPath: selectedPath,
+        mmprojLocalPath: mmprojPath,
+        draftLocalPath: draftPath,
         isSelectedFile: true,
       );
     }
@@ -219,6 +277,8 @@ _LocalLlamaModelLocation _localLlamaModelLocation(ModelConfig model) {
       return _LocalLlamaModelLocation(
         modelUrl: Uri.file(modelPath),
         localPath: modelPath,
+        mmprojLocalPath: mmprojPath,
+        draftLocalPath: draftPath,
         isSelectedFile: true,
       );
     }
@@ -270,6 +330,8 @@ llama.ModelSpec _localLlamaSpec({
     draftUrl: optionalUrl('llama.draftModelUrl'),
     contextSize: intSetting('llama.contextSize', 4096),
     gpuLayers: intSetting('llama.gpuLayers', 999),
+    draftGpuLayers: intSetting('llama.draftGpuLayers', 999),
+    maxDraftTokens: intSetting('llama.maxDraftTokens', 8),
     format: format,
   );
 }
@@ -285,17 +347,59 @@ llama.ChatFormat _chatFormatFor(String? format) {
   return resolved;
 }
 
-Future<String> _downloadLocalModel(
+Future<({String modelPath, String? mmprojPath, String? draftPath})>
+_downloadLocalModel(
   ServiceProvider services,
   llama.ModelSpec spec,
   String modelId,
 ) async {
   final downloads = services.getRequiredService<DownloadService>();
-  final filename = spec.modelUrl.pathSegments.isEmpty
-      ? '$modelId.gguf'
-      : spec.modelUrl.pathSegments.last;
+  final modelPath = await _downloadLocalArtifact(
+    downloads,
+    spec,
+    modelId,
+    url: spec.modelUrl,
+    fallbackFilename: '$modelId.gguf',
+    label: 'local model',
+  );
+  final mmprojUrl = spec.mmprojUrl;
+  final mmprojPath = mmprojUrl == null
+      ? null
+      : await _downloadLocalArtifact(
+          downloads,
+          spec,
+          modelId,
+          url: mmprojUrl,
+          fallbackFilename: '$modelId-mmproj.gguf',
+          label: 'projector (mmproj)',
+        );
+  final draftUrl = spec.draftUrl;
+  final draftPath = draftUrl == null
+      ? null
+      : await _downloadLocalArtifact(
+          downloads,
+          spec,
+          modelId,
+          url: draftUrl,
+          fallbackFilename: '$modelId-draft.gguf',
+          label: 'draft/MTP model',
+        );
+  return (modelPath: modelPath, mmprojPath: mmprojPath, draftPath: draftPath);
+}
+
+Future<String> _downloadLocalArtifact(
+  DownloadService downloads,
+  llama.ModelSpec spec,
+  String modelId, {
+  required Uri url,
+  required String fallbackFilename,
+  required String label,
+}) async {
+  final filename = url.pathSegments.isEmpty
+      ? fallbackFilename
+      : url.pathSegments.last;
   final request = DownloadRequest(
-    url: spec.modelUrl.toString(),
+    url: url.toString(),
     filename: filename,
     directory: 'local_llama/$modelId',
     metaData: spec.id,
@@ -303,9 +407,9 @@ Future<String> _downloadLocalModel(
   final path = await downloads.filePathFor(request);
   _localLlamaProgress.update(
     modelId,
-    const _LocalLlamaStatus(
+    _LocalLlamaStatus(
       phase: _LocalLlamaPhase.downloading,
-      message: 'Downloading local model...',
+      message: 'Downloading $label...',
       progress: 0,
     ),
   );
@@ -316,7 +420,7 @@ Future<String> _downloadLocalModel(
         modelId,
         _LocalLlamaStatus(
           phase: _LocalLlamaPhase.downloading,
-          message: 'Downloading local model...',
+          message: 'Downloading $label...',
           progress: progress.clamp(0, 1),
         ),
       );
@@ -325,9 +429,9 @@ Future<String> _downloadLocalModel(
       if (status == DownloadStatus.running) {
         _localLlamaProgress.update(
           modelId,
-          const _LocalLlamaStatus(
+          _LocalLlamaStatus(
             phase: _LocalLlamaPhase.downloading,
-            message: 'Downloading local model...',
+            message: 'Downloading $label...',
           ),
         );
       }
@@ -335,7 +439,7 @@ Future<String> _downloadLocalModel(
   );
   if (status != DownloadStatus.complete) {
     throw ConfiguredAgentException(
-      'Local llama model download failed with status $status.',
+      'Local llama $label download failed with status $status.',
     );
   }
   return path;
@@ -581,7 +685,13 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
   }
 
   void _reload() {
-    _conversations = _store.list(widget.agent.id);
+    _conversations = _listConversations();
+  }
+
+  Future<List<ChatSessionRecord>> _listConversations() async {
+    final conversations = await _store.list(widget.agent.id);
+    if (conversations.isNotEmpty) return conversations;
+    return _store.listAll();
   }
 
   Future<void> _openNewChat() async {
@@ -963,11 +1073,15 @@ class _ChatScreenState extends State<ChatScreen> {
       final history = provider.history.toList();
       if (history.isEmpty) return;
 
-      final serializedSession = await _serializeSession(agent, session);
+      // Eagerly assign the conversation identity before any async work so
+      // the record is findable as soon as the first user message arrives.
       final now = DateTime.now();
       _createdAt ??= now;
       _conversationId ??= store.createConversationId();
       _setDefaultTitleFrom(history);
+
+      // Save an optimistic record immediately (no serialized session yet) so
+      // the conversation shows up in the list right away.
       await store.save(
         ChatSessionRecord(
           id: _conversationId!,
@@ -977,12 +1091,92 @@ class _ChatScreenState extends State<ChatScreen> {
           history: history,
           createdAt: _createdAt!,
           updatedAt: now,
+        ),
+      );
+
+      unawaited(
+        _persistSerializedSession(store, agent, session, _conversationId!),
+      );
+    } catch (e, s) {
+      developer.log(
+        'Failed to persist chat session.',
+        name: 'agents_app.chat_sessions',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  Future<void> _persistSubmittedPrompt(
+    AgentLlmProvider provider,
+    String prompt,
+    Iterable<Attachment> attachments,
+  ) async {
+    final store = _store;
+    if (store == null) return;
+
+    try {
+      final text = prompt.trim();
+      if (text.isEmpty) return;
+
+      final now = DateTime.now();
+      _createdAt ??= now;
+      _conversationId ??= store.createConversationId();
+
+      final history = [
+        ...provider.history,
+        ChatMessage.user(prompt, attachments),
+      ];
+      _setDefaultTitleFrom(history);
+
+      await store.save(
+        ChatSessionRecord(
+          id: _conversationId!,
+          agentId: widget.agent.id,
+          title: _title,
+          titleSource: _titleSource,
+          history: history,
+          createdAt: _createdAt!,
+          updatedAt: now,
+        ),
+      );
+    } catch (e, s) {
+      developer.log(
+        'Failed to persist submitted chat prompt.',
+        name: 'agents_app.chat_sessions',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  Future<void> _persistSerializedSession(
+    ChatSessionStore store,
+    AIAgent agent,
+    AgentSession session,
+    String conversationId,
+  ) async {
+    try {
+      final serializedSession = await _serializeSession(agent, session);
+      if (serializedSession == null) return;
+
+      final current = await store.load(conversationId);
+      if (current == null || current.history.isEmpty) return;
+      await store.save(
+        ChatSessionRecord(
+          id: current.id,
+          agentId: current.agentId,
+          title: current.title,
+          titleSource: current.titleSource,
+          history: current.history,
+          createdAt: current.createdAt,
+          updatedAt: current.updatedAt,
           serializedSession: serializedSession,
         ),
       );
     } catch (e, s) {
       developer.log(
-        'Failed to persist chat session.',
+        'Failed to update persisted chat session state.',
         name: 'agents_app.chat_sessions',
         error: e,
         stackTrace: s,
@@ -998,6 +1192,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (provider.history.isNotEmpty) return;
 
     try {
+      final saved = await store.load(conversationId);
+      if (saved != null && saved.history.isNotEmpty) return;
       await store.delete(conversationId);
     } catch (e, s) {
       developer.log(
@@ -1079,7 +1275,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _finishStateChangesBeforePop() async {
     await _pendingPersistence;
+    await _flushLatestConversationState();
     await _discardEmptyConversation();
+  }
+
+  Future<void> _flushLatestConversationState() async {
+    final store = _store;
+    final provider = _provider;
+    final session = provider?.session;
+    if (store == null ||
+        provider == null ||
+        session == null ||
+        provider.history.isEmpty) {
+      return;
+    }
+
+    _pendingPersistence = _persist(store, provider.agent, session, provider);
+    await _pendingPersistence;
   }
 
   Future<void> _handlePop() async {
@@ -1091,7 +1303,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    unawaited(_discardEmptyConversation());
+    unawaited(_finishStateChangesBeforePop());
     _provider?.dispose();
     super.dispose();
   }
@@ -1138,6 +1350,8 @@ class _ChatScreenState extends State<ChatScreen> {
               Expanded(
                 child: LlmChatView(
                   provider: provider,
+                  onMessageSubmitted: (prompt, {required attachments}) =>
+                      _persistSubmittedPrompt(provider, prompt, attachments),
                   welcomeMessage: 'Ask ${widget.agent.name} anything.',
                   enableAttachments: false,
                   enableVoiceNotes: false,

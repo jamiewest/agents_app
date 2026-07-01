@@ -52,15 +52,23 @@ class EchoProvider extends LlmProvider with ChangeNotifier {
   Stream<String> sendMessageStream(
     String prompt, {
     Iterable<Attachment> attachments = const [],
-  }) async* {
+  }) {
     final userMessage = ChatMessage.user(prompt, attachments);
     final llmMessage = ChatMessage.llm();
     _history.addAll([userMessage, llmMessage]);
+    notifyListeners();
     final response = generateStream(
       prompt,
       attachments: attachments,
     ).smoothed();
 
+    return _appendResponse(response, llmMessage);
+  }
+
+  Stream<String> _appendResponse(
+    Stream<String> response,
+    ChatMessage llmMessage,
+  ) async* {
     // don't write this code if you're targeting the web until this is fixed:
     // https://github.com/dart-lang/sdk/issues/47764
     // await for (final chunk in chunks) {

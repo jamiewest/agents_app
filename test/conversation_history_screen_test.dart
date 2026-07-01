@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agents_app/main.dart';
 import 'package:agents_app/ui/chat_sessions/chat_session_record.dart';
 import 'package:agents_app/ui/chat_sessions/chat_session_store.dart';
@@ -29,14 +31,17 @@ const _agent = SavedAgentConfig(
   modelId: 'model-1',
 );
 
-ServiceProvider _buildServices(InMemoryKeyValueStore kv) {
+ServiceProvider _buildServices(
+  InMemoryKeyValueStore kv, {
+  ai.ChatClient? chatClient,
+}) {
   final services = ServiceCollection()
     ..addConfiguredAgents(
       keyValueStore: (_) => kv,
       secretStore: (_) => InMemorySecretStore(),
       chatClientFactory: (_) => ConfiguredChatClientFactory(
         customClientResolver: ({required source, required model, httpClient}) =>
-            _EchoChatClient(),
+            chatClient ?? _EchoChatClient(),
       ),
     );
   return services.buildServiceProvider();
@@ -128,6 +133,85 @@ void main() {
       },
     );
 
+    testWidgets('saves the user message when backing out mid-response', (
+      tester,
+    ) async {
+      final kv = InMemoryKeyValueStore();
+      final services = _buildServices(kv, chatClient: _BlockingChatClient());
+      await _seedAgent(services);
+
+      await tester.pumpWidget(_host(services));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'New chat'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Save before answering');
+      await tester.pump();
+      await tester.tap(find.byType(ActionButton));
+      await tester.pump();
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      final conversations = await ChatSessionStore(kv).list(_agent.id);
+      expect(conversations, hasLength(1));
+      expect(conversations.single.title, 'Save before answering');
+      expect(conversations.single.history, hasLength(1));
+      expect(conversations.single.history.single.text, 'Save before answering');
+      expect(find.text('Save before answering'), findsOneWidget);
+      expect(find.textContaining('1 message'), findsOneWidget);
+    });
+
+    testWidgets('saves the conversation as soon as send is tapped', (
+      tester,
+    ) async {
+      final kv = InMemoryKeyValueStore();
+      final services = _buildServices(kv, chatClient: _BlockingChatClient());
+      await _seedAgent(services);
+
+      await tester.pumpWidget(_host(services));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'New chat'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Saved on submit');
+      await tester.pump();
+      await tester.tap(find.byType(ActionButton));
+      await tester.pump();
+
+      final conversations = await ChatSessionStore(kv).list(_agent.id);
+      expect(conversations, hasLength(1));
+      expect(conversations.single.title, 'Saved on submit');
+      expect(conversations.single.history, hasLength(1));
+      expect(conversations.single.history.single.text, 'Saved on submit');
+      expect(find.byType(ChatScreen), findsOneWidget);
+    });
+
+    testWidgets('keeps a submit-saved conversation when popping immediately', (
+      tester,
+    ) async {
+      final kv = InMemoryKeyValueStore();
+      final services = _buildServices(kv, chatClient: _BlockingChatClient());
+      await _seedAgent(services);
+
+      await tester.pumpWidget(_host(services));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'New chat'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Do not delete me');
+      await tester.pump();
+      await tester.tap(find.byType(ActionButton));
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      final conversations = await ChatSessionStore(kv).list(_agent.id);
+      expect(conversations, hasLength(1));
+      expect(conversations.single.title, 'Do not delete me');
+      expect(conversations.single.history.single.text, 'Do not delete me');
+      expect(find.text('Do not delete me'), findsOneWidget);
+    });
+
     testWidgets('lists conversations newest first with counts', (tester) async {
       final kv = InMemoryKeyValueStore();
       final services = _buildServices(kv);
@@ -160,6 +244,32 @@ void main() {
       final olderTop = tester.getTopLeft(find.text('Older chat')).dy;
       expect(newerTop, lessThan(olderTop));
     });
+
+    testWidgets(
+      'falls back to all saved conversations when agent list is empty',
+      (tester) async {
+        final kv = InMemoryKeyValueStore();
+        final services = _buildServices(kv);
+        final store = ChatSessionStore(kv);
+        await store.save(
+          ChatSessionRecord(
+            id: 'saved-for-other-agent',
+            agentId: 'other-agent',
+            title: 'Visible fallback chat',
+            titleSource: ChatSessionTitleSource.firstMessage,
+            history: [ui.ChatMessage.user('hello', const [])],
+            createdAt: DateTime.utc(2026, 6, 30, 9),
+            updatedAt: DateTime.utc(2026, 6, 30, 9),
+          ),
+        );
+
+        await tester.pumpWidget(_host(services));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Visible fallback chat'), findsOneWidget);
+        expect(find.text('No conversations yet.'), findsNothing);
+      },
+    );
 
     testWidgets('renames and deletes a conversation from the list', (
       tester,
@@ -269,6 +379,35 @@ final class _EchoChatClient extends ai.ChatClient {
   }) => Stream<ai.ChatResponseUpdate>.value(
     ai.ChatResponseUpdate.fromText(ai.ChatRole.assistant, 'ok'),
   );
+
+  @override
+  T? getService<T>({Object? key}) => null;
+
+  @override
+  void dispose() {}
+}
+
+final class _BlockingChatClient extends ai.ChatClient {
+  final _blocked = Completer<void>();
+
+  @override
+  Future<ai.ChatResponse> getResponse({
+    required Iterable<ai.ChatMessage> messages,
+    ai.ChatOptions? options,
+    CancellationToken? cancellationToken,
+  }) async {
+    await _blocked.future;
+    return ai.ChatResponse(messages: const <ai.ChatMessage>[]);
+  }
+
+  @override
+  Stream<ai.ChatResponseUpdate> getStreamingResponse({
+    required Iterable<ai.ChatMessage> messages,
+    ai.ChatOptions? options,
+    CancellationToken? cancellationToken,
+  }) async* {
+    await _blocked.future;
+  }
 
   @override
   T? getService<T>({Object? key}) => null;

@@ -29,20 +29,48 @@ class LlamaModelFileSelection {
 /// Opens a GGUF model file picker.
 typedef LlamaModelFilePicker = Future<LlamaModelFileSelection?> Function();
 
-final Map<String, String> _selectedLlamaModelFilePaths = {};
+/// The role a locally selected GGUF file plays for a local llama model.
+enum LlamaArtifactKind {
+  /// The main model weights.
+  model,
 
-/// Registers a runtime-only local llama file selection.
-void registerSelectedLlamaModelFile(String modelId, String path) {
-  _selectedLlamaModelFilePaths[modelId] = path;
+  /// The optional multimodal projector (mmproj) enabling image input.
+  mmproj,
+
+  /// The optional speculative-decoding draft/MTP model.
+  draft,
 }
 
-/// Returns the runtime-only selected file path for [modelId], if any.
-String? selectedLlamaModelFilePathFor(String modelId) =>
-    _selectedLlamaModelFilePaths[modelId];
+final Map<String, Map<LlamaArtifactKind, String>> _selectedLlamaModelFilePaths =
+    {};
 
-/// Clears any runtime-only selected file path for [modelId].
-void clearSelectedLlamaModelFile(String modelId) {
-  _selectedLlamaModelFilePaths.remove(modelId);
+/// Registers a runtime-only local llama file selection for [kind].
+void registerSelectedLlamaModelFile(
+  String modelId,
+  String path, {
+  LlamaArtifactKind kind = LlamaArtifactKind.model,
+}) {
+  (_selectedLlamaModelFilePaths[modelId] ??= {})[kind] = path;
+}
+
+/// Returns the runtime-only selected file path of [kind] for [modelId].
+String? selectedLlamaModelFilePathFor(
+  String modelId, {
+  LlamaArtifactKind kind = LlamaArtifactKind.model,
+}) => _selectedLlamaModelFilePaths[modelId]?[kind];
+
+/// Clears runtime-only selected file paths for [modelId]: the one for
+/// [kind], or every artifact when [kind] is null.
+void clearSelectedLlamaModelFile(String modelId, {LlamaArtifactKind? kind}) {
+  if (kind == null) {
+    _selectedLlamaModelFilePaths.remove(modelId);
+    return;
+  }
+  final paths = _selectedLlamaModelFilePaths[modelId];
+  paths?.remove(kind);
+  if (paths != null && paths.isEmpty) {
+    _selectedLlamaModelFilePaths.remove(modelId);
+  }
 }
 
 /// Opens the default platform file picker for GGUF model files.
@@ -109,6 +137,8 @@ class _ModelEditorState extends State<ModelEditor> {
   late final TextEditingController _modelId;
   late final TextEditingController _displayName;
   late final TextEditingController _llamaModelUrl;
+  late final TextEditingController _llamaMmprojUrl;
+  late final TextEditingController _llamaDraftUrl;
   late final TextEditingController _llamaContextSize;
   late final TextEditingController _llamaGpuLayers;
   late final TextEditingController _llamaFormat;
@@ -116,6 +146,10 @@ class _ModelEditorState extends State<ModelEditor> {
   late _LlamaModelSource _llamaModelSource;
   String? _llamaModelPath;
   String? _llamaModelFileName;
+  String? _llamaMmprojPath;
+  String? _llamaMmprojFileName;
+  String? _llamaDraftPath;
+  String? _llamaDraftFileName;
 
   @override
   void initState() {
@@ -125,6 +159,12 @@ class _ModelEditorState extends State<ModelEditor> {
     _displayName = TextEditingController(text: initial?.displayName ?? '');
     _llamaModelUrl = TextEditingController(
       text: initial?.settings['llama.modelUrl'] ?? '',
+    );
+    _llamaMmprojUrl = TextEditingController(
+      text: initial?.settings['llama.mmprojUrl'] ?? '',
+    );
+    _llamaDraftUrl = TextEditingController(
+      text: initial?.settings['llama.draftModelUrl'] ?? '',
     );
     _llamaContextSize = TextEditingController(
       text: initial?.settings['llama.contextSize'] ?? '4096',
@@ -144,6 +184,10 @@ class _ModelEditorState extends State<ModelEditor> {
         : _LlamaModelSource.url;
     _llamaModelPath = kIsWeb ? null : settings['llama.modelPath'];
     _llamaModelFileName = settings['llama.modelFileName'];
+    _llamaMmprojPath = kIsWeb ? null : settings['llama.mmprojPath'];
+    _llamaMmprojFileName = settings['llama.mmprojFileName'];
+    _llamaDraftPath = kIsWeb ? null : settings['llama.draftModelPath'];
+    _llamaDraftFileName = settings['llama.draftModelFileName'];
   }
 
   @override
@@ -151,6 +195,8 @@ class _ModelEditorState extends State<ModelEditor> {
     _modelId.dispose();
     _displayName.dispose();
     _llamaModelUrl.dispose();
+    _llamaMmprojUrl.dispose();
+    _llamaDraftUrl.dispose();
     _llamaContextSize.dispose();
     _llamaGpuLayers.dispose();
     _llamaFormat.dispose();
@@ -193,28 +239,102 @@ class _ModelEditorState extends State<ModelEditor> {
       case _LlamaModelSource.url:
         clearSelectedLlamaModelFile(id);
         settings['llama.modelUrl'] = _llamaModelUrl.text.trim();
+        final mmprojUrl = _llamaMmprojUrl.text.trim();
+        if (mmprojUrl.isNotEmpty) settings['llama.mmprojUrl'] = mmprojUrl;
+        final draftUrl = _llamaDraftUrl.text.trim();
+        if (draftUrl.isNotEmpty) settings['llama.draftModelUrl'] = draftUrl;
       case _LlamaModelSource.file:
-        final path = _llamaModelPath?.trim();
-        if (path != null && path.isNotEmpty) {
-          registerSelectedLlamaModelFile(id, path);
-          if (!kIsWeb) settings['llama.modelPath'] = path;
+        // The main-model registration is kind `model`; an empty selection is
+        // left registered so a web reload does not lose it mid-session. The
+        // optional artifacts additionally clear their registration when the
+        // user removed the selection (empty file name).
+        void applyFileArtifact({
+          required LlamaArtifactKind kind,
+          required String? path,
+          required String? fileName,
+          required String pathKey,
+          required String fileNameKey,
+        }) {
+          final selectedPath = path?.trim();
+          if (selectedPath != null && selectedPath.isNotEmpty) {
+            registerSelectedLlamaModelFile(id, selectedPath, kind: kind);
+            if (!kIsWeb) settings[pathKey] = selectedPath;
+          }
+          final selectedName = fileName?.trim();
+          if (selectedName != null && selectedName.isNotEmpty) {
+            settings[fileNameKey] = selectedName;
+          } else if (kind != LlamaArtifactKind.model) {
+            clearSelectedLlamaModelFile(id, kind: kind);
+          }
         }
-        final fileName = _llamaModelFileName?.trim();
-        if (fileName != null && fileName.isNotEmpty) {
-          settings['llama.modelFileName'] = fileName;
-        }
+
+        applyFileArtifact(
+          kind: LlamaArtifactKind.model,
+          path: _llamaModelPath,
+          fileName: _llamaModelFileName,
+          pathKey: 'llama.modelPath',
+          fileNameKey: 'llama.modelFileName',
+        );
+        applyFileArtifact(
+          kind: LlamaArtifactKind.mmproj,
+          path: _llamaMmprojPath,
+          fileName: _llamaMmprojFileName,
+          pathKey: 'llama.mmprojPath',
+          fileNameKey: 'llama.mmprojFileName',
+        );
+        applyFileArtifact(
+          kind: LlamaArtifactKind.draft,
+          path: _llamaDraftPath,
+          fileName: _llamaDraftFileName,
+          pathKey: 'llama.draftModelPath',
+          fileNameKey: 'llama.draftModelFileName',
+        );
     }
     return settings;
   }
 
-  Future<String?> _chooseLlamaModelFile() async {
+  Future<String?> _chooseLlamaFile(
+    void Function(LlamaModelFileSelection selection) apply,
+  ) async {
     final selection = await widget.pickLlamaModelFile();
     if (selection == null) return null;
-    setState(() {
-      _llamaModelPath = selection.path;
-      _llamaModelFileName = selection.name;
-    });
+    setState(() => apply(selection));
     return selection.path;
+  }
+
+  Future<String?> _chooseLlamaModelFile() => _chooseLlamaFile((selection) {
+    _llamaModelPath = selection.path;
+    _llamaModelFileName = selection.name;
+  });
+
+  Future<String?> _chooseLlamaMmprojFile() => _chooseLlamaFile((selection) {
+    _llamaMmprojPath = selection.path;
+    _llamaMmprojFileName = selection.name;
+  });
+
+  Future<String?> _chooseLlamaDraftFile() => _chooseLlamaFile((selection) {
+    _llamaDraftPath = selection.path;
+    _llamaDraftFileName = selection.name;
+  });
+
+  void _clearLlamaMmprojFile() => setState(() {
+    _llamaMmprojPath = null;
+    _llamaMmprojFileName = null;
+  });
+
+  void _clearLlamaDraftFile() => setState(() {
+    _llamaDraftPath = null;
+    _llamaDraftFileName = null;
+  });
+
+  static String? _optionalUrlError(
+    String? value,
+    ConfiguredAgentsStrings strings,
+  ) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+    final uri = Uri.tryParse(text);
+    return uri == null || !uri.isAbsolute ? strings.invalidEndpoint : null;
   }
 
   ModelSourceConfig get _selectedSource => widget.sources.firstWhere(
@@ -286,7 +406,7 @@ class _ModelEditorState extends State<ModelEditor> {
                 ],
               ),
             ),
-            if (_llamaModelSource == _LlamaModelSource.url)
+            if (_llamaModelSource == _LlamaModelSource.url) ...[
               ConfiguredAgentsFormField(
                 label: 'GGUF model URL',
                 controller: _llamaModelUrl,
@@ -301,14 +421,45 @@ class _ModelEditorState extends State<ModelEditor> {
                       ? strings.invalidEndpoint
                       : null;
                 },
-              )
-            else
+              ),
+              ConfiguredAgentsFormField(
+                label: 'Projector (mmproj) GGUF URL (optional)',
+                controller: _llamaMmprojUrl,
+                style: style,
+                keyboardType: TextInputType.url,
+                validator: (value) => _optionalUrlError(value, strings),
+              ),
+              ConfiguredAgentsFormField(
+                label: 'Draft/MTP GGUF URL (optional)',
+                controller: _llamaDraftUrl,
+                style: style,
+                keyboardType: TextInputType.url,
+                validator: (value) => _optionalUrlError(value, strings),
+              ),
+            ] else ...[
               _LlamaModelFileField(
                 fileName: _llamaModelFileName,
                 path: _llamaModelPath,
                 style: style,
                 onChoose: _chooseLlamaModelFile,
               ),
+              _LlamaModelFileField(
+                label: 'Projector (mmproj) GGUF file (optional)',
+                fileName: _llamaMmprojFileName,
+                path: _llamaMmprojPath,
+                style: style,
+                onChoose: _chooseLlamaMmprojFile,
+                onClear: _clearLlamaMmprojFile,
+              ),
+              _LlamaModelFileField(
+                label: 'Draft/MTP GGUF file (optional)',
+                fileName: _llamaDraftFileName,
+                path: _llamaDraftPath,
+                style: style,
+                onChoose: _chooseLlamaDraftFile,
+                onClear: _clearLlamaDraftFile,
+              ),
+            ],
             ConfiguredAgentsFormField(
               label: 'Context size',
               controller: _llamaContextSize,
@@ -377,6 +528,8 @@ class _LlamaModelFileField extends StatelessWidget {
     required this.path,
     required this.style,
     required this.onChoose,
+    this.label = 'GGUF model file',
+    this.onClear,
   });
 
   final String? fileName;
@@ -384,12 +537,20 @@ class _LlamaModelFileField extends StatelessWidget {
   final ConfiguredAgentsStyle style;
   final Future<String?> Function() onChoose;
 
+  /// The field label above the file row.
+  final String label;
+
+  /// Removes the selection. Non-null marks the field optional: no required
+  /// validator, and a clear button next to a selected file.
+  final VoidCallback? onClear;
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: FormField<String>(
       initialValue: path,
       validator: (_) {
+        if (onClear != null) return null;
         final selectedPath = path?.trim();
         return selectedPath == null || selectedPath.isEmpty
             ? 'Choose a GGUF model file.'
@@ -398,7 +559,7 @@ class _LlamaModelFileField extends StatelessWidget {
       builder: (field) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('GGUF model file', style: style.labelTextStyle),
+          Text(label, style: style.labelTextStyle),
           const SizedBox(height: 6),
           Row(
             children: [
@@ -411,6 +572,15 @@ class _LlamaModelFileField extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              if (onClear != null && _hasSelection)
+                IconButton(
+                  onPressed: () {
+                    onClear!();
+                    field.didChange(null);
+                  },
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Clear selection',
+                ),
               OutlinedButton.icon(
                 onPressed: () async {
                   final selectedPath = await onChoose();
@@ -429,6 +599,10 @@ class _LlamaModelFileField extends StatelessWidget {
       ),
     ),
   );
+
+  bool get _hasSelection =>
+      (fileName?.trim().isNotEmpty ?? false) ||
+      (path?.trim().isNotEmpty ?? false);
 
   String get _label {
     final selectedName = fileName?.trim();

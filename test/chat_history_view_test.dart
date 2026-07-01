@@ -26,6 +26,7 @@ void main() {
             welcomeMessage: null,
             responseBuilder: null,
             messageSender: null,
+            onMessageSubmitted: null,
             speechToText: null,
             enableAttachments: true,
             enableVoiceNotes: true,

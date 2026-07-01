@@ -89,6 +89,24 @@ void main() {
       expect(provider.history.last.text, 'hello');
     });
 
+    test('adds the user message before the response stream is listened to', () {
+      final agent = _FakeAgent(updates: [_textUpdate('ignored')]);
+      final provider = AgentLlmProvider(agent: agent);
+      var notificationCount = 0;
+      provider.addListener(() => notificationCount++);
+
+      final stream = provider.sendMessageStream('persist immediately');
+      addTearDown(() async => stream.drain<void>());
+
+      expect(provider.history, hasLength(2));
+      expect(provider.history.first.origin, MessageOrigin.user);
+      expect(provider.history.first.text, 'persist immediately');
+      expect(provider.history.last.origin, MessageOrigin.llm);
+      expect(provider.history.last.text, isNull);
+      expect(notificationCount, 1);
+      expect(agent.capturedMessages, isEmpty);
+    });
+
     test(
       'keeps a user and assistant transcript pair when streaming fails',
       () async {
