@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../interface/attachments.dart';
 import '../interface/chat_message.dart';
 import '../interface/llm_provider.dart';
+import '../token_smoother.dart';
 
 /// Bridges an [AIAgent] into the chat UI's [LlmProvider] contract.
 ///
@@ -56,7 +57,9 @@ class AgentLlmProvider extends LlmProvider with ChangeNotifier {
     _history.addAll([userMessage, llmMessage]);
 
     try {
-      yield* _runAgent(prompt, attachments: attachments).map((chunk) {
+      yield* _runAgent(prompt, attachments: attachments).smoothed().map((
+        chunk,
+      ) {
         llmMessage.append(chunk);
         return chunk;
       });

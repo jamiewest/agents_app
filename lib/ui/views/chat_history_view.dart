@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import '../providers/interface/chat_message.dart';
 import '../providers/interface/message_origin.dart';
 import '../styles/llm_chat_view_style.dart';
@@ -70,43 +69,57 @@ class _ChatHistoryViewState extends State<ChatHistoryView> {
         ...viewModel.provider.history,
       ];
 
-      return Padding(
-        padding: padding,
-        child: ListView.builder(
-          reverse: true,
-          itemCount: history.length + (showSuggestions ? 1 : 0),
-          itemBuilder: (context, index) {
-            if (showSuggestions) {
-              index -= showWelcomeMessage ? 1 : 0;
-              if (index == history.length - (showWelcomeMessage ? 2 : 0)) {
-                return ChatSuggestionsView(
-                  suggestions: viewModel.suggestions,
-                  onSelectSuggestion: widget.onSelectSuggestion,
-                );
+      return ShaderMask(
+        shaderCallback: (rect) => const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            Colors.black,
+            Colors.black,
+            Colors.transparent,
+          ],
+          stops: [0.0, 0.08, 0.94, 1.0],
+        ).createShader(rect),
+        blendMode: BlendMode.dstIn,
+        child: Padding(
+          padding: padding,
+          child: ListView.builder(
+            reverse: true,
+            itemCount: history.length + (showSuggestions ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (showSuggestions) {
+                index -= showWelcomeMessage ? 1 : 0;
+                if (index == history.length - (showWelcomeMessage ? 2 : 0)) {
+                  return ChatSuggestionsView(
+                    suggestions: viewModel.suggestions,
+                    onSelectSuggestion: widget.onSelectSuggestion,
+                  );
+                }
               }
-            }
-            final messageIndex = history.length - index - 1;
-            final message = history[messageIndex];
-            final isLastUserMessage =
-                message.origin.isUser && messageIndex >= history.length - 2;
-            final canEdit = isLastUserMessage && widget.onEditMessage != null;
-            final isUser = message.origin.isUser;
+              final messageIndex = history.length - index - 1;
+              final message = history[messageIndex];
+              final isLastUserMessage =
+                  message.origin.isUser && messageIndex >= history.length - 2;
+              final canEdit = isLastUserMessage && widget.onEditMessage != null;
+              final isUser = message.origin.isUser;
 
-            return Padding(
-              padding: EdgeInsets.only(top: messageSpacing),
-              child: isUser
-                  ? UserMessageView(
-                      message,
-                      onEdit: canEdit
-                          ? () => widget.onEditMessage?.call(message)
-                          : null,
-                    )
-                  : LlmMessageView(
-                      message,
-                      isWelcomeMessage: messageIndex == 0,
-                    ),
-            );
-          },
+              return Padding(
+                padding: EdgeInsets.only(top: messageSpacing),
+                child: isUser
+                    ? UserMessageView(
+                        message,
+                        onEdit: canEdit
+                            ? () => widget.onEditMessage?.call(message)
+                            : null,
+                      )
+                    : LlmMessageView(
+                        message,
+                        isWelcomeMessage: messageIndex == 0,
+                      ),
+              );
+            },
+          ),
         ),
       );
     },

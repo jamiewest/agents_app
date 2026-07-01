@@ -82,7 +82,7 @@ void main() {
 
       final chunks = await provider.sendMessageStream('say hello').toList();
 
-      expect(chunks, ['hel', 'lo']);
+      expect(chunks, ['h', 'e', 'l', 'l', 'o']);
       expect(provider.history, hasLength(2));
       expect(provider.history.first.origin, MessageOrigin.user);
       expect(provider.history.last.origin, MessageOrigin.llm);

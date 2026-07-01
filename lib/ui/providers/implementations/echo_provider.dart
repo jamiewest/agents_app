@@ -8,6 +8,7 @@ import '../../llm_exception.dart';
 import '../interface/attachments.dart';
 import '../interface/chat_message.dart';
 import '../interface/llm_provider.dart';
+import '../token_smoother.dart';
 
 /// A simple LLM provider that echoes the input prompt and attachment
 /// information.
@@ -55,7 +56,10 @@ class EchoProvider extends LlmProvider with ChangeNotifier {
     final userMessage = ChatMessage.user(prompt, attachments);
     final llmMessage = ChatMessage.llm();
     _history.addAll([userMessage, llmMessage]);
-    final response = generateStream(prompt, attachments: attachments);
+    final response = generateStream(
+      prompt,
+      attachments: attachments,
+    ).smoothed();
 
     // don't write this code if you're targeting the web until this is fixed:
     // https://github.com/dart-lang/sdk/issues/47764
