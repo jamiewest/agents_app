@@ -46,7 +46,8 @@ final _builder = Host.createApplicationBuilder()
             _createLocalLlamaClient(sp, source: source, model: model),
       ),
     );
-    flutter.runApp((services) => const AgentsApp());
+    flutter.wrapWith((sp, child) => child);
+    flutter.runApp((services) => AgentsApp(services: services));
   });
 
 final host = _builder.build();
@@ -343,7 +344,10 @@ Future<String> _downloadLocalModel(
 /// Root of the configured-agents app.
 class AgentsApp extends StatelessWidget {
   /// Creates the agents app.
-  const AgentsApp({super.key});
+  const AgentsApp({required this.services, super.key});
+
+  /// The application service provider.
+  final ServiceProvider services;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -354,14 +358,17 @@ class AgentsApp extends StatelessWidget {
       textTheme: GoogleFonts.outfitTextTheme(),
       useMaterial3: true,
     ),
-    home: const HomeScreen(),
+    home: HomeScreen(services: services),
   );
 }
 
 /// Lists configured agents and opens the settings surface and chat.
 class HomeScreen extends StatefulWidget {
   /// Creates a [HomeScreen].
-  const HomeScreen({super.key});
+  const HomeScreen({required this.services, super.key});
+
+  /// The application service provider.
+  final ServiceProvider services;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -381,7 +388,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_initialized) return;
     _initialized = true;
     _ready = _seedIfNeeded(
-      context.getRequiredService<ConfiguredAgentsManager>(),
+      widget.services.getRequiredService<ConfiguredAgentsManager>(),
     );
   }
 
@@ -420,18 +427,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openSettings() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(services: widget.services),
+      ),
+    );
     if (mounted) {
       setState(() => _agentListToken++);
     }
   }
 
   void _openChat(SavedAgentConfig agent) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => ChatScreen(agent: agent)));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatScreen(agent: agent, services: widget.services),
+      ),
+    );
   }
 
   @override
@@ -454,6 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         return _AgentList(
           key: ValueKey(_agentListToken),
+          services: widget.services,
           onSelected: _openChat,
           onManage: _openSettings,
         );
@@ -464,11 +476,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class _AgentList extends StatefulWidget {
   const _AgentList({
+    required this.services,
     required this.onSelected,
     required this.onManage,
     super.key,
   });
 
+  final ServiceProvider services;
   final void Function(SavedAgentConfig agent) onSelected;
   final VoidCallback onManage;
 
@@ -485,7 +499,7 @@ class _AgentListState extends State<_AgentList> {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    _agents = context
+    _agents = widget.services
         .getRequiredService<ConfiguredAgentsManager>()
         .agents
         .listAgents();
@@ -533,11 +547,14 @@ class _AgentListState extends State<_AgentList> {
 /// [ConfiguredAgentsView].
 class SettingsScreen extends StatelessWidget {
   /// Creates a [SettingsScreen].
-  const SettingsScreen({super.key});
+  const SettingsScreen({required this.services, super.key});
+
+  /// The application service provider.
+  final ServiceProvider services;
 
   @override
   Widget build(BuildContext context) {
-    final manager = context.getRequiredService<ConfiguredAgentsManager>();
+    final manager = services.getRequiredService<ConfiguredAgentsManager>();
     return Scaffold(
       appBar: AppBar(title: const Text('Manage agents')),
       body: Column(
@@ -570,10 +587,13 @@ class _WebSecurityNotice extends StatelessWidget {
 /// Resolves a saved agent and shows a chat against it.
 class ChatScreen extends StatefulWidget {
   /// Creates a [ChatScreen].
-  const ChatScreen({required this.agent, super.key});
+  const ChatScreen({required this.agent, required this.services, super.key});
 
   /// The saved agent to chat with.
   final SavedAgentConfig agent;
+
+  /// The application service provider.
+  final ServiceProvider services;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -591,8 +611,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_initialized) return;
     _initialized = true;
     _providerFuture = _createProvider(
-      context.getRequiredService<ConfiguredAgentFactory>(),
-      ChatSessionStore(context.getRequiredService<KeyValueStore>()),
+      widget.services.getRequiredService<ConfiguredAgentFactory>(),
+      ChatSessionStore(widget.services.getRequiredService<KeyValueStore>()),
     );
   }
 
