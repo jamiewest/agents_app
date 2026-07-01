@@ -41,6 +41,17 @@ Future<ModelSourceConfig> _saveLocalSource(ConfiguredAgentsManager manager) {
   return manager.saveSource(source).then((_) => source);
 }
 
+Future<void> _tapAccessSwitch(WidgetTester tester, String label) async {
+  final tile = find.ancestor(
+    of: find.text(label),
+    matching: find.byType(SwitchListTile),
+  );
+  await tester.ensureVisible(tile);
+  await tester.pumpAndSettle();
+  await tester.tap(tile);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('creates a source through the editor', (tester) async {
     final manager = _buildManager();
@@ -320,5 +331,51 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selected?.id, 'a1');
+  });
+
+  testWidgets('agent editor persists tool and context access', (tester) async {
+    tester.view.physicalSize = const Size(1000, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final manager = _buildManager();
+    await manager.saveSource(
+      const ModelSourceConfig(
+        id: 's1',
+        providerType: ProviderType.anthropic,
+        displayName: 'Anthropic',
+      ),
+      apiKey: 'sk-1',
+    );
+    await manager.saveModel(
+      const ModelConfig(id: 'm1', sourceId: 's1', modelId: 'claude'),
+    );
+
+    await tester.pumpWidget(
+      _host(manager, initialTab: ConfiguredAgentsTab.agents),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add agent'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).first, 'Scoped helper');
+    await _tapAccessSwitch(tester, 'Web search');
+    await _tapAccessSwitch(tester, 'Location');
+    await _tapAccessSwitch(tester, 'Wake lock');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    final agent = (await manager.agents.listAgents()).single;
+    expect(agent.name, 'Scoped helper');
+    expect(agent.access?.enableWebSearch, isFalse);
+    expect(agent.access?.enableLocation, isTrue);
+    expect(agent.access?.enableWakeLock, isTrue);
+    expect(agent.access?.enableFileMemory, isTrue);
   });
 }

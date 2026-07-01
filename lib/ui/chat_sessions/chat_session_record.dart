@@ -7,7 +7,22 @@ import 'dart:developer' as developer;
 import '../providers/interface/chat_message.dart';
 
 /// The JSON schema version for persisted chat sessions.
-const int chatSessionSchemaVersion = 1;
+const int chatSessionSchemaVersion = 2;
+
+/// How a conversation title was chosen.
+enum ChatSessionTitleSource {
+  /// The title has not been chosen yet.
+  none,
+
+  /// The title was derived from the first user message.
+  firstMessage,
+
+  /// The title was explicitly entered by the user.
+  manual,
+
+  /// The title was generated from an agent summary.
+  summary,
+}
 
 /// A persisted, resumable chat conversation for a single configured agent.
 ///
@@ -17,15 +32,27 @@ const int chatSessionSchemaVersion = 1;
 class ChatSessionRecord {
   /// Creates a [ChatSessionRecord].
   ChatSessionRecord({
+    required this.id,
     required this.agentId,
+    required this.title,
+    required this.titleSource,
     required this.history,
     required this.createdAt,
     required this.updatedAt,
     this.serializedSession,
   });
 
+  /// Stable id for this conversation.
+  final String id;
+
   /// The id of the configured agent this conversation belongs to.
   final String agentId;
+
+  /// Human-readable conversation title.
+  final String title;
+
+  /// How [title] was chosen.
+  final ChatSessionTitleSource titleSource;
 
   /// The visible UI transcript.
   final List<ChatMessage> history;
@@ -51,7 +78,12 @@ class ChatSessionRecord {
     try {
       if (map['version'] != chatSessionSchemaVersion) return null;
       return ChatSessionRecord(
+        id: map['id'] as String,
         agentId: map['agentId'] as String,
+        title: map['title'] as String,
+        titleSource: ChatSessionTitleSource.values.byName(
+          (map['titleSource'] as String?) ?? ChatSessionTitleSource.none.name,
+        ),
         history: [
           for (final entry in map['history'] as List<dynamic>)
             ChatMessage.fromJson(entry as Map<String, dynamic>),
@@ -77,7 +109,10 @@ class ChatSessionRecord {
   /// stays loadable by [ChatMessage.fromJson].
   Map<String, dynamic> toJson() => {
     'version': chatSessionSchemaVersion,
+    'id': id,
     'agentId': agentId,
+    'title': title,
+    'titleSource': titleSource.name,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     if (serializedSession != null) 'serializedSession': serializedSession,

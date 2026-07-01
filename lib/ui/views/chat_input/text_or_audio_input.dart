@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_initializing_formals
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import '../../strings/llm_chat_view_strings.dart';

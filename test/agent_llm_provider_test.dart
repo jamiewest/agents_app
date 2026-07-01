@@ -106,30 +106,36 @@ void main() {
       },
     );
 
-    test('notifies listeners after successful streaming', () async {
-      final agent = _FakeAgent(updates: [_textUpdate('done')]);
-      final provider = AgentLlmProvider(agent: agent);
-      var notificationCount = 0;
-      provider.addListener(() => notificationCount++);
+    test(
+      'notifies listeners when a message is added and streaming finishes',
+      () async {
+        final agent = _FakeAgent(updates: [_textUpdate('done')]);
+        final provider = AgentLlmProvider(agent: agent);
+        var notificationCount = 0;
+        provider.addListener(() => notificationCount++);
 
-      await provider.sendMessageStream('go').toList();
+        await provider.sendMessageStream('go').toList();
 
-      expect(notificationCount, 1);
-    });
+        expect(notificationCount, 2);
+      },
+    );
 
-    test('notifies listeners after a streaming error', () async {
-      final agent = _FakeAgent(error: StateError('boom'));
-      final provider = AgentLlmProvider(agent: agent);
-      var notificationCount = 0;
-      provider.addListener(() => notificationCount++);
+    test(
+      'notifies listeners when a message is added and streaming fails',
+      () async {
+        final agent = _FakeAgent(error: StateError('boom'));
+        final provider = AgentLlmProvider(agent: agent);
+        var notificationCount = 0;
+        provider.addListener(() => notificationCount++);
 
-      await expectLater(
-        provider.sendMessageStream('go').toList(),
-        throwsA(isA<StateError>()),
-      );
+        await expectLater(
+          provider.sendMessageStream('go').toList(),
+          throwsA(isA<StateError>()),
+        );
 
-      expect(notificationCount, 1);
-    });
+        expect(notificationCount, 2);
+      },
+    );
 
     test('notifies listeners when history is replaced', () {
       final provider = AgentLlmProvider(agent: _FakeAgent());

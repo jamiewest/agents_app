@@ -53,6 +53,7 @@ class _AgentEditorState extends State<AgentEditor> {
   late final TextEditingController _temperature;
   late final TextEditingController _maxOutputTokens;
   late String _modelId;
+  late AgentAccessConfig _access;
 
   @override
   void initState() {
@@ -71,6 +72,7 @@ class _AgentEditorState extends State<AgentEditor> {
       (model) => model.id == initial?.modelId,
     );
     _modelId = hasInitialModel ? initial!.modelId : widget.models.first.id;
+    _access = initial?.access ?? const AgentAccessConfig();
   }
 
   @override
@@ -96,6 +98,7 @@ class _AgentEditorState extends State<AgentEditor> {
         instructions: instructions,
         temperature: double.tryParse(_temperature.text.trim()),
         maxOutputTokens: int.tryParse(_maxOutputTokens.text.trim()),
+        access: _access,
       ),
     );
   }
@@ -174,6 +177,97 @@ class _AgentEditorState extends State<AgentEditor> {
             keyboardType: TextInputType.number,
             validator: (value) => _validateOptionalNumber(value, integer: true),
           ),
+          const SizedBox(height: 8),
+          _buildAccessSection(
+            label: strings.agentToolsLabel,
+            style: style,
+            switches: [
+              _AccessSwitchConfig(
+                label: strings.webSearchAccessLabel,
+                value: _access.enableWebSearch,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableWebSearch: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.temporalAccessLabel,
+                value: _access.enableTemporal,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableTemporal: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.connectivityAccessLabel,
+                value: _access.enableConnectivity,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableConnectivity: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.appInfoAccessLabel,
+                value: _access.enableAppInfo,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableAppInfo: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.deviceInfoAccessLabel,
+                value: _access.enableDeviceInfo,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableDeviceInfo: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.locationAccessLabel,
+                value: _access.enableLocation,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableLocation: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.networkInfoAccessLabel,
+                value: _access.enableNetworkInfo,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableNetworkInfo: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.wakeLockAccessLabel,
+                value: _access.enableWakeLock,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableWakeLock: value)),
+              ),
+            ],
+          ),
+          _buildAccessSection(
+            label: strings.agentContextLabel,
+            style: style,
+            switches: [
+              _AccessSwitchConfig(
+                label: strings.fileMemoryAccessLabel,
+                value: _access.enableFileMemory,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableFileMemory: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.fileAccessLabel,
+                value: _access.enableFileAccess,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableFileAccess: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.todoListAccessLabel,
+                value: _access.enableTodoList,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableTodoList: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.agentModeAccessLabel,
+                value: _access.enableAgentMode,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableAgentMode: value)),
+              ),
+              _AccessSwitchConfig(
+                label: strings.skillsAccessLabel,
+                value: _access.enableSkills,
+                onChanged: (value) =>
+                    _updateAccess(_access.copyWith(enableSkills: value)),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           EditorActions(
             style: style,
@@ -185,4 +279,43 @@ class _AgentEditorState extends State<AgentEditor> {
       ),
     );
   }
+
+  void _updateAccess(AgentAccessConfig access) {
+    setState(() => _access = access);
+  }
+
+  Widget _buildAccessSection({
+    required String label,
+    required ConfiguredAgentsStyle style,
+    required List<_AccessSwitchConfig> switches,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: style.labelTextStyle),
+        const SizedBox(height: 6),
+        for (final accessSwitch in switches)
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(accessSwitch.label, style: style.bodyTextStyle),
+            value: accessSwitch.value,
+            onChanged: accessSwitch.onChanged,
+          ),
+      ],
+    ),
+  );
+}
+
+class _AccessSwitchConfig {
+  const _AccessSwitchConfig({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
 }

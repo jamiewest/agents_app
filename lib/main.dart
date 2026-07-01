@@ -437,10 +437,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openChat(SavedAgentConfig agent) {
+  void _openConversations(SavedAgentConfig agent) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ChatScreen(agent: agent, services: widget.services),
+        builder: (_) =>
+            AgentConversationsScreen(agent: agent, services: widget.services),
       ),
     );
   }
@@ -466,7 +467,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return _AgentList(
           key: ValueKey(_agentListToken),
           services: widget.services,
-          onSelected: _openChat,
+          onSelected: _openConversations,
           onManage: _openSettings,
         );
       },
@@ -543,6 +544,265 @@ class _AgentListState extends State<_AgentList> {
   );
 }
 
+/// Lists saved conversations for one agent.
+class AgentConversationsScreen extends StatefulWidget {
+  /// Creates an [AgentConversationsScreen].
+  const AgentConversationsScreen({
+    required this.agent,
+    required this.services,
+    super.key,
+  });
+
+  /// The saved agent whose conversations should be listed.
+  final SavedAgentConfig agent;
+
+  /// The application service provider.
+  final ServiceProvider services;
+
+  @override
+  State<AgentConversationsScreen> createState() =>
+      _AgentConversationsScreenState();
+}
+
+class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
+  late final ChatSessionStore _store;
+  late Future<List<ChatSessionRecord>> _conversations;
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    _store = ChatSessionStore(
+      widget.services.getRequiredService<KeyValueStore>(),
+    );
+    _reload();
+  }
+
+  void _reload() {
+    _conversations = _store.list(widget.agent.id);
+  }
+
+  Future<void> _openNewChat() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            ChatScreen(agent: widget.agent, services: widget.services),
+      ),
+    );
+    if (mounted) {
+      setState(_reload);
+    }
+  }
+
+  Future<void> _openConversation(ChatSessionRecord conversation) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatScreen(
+          agent: widget.agent,
+          services: widget.services,
+          conversationId: conversation.id,
+        ),
+      ),
+    );
+    if (mounted) {
+      setState(_reload);
+    }
+  }
+
+  Future<void> _renameConversation(ChatSessionRecord conversation) async {
+    final title = await _showConversationTitleDialog(
+      context,
+      initialTitle: conversation.title,
+    );
+    if (title == null) return;
+
+    await _store.save(
+      ChatSessionRecord(
+        id: conversation.id,
+        agentId: conversation.agentId,
+        title: title,
+        titleSource: ChatSessionTitleSource.manual,
+        history: conversation.history,
+        createdAt: conversation.createdAt,
+        updatedAt: DateTime.now(),
+        serializedSession: conversation.serializedSession,
+      ),
+    );
+    if (mounted) {
+      setState(_reload);
+    }
+  }
+
+  Future<void> _deleteConversation(ChatSessionRecord conversation) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: Text(
+          'Delete "${_conversationTitle(conversation)}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await _store.delete(conversation.id);
+    if (mounted) {
+      setState(_reload);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(widget.agent.name),
+      actions: [
+        IconButton(
+          tooltip: 'New chat',
+          icon: const Icon(Icons.add_comment_outlined),
+          onPressed: _openNewChat,
+        ),
+      ],
+    ),
+    body: FutureBuilder<List<ChatSessionRecord>>(
+      future: _conversations,
+      builder: (context, snapshot) {
+        final conversations = snapshot.data ?? const <ChatSessionRecord>[];
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (conversations.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'No conversations yet.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: _openNewChat,
+                    icon: const Icon(Icons.add),
+                    label: const Text('New chat'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: conversations.length,
+          itemBuilder: (context, index) {
+            final conversation = conversations[index];
+            return ListTile(
+              title: Text(_conversationTitle(conversation)),
+              subtitle: Text(
+                '${_formatConversationDate(conversation.updatedAt)}'
+                ' • ${_messageCountLabel(conversation.history.length)}',
+              ),
+              onTap: () => _openConversation(conversation),
+              trailing: PopupMenuButton<_ConversationAction>(
+                tooltip: 'Conversation actions',
+                onSelected: (action) {
+                  switch (action) {
+                    case _ConversationAction.rename:
+                      unawaited(_renameConversation(conversation));
+                      break;
+                    case _ConversationAction.delete:
+                      unawaited(_deleteConversation(conversation));
+                      break;
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _ConversationAction.rename,
+                    child: Text('Rename'),
+                  ),
+                  PopupMenuItem(
+                    value: _ConversationAction.delete,
+                    child: Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    ),
+  );
+}
+
+enum _ConversationAction { rename, delete }
+
+String _conversationTitle(ChatSessionRecord conversation) =>
+    conversation.title.trim().isEmpty
+    ? 'Untitled conversation'
+    : conversation.title.trim();
+
+String _messageCountLabel(int count) =>
+    count == 1 ? '1 message' : '$count messages';
+
+String _formatConversationDate(DateTime dateTime) {
+  final local = dateTime.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day $hour:$minute';
+}
+
+Future<String?> _showConversationTitleDialog(
+  BuildContext context, {
+  required String initialTitle,
+}) async {
+  var title = initialTitle;
+  return showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Rename conversation'),
+      content: TextFormField(
+        initialValue: initialTitle,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Title'),
+        textInputAction: TextInputAction.done,
+        onChanged: (value) => title = value,
+        onFieldSubmitted: (_) {
+          final trimmed = title.trim();
+          if (trimmed.isNotEmpty) Navigator.of(context).pop(trimmed);
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final trimmed = title.trim();
+            if (trimmed.isNotEmpty) Navigator.of(context).pop(trimmed);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// The settings surface, composed entirely from the package's
 /// [ConfiguredAgentsView].
 class SettingsScreen extends StatelessWidget {
@@ -587,13 +847,21 @@ class _WebSecurityNotice extends StatelessWidget {
 /// Resolves a saved agent and shows a chat against it.
 class ChatScreen extends StatefulWidget {
   /// Creates a [ChatScreen].
-  const ChatScreen({required this.agent, required this.services, super.key});
+  const ChatScreen({
+    required this.agent,
+    required this.services,
+    this.conversationId,
+    super.key,
+  });
 
   /// The saved agent to chat with.
   final SavedAgentConfig agent;
 
   /// The application service provider.
   final ServiceProvider services;
+
+  /// The conversation to resume, or `null` to start a blank conversation.
+  final String? conversationId;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -603,16 +871,25 @@ class _ChatScreenState extends State<ChatScreen> {
   late final Future<AgentLlmProvider> _providerFuture;
   bool _initialized = false;
   AgentLlmProvider? _provider;
+  ChatSessionStore? _store;
+  String? _conversationId;
+  String _title = '';
+  ChatSessionTitleSource _titleSource = ChatSessionTitleSource.none;
   DateTime? _createdAt;
+  Future<void> _pendingPersistence = Future<void>.value();
+  bool _isPopping = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
+    _store = ChatSessionStore(
+      widget.services.getRequiredService<KeyValueStore>(),
+    );
     _providerFuture = _createProvider(
       widget.services.getRequiredService<ConfiguredAgentFactory>(),
-      ChatSessionStore(widget.services.getRequiredService<KeyValueStore>()),
+      _store!,
     );
   }
 
@@ -620,7 +897,13 @@ class _ChatScreenState extends State<ChatScreen> {
     ConfiguredAgentFactory factory,
     ChatSessionStore store,
   ) async {
-    final record = await store.load(widget.agent.id);
+    final conversationId = widget.conversationId;
+    final record = conversationId == null
+        ? null
+        : await store.load(conversationId);
+    _conversationId = record?.id ?? conversationId;
+    _title = record?.title ?? '';
+    _titleSource = record?.titleSource ?? ChatSessionTitleSource.none;
     _createdAt = record?.createdAt;
 
     final agent = await factory.createAgent(widget.agent);
@@ -639,8 +922,11 @@ class _ChatScreenState extends State<ChatScreen> {
       history: record?.history ?? const [],
     );
     // Attach after restore so persistence reflects ongoing turns only.
-    provider.addListener(() => _persist(store, agent, session, provider));
+    provider.addListener(() {
+      _pendingPersistence = _persist(store, agent, session, provider);
+    });
     _provider = provider;
+    _refreshTitle();
     return provider;
   }
 
@@ -674,16 +960,24 @@ class _ChatScreenState extends State<ChatScreen> {
     AgentLlmProvider provider,
   ) async {
     try {
-      final serialized = await agent.serializeSession(session);
+      final history = provider.history.toList();
+      if (history.isEmpty) return;
+
+      final serializedSession = await _serializeSession(agent, session);
       final now = DateTime.now();
       _createdAt ??= now;
+      _conversationId ??= store.createConversationId();
+      _setDefaultTitleFrom(history);
       await store.save(
         ChatSessionRecord(
+          id: _conversationId!,
           agentId: widget.agent.id,
-          history: provider.history.toList(),
+          title: _title,
+          titleSource: _titleSource,
+          history: history,
           createdAt: _createdAt!,
           updatedAt: now,
-          serializedSession: serialized is String ? serialized : null,
+          serializedSession: serializedSession,
         ),
       );
     } catch (e, s) {
@@ -696,47 +990,163 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _discardEmptyConversation() async {
+    final store = _store;
+    final conversationId = _conversationId;
+    final provider = _provider;
+    if (store == null || conversationId == null || provider == null) return;
+    if (provider.history.isNotEmpty) return;
+
+    try {
+      await store.delete(conversationId);
+    } catch (e, s) {
+      developer.log(
+        'Failed to discard empty chat session.',
+        name: 'agents_app.chat_sessions',
+        error: e,
+        stackTrace: s,
+      );
+    }
+  }
+
+  Future<String?> _serializeSession(AIAgent agent, AgentSession session) async {
+    try {
+      final serialized = await agent.serializeSession(session);
+      return serialized is String ? serialized : null;
+    } catch (e, s) {
+      developer.log(
+        'Failed to serialize chat session.',
+        name: 'agents_app.chat_sessions',
+        error: e,
+        stackTrace: s,
+      );
+      return null;
+    }
+  }
+
+  Future<void> _renameConversation() async {
+    final store = _store;
+    final provider = _provider;
+    if (store == null || provider == null) return;
+
+    final title = await _showConversationTitleDialog(
+      context,
+      initialTitle: _title,
+    );
+    if (title == null) return;
+
+    setState(() {
+      _title = title;
+      _titleSource = ChatSessionTitleSource.manual;
+    });
+    _pendingPersistence = _persist(
+      store,
+      provider.agent,
+      provider.session!,
+      provider,
+    );
+    await _pendingPersistence;
+  }
+
+  void _setDefaultTitleFrom(List<ChatMessage> history) {
+    if (_titleSource != ChatSessionTitleSource.none) return;
+    for (final message in history) {
+      if (!message.origin.isUser) continue;
+      final text = message.text?.trim();
+      if (text == null || text.isEmpty) continue;
+      _title = _truncateTitle(text);
+      _titleSource = ChatSessionTitleSource.firstMessage;
+      _refreshTitle();
+      return;
+    }
+  }
+
+  String _truncateTitle(String text) {
+    const maxLength = 80;
+    final collapsed = text.replaceAll(RegExp(r'\s+'), ' ');
+    if (collapsed.length <= maxLength) return collapsed;
+    return '${collapsed.substring(0, maxLength - 1)}…';
+  }
+
+  void _refreshTitle() {
+    if (mounted) setState(() {});
+  }
+
+  String get _appBarTitle {
+    final title = _title.trim();
+    return title.isEmpty ? widget.agent.name : title;
+  }
+
+  Future<void> _finishStateChangesBeforePop() async {
+    await _pendingPersistence;
+    await _discardEmptyConversation();
+  }
+
+  Future<void> _handlePop() async {
+    if (_isPopping) return;
+    _isPopping = true;
+    await _finishStateChangesBeforePop();
+    if (mounted) Navigator.of(context).pop();
+  }
+
   @override
   void dispose() {
+    unawaited(_discardEmptyConversation());
     _provider?.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.agent.name)),
-    body: FutureBuilder<AgentLlmProvider>(
-      future: _providerFuture,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'Could not start the agent.\n\n${snapshot.error}',
-                textAlign: TextAlign.center,
+  Widget build(BuildContext context) => PopScope<void>(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, result) {
+      if (didPop) return;
+      unawaited(_handlePop());
+    },
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text(_appBarTitle),
+        actions: [
+          IconButton(
+            tooltip: 'Rename conversation',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: _provider == null ? null : _renameConversation,
+          ),
+        ],
+      ),
+      body: FutureBuilder<AgentLlmProvider>(
+        future: _providerFuture,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Could not start the agent.\n\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
+            );
+          }
+          final provider = snapshot.data;
+          if (provider == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return Column(
+            children: [
+              _LocalLlamaProgressBanner(modelId: widget.agent.modelId),
+              Expanded(
+                child: LlmChatView(
+                  provider: provider,
+                  welcomeMessage: 'Ask ${widget.agent.name} anything.',
+                  enableAttachments: false,
+                  enableVoiceNotes: false,
+                ),
+              ),
+            ],
           );
-        }
-        final provider = snapshot.data;
-        if (provider == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return Column(
-          children: [
-            _LocalLlamaProgressBanner(modelId: widget.agent.modelId),
-            Expanded(
-              child: LlmChatView(
-                provider: provider,
-                welcomeMessage: 'Ask ${widget.agent.name} anything.',
-                enableAttachments: false,
-                enableVoiceNotes: false,
-              ),
-            ),
-          ],
-        );
-      },
+        },
+      ),
     ),
   );
 }

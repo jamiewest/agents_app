@@ -38,6 +38,21 @@ class ConfiguredAgentsStrings {
     this.modelLabel = 'Model',
     this.temperatureLabel = 'Temperature (optional)',
     this.maxOutputTokensLabel = 'Max output tokens (optional)',
+    this.agentToolsLabel = 'Tools',
+    this.agentContextLabel = 'Context',
+    this.fileMemoryAccessLabel = 'File memory',
+    this.fileAccessLabel = 'File access',
+    this.webSearchAccessLabel = 'Web search',
+    this.todoListAccessLabel = 'Todo list',
+    this.agentModeAccessLabel = 'Agent mode',
+    this.skillsAccessLabel = 'Skills',
+    this.temporalAccessLabel = 'Time',
+    this.connectivityAccessLabel = 'Connectivity',
+    this.appInfoAccessLabel = 'App info',
+    this.deviceInfoAccessLabel = 'Device info',
+    this.locationAccessLabel = 'Location',
+    this.networkInfoAccessLabel = 'Network info',
+    this.wakeLockAccessLabel = 'Wake lock',
     this.openAiCompatibleProvider = 'OpenAI-compatible',
     this.anthropicProvider = 'Anthropic',
     this.googleProvider = 'Google (Gemini)',
@@ -127,6 +142,51 @@ class ConfiguredAgentsStrings {
   /// Field label for an agent's optional max output tokens.
   final String maxOutputTokensLabel;
 
+  /// Section label for agent tool access.
+  final String agentToolsLabel;
+
+  /// Section label for agent context access.
+  final String agentContextLabel;
+
+  /// Label for file-memory access.
+  final String fileMemoryAccessLabel;
+
+  /// Label for file-access context.
+  final String fileAccessLabel;
+
+  /// Label for hosted web-search tool access.
+  final String webSearchAccessLabel;
+
+  /// Label for todo-list context access.
+  final String todoListAccessLabel;
+
+  /// Label for agent-mode context access.
+  final String agentModeAccessLabel;
+
+  /// Label for skill context access.
+  final String skillsAccessLabel;
+
+  /// Label for temporal context/tool access.
+  final String temporalAccessLabel;
+
+  /// Label for connectivity context/tool access.
+  final String connectivityAccessLabel;
+
+  /// Label for app-info tool access.
+  final String appInfoAccessLabel;
+
+  /// Label for device-info context/tool access.
+  final String deviceInfoAccessLabel;
+
+  /// Label for location context/tool access.
+  final String locationAccessLabel;
+
+  /// Label for detailed network context/tool access.
+  final String networkInfoAccessLabel;
+
+  /// Label for wake-lock tool access.
+  final String wakeLockAccessLabel;
+
   /// Display label for the OpenAI-compatible provider.
   final String openAiCompatibleProvider;
 
@@ -206,6 +266,21 @@ class ConfiguredAgentsStrings {
     String? modelLabel,
     String? temperatureLabel,
     String? maxOutputTokensLabel,
+    String? agentToolsLabel,
+    String? agentContextLabel,
+    String? fileMemoryAccessLabel,
+    String? fileAccessLabel,
+    String? webSearchAccessLabel,
+    String? todoListAccessLabel,
+    String? agentModeAccessLabel,
+    String? skillsAccessLabel,
+    String? temporalAccessLabel,
+    String? connectivityAccessLabel,
+    String? appInfoAccessLabel,
+    String? deviceInfoAccessLabel,
+    String? locationAccessLabel,
+    String? networkInfoAccessLabel,
+    String? wakeLockAccessLabel,
     String? openAiCompatibleProvider,
     String? anthropicProvider,
     String? googleProvider,
@@ -248,6 +323,23 @@ class ConfiguredAgentsStrings {
     modelLabel: modelLabel ?? this.modelLabel,
     temperatureLabel: temperatureLabel ?? this.temperatureLabel,
     maxOutputTokensLabel: maxOutputTokensLabel ?? this.maxOutputTokensLabel,
+    agentToolsLabel: agentToolsLabel ?? this.agentToolsLabel,
+    agentContextLabel: agentContextLabel ?? this.agentContextLabel,
+    fileMemoryAccessLabel: fileMemoryAccessLabel ?? this.fileMemoryAccessLabel,
+    fileAccessLabel: fileAccessLabel ?? this.fileAccessLabel,
+    webSearchAccessLabel: webSearchAccessLabel ?? this.webSearchAccessLabel,
+    todoListAccessLabel: todoListAccessLabel ?? this.todoListAccessLabel,
+    agentModeAccessLabel: agentModeAccessLabel ?? this.agentModeAccessLabel,
+    skillsAccessLabel: skillsAccessLabel ?? this.skillsAccessLabel,
+    temporalAccessLabel: temporalAccessLabel ?? this.temporalAccessLabel,
+    connectivityAccessLabel:
+        connectivityAccessLabel ?? this.connectivityAccessLabel,
+    appInfoAccessLabel: appInfoAccessLabel ?? this.appInfoAccessLabel,
+    deviceInfoAccessLabel: deviceInfoAccessLabel ?? this.deviceInfoAccessLabel,
+    locationAccessLabel: locationAccessLabel ?? this.locationAccessLabel,
+    networkInfoAccessLabel:
+        networkInfoAccessLabel ?? this.networkInfoAccessLabel,
+    wakeLockAccessLabel: wakeLockAccessLabel ?? this.wakeLockAccessLabel,
     openAiCompatibleProvider:
         openAiCompatibleProvider ?? this.openAiCompatibleProvider,
     anthropicProvider: anthropicProvider ?? this.anthropicProvider,
