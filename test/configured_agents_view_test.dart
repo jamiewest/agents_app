@@ -218,7 +218,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('GGUF model file'), findsOneWidget);
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Choose file'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Choose file').first);
     await tester.pumpAndSettle();
     expect(find.text('gemma-local.gguf'), findsOneWidget);
 
@@ -249,10 +249,7 @@ void main() {
     await _saveLocalSource(manager);
     const selections = [
       LlamaModelFileSelection(path: '/models/main.gguf', name: 'main.gguf'),
-      LlamaModelFileSelection(
-        path: '/models/mmproj.gguf',
-        name: 'mmproj.gguf',
-      ),
+      LlamaModelFileSelection(path: '/models/mmproj.gguf', name: 'mmproj.gguf'),
       LlamaModelFileSelection(path: '/models/draft.gguf', name: 'draft.gguf'),
     ];
     var pickCount = 0;
@@ -386,6 +383,12 @@ void main() {
   testWidgets('switching file model back to URL clears file settings', (
     tester,
   ) async {
+    // Three file fields make the form taller than the default 800x600 test
+    // surface; the mode dropdown's menu would open partially offscreen.
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final manager = _buildManager();
     final source = await _saveLocalSource(manager);
     await manager.saveModel(
@@ -420,9 +423,13 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.edit_outlined));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('File'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('File'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('URL').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(TextFormField).at(0));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextFormField).at(0),
