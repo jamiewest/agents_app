@@ -114,10 +114,7 @@ void main() {
       final keys = await kv.keys(prefix: 'agents_app.a2a.client.');
       expect(keys, hasLength(1));
       expect(keys.single, isNot(contains(result.credential)));
-      expect(
-        keys.single,
-        contains(PairingCrypto.sha256Hex(result.credential)),
-      );
+      expect(keys.single, contains(PairingCrypto.sha256Hex(result.credential)));
 
       final agents = await client.listAgents(
         'http://127.0.0.1:${host.port}',
@@ -127,25 +124,26 @@ void main() {
       expect(agents.single.path, '/agents/helper');
     });
 
-    test('pairing tokens are single-use and bad bearers are rejected',
-        () async {
-      final client = PairingClient();
-      final offer = await loopbackOffer();
+    test(
+      'pairing tokens are single-use and bad bearers are rejected',
+      () async {
+        final client = PairingClient();
+        final offer = await loopbackOffer();
 
-      await client.pair(offer, clientName: 't', clientId: 'c1');
+        await client.pair(offer, clientName: 't', clientId: 'c1');
 
-      await expectLater(
-        client.pair(offer, clientName: 't', clientId: 'c2'),
-        throwsA(isA<PairingException>()),
-      );
-      await expectLater(
-        client.listAgents('http://127.0.0.1:${host.port}', 'wrong-bearer'),
-        throwsA(isA<PairingException>()),
-      );
-    });
+        await expectLater(
+          client.pair(offer, clientName: 't', clientId: 'c2'),
+          throwsA(isA<PairingException>()),
+        );
+        await expectLater(
+          client.listAgents('http://127.0.0.1:${host.port}', 'wrong-bearer'),
+          throwsA(isA<PairingException>()),
+        );
+      },
+    );
 
-    test('a paired device runs the remote agent through the factory',
-        () async {
+    test('a paired device runs the remote agent through the factory', () async {
       final client = PairingClient();
       final result = await client.pair(
         await loopbackOffer(),

@@ -71,8 +71,10 @@ class AuthorizedClientsStore {
   Future<bool> verify(String bearer) async {
     final hash = PairingCrypto.sha256Hex(bearer);
     for (final key in await _keyValueStore.keys(prefix: _prefix)) {
-      if (PairingCrypto.constantTimeEquals(key.substring(_prefix.length),
-          hash)) {
+      if (PairingCrypto.constantTimeEquals(
+        key.substring(_prefix.length),
+        hash,
+      )) {
         return true;
       }
     }
@@ -109,9 +111,8 @@ class A2AHostService {
   /// The bound port, when running.
   int? get port => _server?.port;
 
-  AuthorizedClientsStore get _clients => AuthorizedClientsStore(
-    _services.getRequiredService<KeyValueStore>(),
-  );
+  AuthorizedClientsStore get _clients =>
+      AuthorizedClientsStore(_services.getRequiredService<KeyValueStore>());
 
   Future<String> _ensureHostId() async {
     if (_hostId != null) return _hostId!;
@@ -127,10 +128,7 @@ class A2AHostService {
   }
 
   /// Starts serving [agents], preferring [port] with an ephemeral fallback.
-  Future<void> start(
-    List<SavedAgentConfig> agents, {
-    int port = 41888,
-  }) async {
+  Future<void> start(List<SavedAgentConfig> agents, {int port = 41888}) async {
     await stop();
     final factory = _services.getRequiredService<ConfiguredAgentFactory>();
 

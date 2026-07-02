@@ -32,7 +32,8 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
     final payload = PairingPayload.decode(_code);
     if (payload == null) {
       setState(
-        () => _error = 'That does not look like a pairing code. Copy the '
+        () => _error =
+            'That does not look like a pairing code. Copy the '
             'full code from the host\'s sharing screen.',
       );
       return;
@@ -48,10 +49,7 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
         clientName: 'agents_app',
         clientId: PairingCrypto.newToken().substring(0, 16),
       );
-      final agents = await client.listAgents(
-        result.baseUrl,
-        result.credential,
-      );
+      final agents = await client.listAgents(result.baseUrl, result.credential);
       if (!mounted) return;
       setState(() {
         _result = result;
@@ -147,9 +145,7 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
               const SizedBox(height: 12),
               Text(
                 error,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                ),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ],
             if (_result case final result?) ...[

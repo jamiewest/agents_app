@@ -164,9 +164,7 @@ class _HostingScreenState extends State<HostingScreen> {
                 const SizedBox(height: 12),
                 Text(
                   error,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
               if (_offer case final offer?) ...[
