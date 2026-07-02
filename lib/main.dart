@@ -23,6 +23,7 @@ import 'data/conversation_service.dart';
 import 'data/conversation_store.dart';
 import 'data/embedding_settings.dart';
 import 'data/task_scheduler_service.dart';
+import 'data/thinking_settings.dart';
 import 'domain/conversation.dart';
 import 'navigation/app_bootstrap.dart';
 import 'navigation/app_router.dart';
@@ -48,6 +49,9 @@ final _builder = Host.createApplicationBuilder()
   ..services.addFlutter((flutter) {
     flutter.services.addDownloadService();
     flutter.services.addRecordStore();
+    flutter.services.tryAddSingleton<ThinkingSettings>(
+      (sp) => ThinkingSettings(sp.getRequiredService<KeyValueStore>()),
+    );
     flutter.services.tryAddSingleton<EmbeddingSettings>(
       (sp) => EmbeddingSettings(
         keyValueStore: sp.getRequiredService<KeyValueStore>(),
@@ -263,10 +267,13 @@ ai.ChatClient _createLocalLlamaClient(
     return loaded!;
   }
 
+  final thinking = services.getService<ThinkingSettings>();
   return llama.createLlamaChatClient(
     spec: spec,
     sessionProvider: sessionProvider,
-    isThinkingEnabled: () => spec.enableThinking,
+    // Evaluated per request, so the chat toggle applies mid-conversation.
+    isThinkingEnabled: () =>
+        (thinking?.enabledFor(model.id) ?? false) || spec.enableThinking,
   );
 }
 
@@ -925,6 +932,9 @@ class _ChatScreenState extends State<ChatScreen> {
   ConversationSessionStore? _sessions;
   ChatTranscriptStore? _transcripts;
   Conversation? _existingConversation;
+  ModelConfig? _model;
+  List<ConversationSession> _sessionList = const [];
+  String? _viewSessionId;
   late String _conversationId;
   late String _sessionId;
   DateTime? _sessionStartedAt;
@@ -974,9 +984,16 @@ class _ChatScreenState extends State<ChatScreen> {
             AgentDelegationConfig(agentId: participantId),
     ];
 
-    final latestSession = widget.isPrivate
-        ? null
-        : await _sessions!.latestFor(_conversationId);
+    _model = await widget.services
+        .getRequiredService<ConfiguredAgentsManager>()
+        .sources
+        .getModel(widget.agent.modelId);
+
+    final sessionList = widget.isPrivate
+        ? const <ConversationSession>[]
+        : await _sessions!.listFor(_conversationId);
+    _sessionList = sessionList;
+    final latestSession = sessionList.isEmpty ? null : sessionList.last;
     _sessionId = latestSession?.id ?? _sessions!.newSessionId();
     _sessionStartedAt = latestSession?.startedAt;
 
@@ -1018,11 +1035,12 @@ class _ChatScreenState extends State<ChatScreen> {
   ///
   /// Tool-call-only turns carry no text and are skipped; the model still
   /// sees them through the chat history provider.
-  Future<List<ChatMessage>> _loadDisplayHistory() async {
+  Future<List<ChatMessage>> _loadDisplayHistory({String? sessionId}) async {
     final entries = await _transcripts!.load(_conversationId);
     return [
       for (final entry in entries)
-        if (entry.message.text.trim().isNotEmpty)
+        if (sessionId == null || entry.sessionId == sessionId)
+          if (entry.message.text.trim().isNotEmpty)
           entry.message.role == ai.ChatRole.user
               ? ChatMessage.user(entry.message.text, const [])
               : ChatMessage(
@@ -1212,6 +1230,25 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (added == null || !mounted) return;
 
+    // Any participant can coordinate; the current agent is the default.
+    final coordinator = await showDialog<SavedAgentConfig>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Who coordinates the group?'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop(widget.agent),
+            child: Text('${widget.agent.name} (recommended)'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop(added),
+            child: Text(added.name),
+          ),
+        ],
+      ),
+    );
+    if (coordinator == null || !mounted) return;
+
     final original =
         existing ??
         Conversation(
@@ -1227,10 +1264,28 @@ class _ChatScreenState extends State<ChatScreen> {
         .createGroupFromDirect(
           original: original,
           addedAgentIds: [added.id],
-          coordinatorAgentId: widget.agent.id,
+          coordinatorAgentId: coordinator.id,
           agentNamesById: {for (final agent in agents) agent.id: agent.name},
         );
     if (mounted) context.go('/chats/c/${group.id}');
+  }
+
+  Future<void> _refreshSessionList() async {
+    if (widget.isPrivate) return;
+    _sessionList = await _sessions!.listFor(_conversationId);
+    if (mounted) setState(() {});
+  }
+
+  /// Shows one session's slice of the transcript, or the stitched whole.
+  ///
+  /// Display only: the model always receives the full stitched history
+  /// through its chat history provider.
+  Future<void> _viewSession(String? sessionId) async {
+    final provider = _provider;
+    if (provider == null) return;
+    _viewSessionId = sessionId;
+    provider.history = await _loadDisplayHistory(sessionId: sessionId);
+    if (mounted) setState(() {});
   }
 
   /// Ends the current session and starts a fresh one.
@@ -1252,6 +1307,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _sessionId = _sessions!.newSessionId();
       _sessionStartedAt = null;
     });
+    await _refreshSessionList();
     if (mounted) {
       ScaffoldMessenger.of(
         context,
@@ -1368,6 +1424,36 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
+          if (!widget.isPrivate && _sessionList.length > 1)
+            PopupMenuButton<String?>(
+              tooltip: 'View a session',
+              icon: Icon(
+                Icons.history,
+                color: _viewSessionId == null
+                    ? null
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              onSelected: _viewSession,
+              itemBuilder: (context) => [
+                CheckedPopupMenuItem(
+                  value: null,
+                  checked: _viewSessionId == null,
+                  child: const Text('All sessions (stitched)'),
+                ),
+                for (final session in _sessionList)
+                  CheckedPopupMenuItem(
+                    value: session.id,
+                    checked: _viewSessionId == session.id,
+                    child: Text(
+                      '${_formatConversationDate(session.startedAt)}'
+                      '${session.id == _sessionId ? ' • current' : ''}',
+                    ),
+                  ),
+              ],
+            ),
+          if (_model case final model?
+              when model.capabilities.supportsThinking)
+            _ThinkingToggle(services: widget.services, modelConfigId: model.id),
           if (!widget.isPrivate)
             IconButton(
               tooltip: 'Add agent to chat — starts a new group chat',
@@ -1427,6 +1513,41 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     ),
   );
+}
+
+/// Toggles extended reasoning for the chat's model.
+///
+/// Shown only when the model's capabilities advertise thinking support;
+/// applies live because the client reads the setting per request.
+class _ThinkingToggle extends StatefulWidget {
+  const _ThinkingToggle({required this.services, required this.modelConfigId});
+
+  final ServiceProvider services;
+  final String modelConfigId;
+
+  @override
+  State<_ThinkingToggle> createState() => _ThinkingToggleState();
+}
+
+class _ThinkingToggleState extends State<_ThinkingToggle> {
+  ThinkingSettings get _settings =>
+      widget.services.getRequiredService<ThinkingSettings>();
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = _settings.enabledFor(widget.modelConfigId);
+    return IconButton(
+      tooltip: enabled ? 'Thinking on' : 'Thinking off',
+      icon: Icon(
+        Icons.psychology_outlined,
+        color: enabled ? Theme.of(context).colorScheme.primary : null,
+      ),
+      onPressed: () async {
+        await _settings.setEnabled(widget.modelConfigId, !enabled);
+        if (mounted) setState(() {});
+      },
+    );
+  }
 }
 
 class _LocalLlamaProgressBanner extends StatelessWidget {

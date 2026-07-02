@@ -394,6 +394,15 @@ class _ConfiguredAgentsViewState extends State<ConfiguredAgentsView> {
         initial: agent,
         models: _controller.models,
         agents: _controller.agents,
+        networkModelIds: {
+          for (final model in _controller.models)
+            if (_controller.sources.any(
+              (source) =>
+                  source.id == model.sourceId &&
+                  source.providerType == ProviderType.network,
+            ))
+              model.id,
+        },
         style: style,
         strings: strings,
         onCancel: close,

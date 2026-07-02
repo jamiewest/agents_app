@@ -21,6 +21,7 @@ class AgentEditor extends StatefulWidget {
     required this.onCancel,
     this.initial,
     this.agents = const [],
+    this.networkModelIds = const {},
     super.key,
   });
 
@@ -33,6 +34,12 @@ class AgentEditor extends StatefulWidget {
   /// Saved agents offered as delegate targets. The agent being edited is
   /// excluded automatically.
   final List<SavedAgentConfig> agents;
+
+  /// Ids of models backed by remote network agents.
+  ///
+  /// Remote agents run inside their host's harness, so local tool access
+  /// and delegation settings do not apply and are hidden for them.
+  final Set<String> networkModelIds;
 
   /// Resolved style.
   final ConfiguredAgentsStyle style;
@@ -211,7 +218,17 @@ class _AgentEditorState extends State<AgentEditor> {
             validator: (value) => _validateOptionalNumber(value, integer: true),
           ),
           const SizedBox(height: 8),
-          _buildAccessSection(
+          if (widget.networkModelIds.contains(_modelId))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'This agent runs on another device; its tools, context, '
+                'and delegations are configured on the host.',
+                style: style.subtitleTextStyle,
+              ),
+            )
+          else ...[
+            _buildAccessSection(
             label: strings.agentToolsLabel,
             style: style,
             switches: [
@@ -301,8 +318,9 @@ class _AgentEditorState extends State<AgentEditor> {
               ),
             ],
           ),
-          if (_delegateCandidates.isNotEmpty)
-            _buildDelegationSection(style, strings),
+            if (_delegateCandidates.isNotEmpty)
+              _buildDelegationSection(style, strings),
+          ],
           const SizedBox(height: 12),
           EditorActions(
             style: style,

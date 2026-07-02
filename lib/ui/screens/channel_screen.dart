@@ -4,6 +4,7 @@
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -203,64 +204,121 @@ class _ConversationsTab extends StatelessWidget {
   );
 }
 
-class _FilesTab extends StatelessWidget {
+class _FilesTab extends StatefulWidget {
   const _FilesTab({required this.records, required this.channelId});
 
   final RecordStore records;
   final String channelId;
 
   @override
+  State<_FilesTab> createState() => _FilesTabState();
+}
+
+class _FilesTabState extends State<_FilesTab> {
+  late final RecordStoreAgentFileStore _store;
+  late Future<List<String>> _files;
+
+  @override
+  void initState() {
+    super.initState();
+    _store = RecordStoreAgentFileStore(
+      widget.records,
+      namespace: widget.channelId,
+    );
+    _files = _store.listFilesAsync('');
+  }
+
+  void _refresh() => setState(() => _files = _store.listFilesAsync(''));
+
+  /// Uploads a text file into the channel's shared workspace, where every
+  /// channel agent can read it.
+  Future<void> _upload() async {
+    final picked = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'Text',
+          extensions: ['txt', 'md', 'csv', 'json', 'yaml', 'xml'],
+        ),
+      ],
+    );
+    if (picked == null) return;
+    try {
+      final content = await picked.readAsString();
+      await _store.writeFileAsync(picked.name, content);
+      _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not read that file as text. ($e)')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final store = RecordStoreAgentFileStore(records, namespace: channelId);
+    final uploadButton = Padding(
+      padding: const EdgeInsets.all(12),
+      child: OutlinedButton.icon(
+        onPressed: _upload,
+        icon: const Icon(Icons.upload_file_outlined),
+        label: const Text('Upload text file'),
+      ),
+    );
     return FutureBuilder<List<String>>(
-      future: store.listFilesAsync(''),
+      future: _files,
       builder: (context, snapshot) {
         final files = snapshot.data;
         if (files == null) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (files.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'No shared files yet. Files written by channel agents '
-                'appear here.',
-                textAlign: TextAlign.center,
-              ),
-            ),
-          );
-        }
-        return ListView.builder(
-          itemCount: files.length,
-          itemBuilder: (context, index) {
-            final file = files[index];
-            return ListTile(
-              leading: const Icon(Icons.description_outlined),
-              title: Text(file),
-              onTap: () async {
-                final content = await store.readFileAsync(file);
-                if (!context.mounted) return;
-                await showDialog<void>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text(file),
-                    content: SingleChildScrollView(child: Text(content ?? '')),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Close'),
+        return Column(
+          children: [
+            uploadButton,
+            Expanded(
+              child: files.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'No shared files yet. Upload one, or let channel '
+                          'agents write them.',
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
+                    )
+                  : ListView.builder(
+                      itemCount: files.length,
+                      itemBuilder: (context, index) =>
+                          _fileTile(context, files[index]),
+                    ),
+            ),
+          ],
         );
       },
     );
   }
+
+  Widget _fileTile(BuildContext context, String file) => ListTile(
+    leading: const Icon(Icons.description_outlined),
+    title: Text(file),
+    onTap: () async {
+      final content = await _store.readFileAsync(file);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(file),
+          content: SingleChildScrollView(child: Text(content ?? '')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class _AgentsTab extends StatelessWidget {

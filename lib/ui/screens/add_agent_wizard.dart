@@ -9,6 +9,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/local_model_presets.dart';
 import '../strings/configured_agents_strings.dart';
 import '../styles/configured_agents_style.dart';
 import '../views/configured_agents/agent_editor.dart';
@@ -38,6 +39,7 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
   int _step = 0;
   ModelSourceConfig? _source;
   ModelConfig? _model;
+  ModelConfig? _presetModel;
 
   @override
   void initState() {
@@ -131,12 +133,47 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
                     ),
                   ],
                 ),
-                1 => ModelEditor(
-                  sources: [_source!],
-                  style: style,
-                  strings: strings,
-                  onSubmit: (model) => unawaited(_submitModel(model)),
-                  onCancel: _back,
+                1 => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_source!.providerType == ProviderType.localLlama) ...[
+                      Text(
+                        'Start from a known-good model',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final preset in localModelPresets)
+                            Tooltip(
+                              message: preset.subtitle,
+                              child: ActionChip(
+                                label: Text(preset.name),
+                                onPressed: () => setState(() {
+                                  _presetModel = preset.toModelConfig(
+                                    id: 'model-'
+                                        '${DateTime.now().microsecondsSinceEpoch}',
+                                    sourceId: _source!.id,
+                                  );
+                                }),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    ModelEditor(
+                      key: ValueKey(_presetModel?.id ?? 'blank'),
+                      initial: _presetModel,
+                      sources: [_source!],
+                      style: style,
+                      strings: strings,
+                      onSubmit: (model) => unawaited(_submitModel(model)),
+                      onCancel: _back,
+                    ),
+                  ],
                 ),
                 _ => AgentEditor(
                   models: [_model!],
