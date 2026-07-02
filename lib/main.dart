@@ -309,7 +309,13 @@ llama.ModelSpec _localLlamaSpec({
   required Uri modelUrl,
 }) {
   final settings = model.settings;
-  final format = _chatFormatFor(settings['llama.format']?.trim());
+  final format = _chatFormatFor(
+    settings[chatFormatSetting]?.trim().isNotEmpty ?? false
+        ? settings[chatFormatSetting]
+        : settings[legacyLlamaFormatSetting],
+    detectionBasis:
+        settings['llama.modelFileName'] ?? settings['llama.modelUrl'] ?? '',
+  );
 
   Uri? optionalUrl(String key) {
     final value = settings[key]?.trim();
@@ -336,11 +342,18 @@ llama.ModelSpec _localLlamaSpec({
   );
 }
 
-/// Maps a `llama.format` setting to the chat format that model family speaks.
+/// Maps a `chat.format`/`llama.format` setting to the chat format that
+/// model family speaks.
 ///
-/// Defaults to Gemma when unset for backwards compatibility.
-llama.ChatFormat _chatFormatFor(String? format) {
-  final resolved = llama.resolveChatFormat(format);
+/// When unset, the format is guessed from [detectionBasis] (the model's
+/// file name or URL); when that finds nothing either, the registry
+/// default (Gemma) applies for backwards compatibility.
+llama.ChatFormat _chatFormatFor(String? format, {String detectionBasis = ''}) {
+  final explicit = format?.trim() ?? '';
+  final effective = explicit.isNotEmpty
+      ? explicit
+      : detectChatFormatName(detectionBasis) ?? '';
+  final resolved = llama.resolveChatFormat(effective);
   if (resolved == null) {
     throw ConfiguredAgentException('Unsupported local llama format "$format".');
   }

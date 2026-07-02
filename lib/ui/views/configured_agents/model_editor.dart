@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:agents_llama/agents_llama.dart' as llama;
 import 'package:file_selector/file_selector.dart' as file_selector;
@@ -141,7 +143,6 @@ class _ModelEditorState extends State<ModelEditor> {
   late final TextEditingController _llamaDraftUrl;
   late final TextEditingController _llamaContextSize;
   late final TextEditingController _llamaGpuLayers;
-  late final TextEditingController _llamaFormat;
   late String _sourceId;
   late _LlamaModelSource _llamaModelSource;
   String? _llamaModelPath;
@@ -150,6 +151,20 @@ class _ModelEditorState extends State<ModelEditor> {
   String? _llamaMmprojFileName;
   String? _llamaDraftPath;
   String? _llamaDraftFileName;
+
+  /// Selected chat format; empty means auto-detect at runtime.
+  late String _chatFormat;
+
+  /// Selected tools mode setting value; empty means auto (native).
+  late String _toolsMode;
+  late bool _toolsParallel;
+
+  /// Selected reasoning-tags setting value; empty means auto-detect.
+  late String _reasoningTags;
+
+  /// What name-based (or GGUF) detection currently suggests, for the
+  /// "Auto" helper text.
+  String? _detectedFormat;
 
   @override
   void initState() {
@@ -172,11 +187,22 @@ class _ModelEditorState extends State<ModelEditor> {
     _llamaGpuLayers = TextEditingController(
       text: initial?.settings['llama.gpuLayers'] ?? '999',
     );
-    _llamaFormat = TextEditingController(
-      text: initial?.settings['llama.format'] ?? 'gemma',
-    );
     _sourceId = initial?.sourceId ?? widget.sources.first.id;
     final settings = initial?.settings ?? const <String, String>{};
+    _chatFormat = _knownFormatOrAuto(
+      settings[chatFormatSetting] ?? settings[legacyLlamaFormatSetting],
+    );
+    _toolsMode = switch (settings[toolsModeSetting]) {
+      toolsModeNative || toolsModePrompt || toolsModeNone => //
+        settings[toolsModeSetting]!,
+      _ => '',
+    };
+    _toolsParallel = settings[toolsParallelSetting] != 'false';
+    _reasoningTags = switch (settings[reasoningTagsSetting]) {
+      reasoningTagsThink || reasoningTagsNone => //
+        settings[reasoningTagsSetting]!,
+      _ => '',
+    };
     _llamaModelSource =
         settings['llama.modelSource'] == 'file' ||
             settings.containsKey('llama.modelPath')
@@ -188,6 +214,43 @@ class _ModelEditorState extends State<ModelEditor> {
     _llamaMmprojFileName = settings['llama.mmprojFileName'];
     _llamaDraftPath = kIsWeb ? null : settings['llama.draftModelPath'];
     _llamaDraftFileName = settings['llama.draftModelFileName'];
+    _modelId.addListener(_refreshDetection);
+    _llamaModelUrl.addListener(_refreshDetection);
+    _refreshDetection();
+  }
+
+  /// Normalizes a stored format name: unknown or empty becomes auto ('').
+  static String _knownFormatOrAuto(String? name) {
+    final trimmed = name?.trim() ?? '';
+    return llama.supportedChatFormatNames.contains(trimmed) ? trimmed : '';
+  }
+
+  /// Re-runs name-based detection for the helper text.
+  void _refreshDetection() {
+    final basis = switch (_selectedSource.providerType) {
+      ProviderType.localLlama =>
+        _llamaModelSource == _LlamaModelSource.file
+            ? (_llamaModelFileName ?? '')
+            : _llamaModelUrl.text,
+      _ => _modelId.text,
+    };
+    final detected = basis.trim().isEmpty
+        ? null
+        : detectChatFormatName(basis);
+    if (detected != _detectedFormat) {
+      setState(() => _detectedFormat = detected);
+    }
+  }
+
+  /// Sniffs a picked GGUF file's metadata for a higher-confidence
+  /// detection than the file name; no-op on the web.
+  Future<void> _sniffGgufFormat(String path) async {
+    final metadata = await readGgufMetadata(path);
+    if (metadata == null || !mounted) return;
+    final detected = chatFormatFromGgufMetadata(metadata);
+    if (detected != null && detected != _detectedFormat) {
+      setState(() => _detectedFormat = detected);
+    }
   }
 
   @override
@@ -199,7 +262,6 @@ class _ModelEditorState extends State<ModelEditor> {
     _llamaDraftUrl.dispose();
     _llamaContextSize.dispose();
     _llamaGpuLayers.dispose();
-    _llamaFormat.dispose();
     super.dispose();
   }
 
@@ -208,9 +270,11 @@ class _ModelEditorState extends State<ModelEditor> {
     final displayName = _displayName.text.trim();
     final isLocal = _selectedSource.providerType == ProviderType.localLlama;
     final id = widget.initial?.id ?? newConfiguredAgentsId();
-    final settings = isLocal
-        ? _localLlamaSettings(id)
-        : widget.initial?.settings ?? const <String, String>{};
+    final settings = switch (_selectedSource.providerType) {
+      ProviderType.localLlama => _localLlamaSettings(id),
+      ProviderType.openAiCompatible => _openAiCompatibleSettings(),
+      _ => widget.initial?.settings ?? const <String, String>{},
+    };
     widget.onSubmit(
       ModelConfig(
         id: id,
@@ -222,6 +286,28 @@ class _ModelEditorState extends State<ModelEditor> {
     );
   }
 
+  /// Builds the `chat.*`/`tools.*` settings for an OpenAI-compatible
+  /// model, preserving any unrelated settings already stored.
+  Map<String, String> _openAiCompatibleSettings() {
+    final settings = Map<String, String>.of(
+      widget.initial?.settings ?? const <String, String>{},
+    );
+
+    void put(String key, String value) {
+      if (value.isEmpty) {
+        settings.remove(key);
+      } else {
+        settings[key] = value;
+      }
+    }
+
+    put(chatFormatSetting, _chatFormat);
+    put(toolsModeSetting, _toolsMode);
+    put(toolsParallelSetting, _toolsParallel ? '' : 'false');
+    put(reasoningTagsSetting, _reasoningTags);
+    return settings;
+  }
+
   Map<String, String> _localLlamaSettings(String id) {
     final settings = <String, String>{
       'llama.modelSource': switch (_llamaModelSource) {
@@ -230,9 +316,12 @@ class _ModelEditorState extends State<ModelEditor> {
       },
       'llama.contextSize': _llamaContextSize.text.trim(),
       'llama.gpuLayers': _llamaGpuLayers.text.trim(),
-      'llama.format': _llamaFormat.text.trim().isEmpty
-          ? 'gemma'
-          : _llamaFormat.text.trim(),
+      // Both keys are written: chat.format is canonical, llama.format
+      // keeps older readers working. Empty means auto-detect.
+      if (_chatFormat.isNotEmpty) ...{
+        chatFormatSetting: _chatFormat,
+        legacyLlamaFormatSetting: _chatFormat,
+      },
     };
 
     switch (_llamaModelSource) {
@@ -302,10 +391,17 @@ class _ModelEditorState extends State<ModelEditor> {
     return selection.path;
   }
 
-  Future<String?> _chooseLlamaModelFile() => _chooseLlamaFile((selection) {
-    _llamaModelPath = selection.path;
-    _llamaModelFileName = selection.name;
-  });
+  Future<String?> _chooseLlamaModelFile() async {
+    final path = await _chooseLlamaFile((selection) {
+      _llamaModelPath = selection.path;
+      _llamaModelFileName = selection.name;
+    });
+    if (path != null) {
+      _refreshDetection();
+      unawaited(_sniffGgufFormat(path));
+    }
+    return path;
+  }
 
   Future<String?> _chooseLlamaMmprojFile() => _chooseLlamaFile((selection) {
     _llamaMmprojPath = selection.path;
@@ -340,6 +436,51 @@ class _ModelEditorState extends State<ModelEditor> {
   ModelSourceConfig get _selectedSource => widget.sources.firstWhere(
     (source) => source.id == _sourceId,
     orElse: () => widget.sources.first,
+  );
+
+  /// The chat-format dropdown: Auto (with the detected name as helper
+  /// text) plus every supported format name.
+  Widget _formatDropdown(ConfiguredAgentsStyle style) {
+    final names = llama.supportedChatFormatNames.toList()..sort();
+    final autoLabel = _detectedFormat == null
+        ? 'Auto'
+        : 'Auto (detected: $_detectedFormat)';
+    return _labeledDropdown<String>(
+      label: 'Format',
+      style: style,
+      value: _chatFormat,
+      items: [('', autoLabel), for (final name in names) (name, name)],
+      onChanged: (value) => setState(() => _chatFormat = value),
+    );
+  }
+
+  /// A labeled dropdown following the source-selector layout above.
+  Widget _labeledDropdown<T>({
+    required String label,
+    required ConfiguredAgentsStyle style,
+    required T value,
+    required List<(T, String)> items,
+    required ValueChanged<T> onChanged,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: style.labelTextStyle),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<T>(
+          initialValue: value,
+          decoration: const InputDecoration(isDense: true),
+          items: [
+            for (final (itemValue, itemLabel) in items)
+              DropdownMenuItem(value: itemValue, child: Text(itemLabel)),
+          ],
+          onChanged: (selected) {
+            if (selected != null) onChanged(selected);
+          },
+        ),
+      ],
+    ),
   );
 
   @override
@@ -478,23 +619,8 @@ class _ModelEditorState extends State<ModelEditor> {
                   ? strings.invalidNumber
                   : null,
             ),
-            ConfiguredAgentsFormField(
-              label: 'Format',
-              controller: _llamaFormat,
-              style: style,
-              hintText: 'gemma',
-              validator: (value) {
-                final text = (value ?? '').trim();
-                if (text.isEmpty ||
-                    llama.supportedChatFormatNames.contains(text)) {
-                  return null;
-                }
-                final names = (llama.supportedChatFormatNames.toList()..sort())
-                    .join(', ');
-                return 'Supported formats: $names.';
-              },
-            ),
-          ] else
+            _formatDropdown(style),
+          ] else ...[
             ConfiguredAgentsFormField(
               label: strings.modelIdLabel,
               controller: _modelId,
@@ -504,6 +630,52 @@ class _ModelEditorState extends State<ModelEditor> {
                   ? strings.requiredField
                   : null,
             ),
+            if (_selectedSource.providerType ==
+                ProviderType.openAiCompatible) ...[
+              _formatDropdown(style),
+              _labeledDropdown<String>(
+                label: 'Tool calling',
+                style: style,
+                value: _toolsMode,
+                items: const [
+                  ('', 'Native (default)'),
+                  (toolsModePrompt, 'Prompt-injected'),
+                  (toolsModeNone, 'Disabled'),
+                ],
+                onChanged: (value) => setState(() => _toolsMode = value),
+              ),
+              _labeledDropdown<String>(
+                label: 'Reasoning tags',
+                style: style,
+                value: _reasoningTags,
+                items: const [
+                  ('', 'Auto'),
+                  (reasoningTagsThink, '<think> tags'),
+                  (reasoningTagsNone, 'None'),
+                ],
+                onChanged: (value) => setState(() => _reasoningTags = value),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Parallel tool calls',
+                        style: style.labelTextStyle,
+                      ),
+                    ),
+                    Switch(
+                      value: _toolsParallel,
+                      onChanged: (value) {
+                        setState(() => _toolsParallel = value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
           ConfiguredAgentsFormField(
             label: strings.modelDisplayNameLabel,
             controller: _displayName,
