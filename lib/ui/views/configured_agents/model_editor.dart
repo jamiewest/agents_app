@@ -194,13 +194,13 @@ class _ModelEditorState extends State<ModelEditor> {
     );
     _toolsMode = switch (settings[toolsModeSetting]) {
       toolsModeNative || toolsModePrompt || toolsModeNone => //
-        settings[toolsModeSetting]!,
+      settings[toolsModeSetting]!,
       _ => '',
     };
     _toolsParallel = settings[toolsParallelSetting] != 'false';
     _reasoningTags = switch (settings[reasoningTagsSetting]) {
       reasoningTagsThink || reasoningTagsNone => //
-        settings[reasoningTagsSetting]!,
+      settings[reasoningTagsSetting]!,
       _ => '',
     };
     _llamaModelSource =
@@ -234,9 +234,7 @@ class _ModelEditorState extends State<ModelEditor> {
             : _llamaModelUrl.text,
       _ => _modelId.text,
     };
-    final detected = basis.trim().isEmpty
-        ? null
-        : detectChatFormatName(basis);
+    final detected = basis.trim().isEmpty ? null : detectChatFormatName(basis);
     if (detected != _detectedFormat) {
       setState(() => _detectedFormat = detected);
     }

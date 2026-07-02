@@ -129,8 +129,9 @@ void main() {
     expect(find.text('GGUF model URL'), findsOneWidget);
     expect(find.text('Model id'), findsNothing);
 
-    // URL-mode fields in order: model URL (0), projector URL (1), draft URL
-    // (2), context size (3), GPU layers (4), format (5), display name (6).
+    // URL-mode text fields in order: model URL (0), projector URL (1),
+    // draft URL (2), context size (3), GPU layers (4), display name (5).
+    // The format selector is a dropdown, not a text field.
     final fields = find.byType(TextFormField);
     await tester.enterText(
       fields.at(0),
@@ -138,7 +139,7 @@ void main() {
     );
     await tester.enterText(fields.at(3), '2048');
     await tester.enterText(fields.at(4), '0');
-    await tester.enterText(fields.at(6), 'Gemma local');
+    await tester.enterText(fields.at(5), 'Gemma local');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -155,7 +156,9 @@ void main() {
     expect(model.settings.containsKey('llama.draftModelUrl'), isFalse);
     expect(model.settings['llama.contextSize'], '2048');
     expect(model.settings['llama.gpuLayers'], '0');
-    expect(model.settings['llama.format'], 'gemma');
+    // The default format selection is Auto, which persists no key; the
+    // runtime detects the family from the model URL/file name.
+    expect(model.settings.containsKey('llama.format'), isFalse);
   });
 
   testWidgets('local llama URL-mode projector and draft URLs persist', (
@@ -184,7 +187,7 @@ void main() {
       fields.at(2),
       'https://huggingface.co/org/repo/resolve/main/draft.gguf',
     );
-    await tester.enterText(fields.at(6), 'Vision local');
+    await tester.enterText(fields.at(5), 'Vision local');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -225,7 +228,7 @@ void main() {
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '2048');
     await tester.enterText(fields.at(1), '0');
-    await tester.enterText(fields.at(3), 'Gemma file');
+    await tester.enterText(fields.at(2), 'Gemma file');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -239,7 +242,8 @@ void main() {
     expect(model.settings.containsKey('llama.modelUrl'), isFalse);
     expect(model.settings['llama.contextSize'], '2048');
     expect(model.settings['llama.gpuLayers'], '0');
-    expect(model.settings['llama.format'], 'gemma');
+    // Auto format persists no key; runtime detection reads the file name.
+    expect(model.settings.containsKey('llama.format'), isFalse);
   });
 
   testWidgets('local llama file-mode projector and draft selections persist', (

@@ -5,8 +5,9 @@ import 'package:agents/agents.dart'
     show
         AIAgent,
         AgentSession,
-        ChatHistoryProvider,
-        InMemoryChatHistoryProvider;
+        ChatHistoryMemoryProvider,
+        ChatHistoryMemoryProviderScope,
+        ChatHistoryMemoryProviderState;
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:agents_llama/agents_llama.dart' as llama;
 import 'package:extensions/ai.dart' as ai;
@@ -14,10 +15,17 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:extensions/extensions.dart' hide ChatMessage;
 
-import 'ui/chat_sessions/chat_session_record.dart';
-import 'ui/chat_sessions/chat_session_store.dart';
+import 'package:go_router/go_router.dart';
+
+import 'data/chat_transcript_store.dart';
+import 'data/conversation_service.dart';
+import 'data/conversation_store.dart';
+import 'data/embedding_settings.dart';
+import 'data/task_scheduler_service.dart';
+import 'domain/conversation.dart';
+import 'navigation/app_bootstrap.dart';
+import 'navigation/app_router.dart';
 import 'ui/providers/providers.dart';
 import 'ui/views/configured_agents/configured_agents.dart';
 import 'ui/views/llm_chat_view/llm_chat_view.dart';
@@ -39,12 +47,65 @@ final _builder = Host.createApplicationBuilder()
   ..logging.setMinimumLevel(LogLevel.trace)
   ..services.addFlutter((flutter) {
     flutter.services.addDownloadService();
+    flutter.services.addRecordStore();
+    flutter.services.tryAddSingleton<EmbeddingSettings>(
+      (sp) => EmbeddingSettings(
+        keyValueStore: sp.getRequiredService<KeyValueStore>(),
+        manager: sp.getRequiredService<ConfiguredAgentsManager>(),
+      ),
+    );
     flutter.useFlutterHarnessAgent();
     flutter.useConfiguredAgents(
       chatClientFactory: (sp) => ConfiguredChatClientFactory(
         customClientResolver: ({required source, required model, httpClient}) =>
             _createLocalLlamaClient(sp, source: source, model: model),
       ),
+      configureHarnessForScope: (sp) => (agent, options, scope) {
+        // Private conversations keep the default in-memory capabilities;
+        // durable ones read and write conversation-scoped persistence, so
+        // resumed chats need no replay step.
+        if (scope.isPrivate) return;
+        final records = sp.getRequiredService<RecordStore>();
+        options.chatHistoryProvider = FlutterChatHistoryProvider(
+          records,
+          conversationId: scope.conversationId,
+          sessionIdResolver: scope.sessionIdResolver,
+          senderAgentId: agent.id,
+        );
+
+        // Agent-written files persist per conversation (or channel).
+        final namespace = scope.channelId ?? scope.conversationId;
+        options.fileAccessStore = RecordStoreAgentFileStore(
+          records,
+          namespace: namespace,
+        );
+        options.fileMemoryStore = RecordStoreAgentFileStore(
+          records,
+          namespace: '$namespace#memory',
+        );
+
+        // Long-term memory: whole-conversation recall through the vector
+        // store, scoped so agents never see each other's memories.
+        options.aiContextProviders = [
+          ...?options.aiContextProviders,
+          ChatHistoryMemoryProvider(
+            RecordStoreVectorStore(
+              records,
+              scorer: sp.getRequiredService<EmbeddingSettings>(),
+            ),
+            'chat_memory',
+            1536,
+            (_) => ChatHistoryMemoryProviderState(
+              ChatHistoryMemoryProviderScope(
+                applicationId: 'agents_app',
+                agentId: agent.id,
+                // Channel conversations share channel-wide memory.
+                sessionId: scope.channelId ?? scope.conversationId,
+              ),
+            ),
+          ),
+        ];
+      },
     );
     flutter.wrapWith((sp, child) => child);
     flutter.runApp((services) => AgentsApp(services: services));
@@ -458,8 +519,8 @@ Future<String> _downloadLocalArtifact(
   return path;
 }
 
-/// Root of the configured-agents app.
-class AgentsApp extends StatelessWidget {
+/// Root of the agents app: a routed shell over Chats, Tasks, and Settings.
+class AgentsApp extends StatefulWidget {
   /// Creates the agents app.
   const AgentsApp({required this.services, super.key});
 
@@ -467,7 +528,37 @@ class AgentsApp extends StatelessWidget {
   final ServiceProvider services;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
+  State<AgentsApp> createState() => _AgentsAppState();
+}
+
+class _AgentsAppState extends State<AgentsApp> {
+  late final GoRouter _router;
+  late final TaskSchedulerService _scheduler;
+
+  @override
+  void initState() {
+    super.initState();
+    final bootstrap = AppBootstrap(
+      widget.services,
+      seedApiKey: _seedApiKey,
+      seedModel: _seedModel,
+    );
+    _scheduler = TaskSchedulerService(widget.services)..start();
+    _router = createAppRouter(
+      services: widget.services,
+      bootstrap: bootstrap,
+      scheduler: _scheduler,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scheduler.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => MaterialApp.router(
     title: 'agents_app',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
@@ -475,189 +566,7 @@ class AgentsApp extends StatelessWidget {
       textTheme: GoogleFonts.outfitTextTheme(),
       useMaterial3: true,
     ),
-    home: HomeScreen(services: services),
-  );
-}
-
-/// Lists configured agents and opens the settings surface and chat.
-class HomeScreen extends StatefulWidget {
-  /// Creates a [HomeScreen].
-  const HomeScreen({required this.services, super.key});
-
-  /// The application service provider.
-  final ServiceProvider services;
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  late final Future<void> _ready;
-  bool _initialized = false;
-
-  // Bumped whenever the saved agents may have changed (e.g. after returning
-  // from settings) to force [_AgentList] to rebuild from storage.
-  int _agentListToken = 0;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_initialized) return;
-    _initialized = true;
-    _ready = _seedIfNeeded(
-      widget.services.getRequiredService<ConfiguredAgentsManager>(),
-    );
-  }
-
-  Future<void> _seedIfNeeded(ConfiguredAgentsManager manager) async {
-    if (_seedApiKey.trim().isEmpty) return;
-    final existing = await manager.sources.listSources();
-    if (existing.isNotEmpty) return;
-
-    const sourceId = 'seed-anthropic';
-    const modelId = 'seed-anthropic-model';
-    await manager.saveSource(
-      const ModelSourceConfig(
-        id: sourceId,
-        providerType: ProviderType.anthropic,
-        displayName: 'Anthropic (seeded)',
-      ),
-      apiKey: _seedApiKey,
-    );
-    await manager.saveModel(
-      const ModelConfig(
-        id: modelId,
-        sourceId: sourceId,
-        modelId: _seedModel,
-        displayName: 'Claude',
-      ),
-    );
-    await manager.saveAgent(
-      const SavedAgentConfig(
-        id: 'seed-anthropic-agent',
-        name: 'Claude',
-        modelId: modelId,
-        description: 'A helpful assistant.',
-        instructions: 'You are a helpful, concise assistant.',
-      ),
-    );
-  }
-
-  Future<void> _openSettings() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SettingsScreen(services: widget.services),
-      ),
-    );
-    if (mounted) {
-      setState(() => _agentListToken++);
-    }
-  }
-
-  void _openConversations(SavedAgentConfig agent) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            AgentConversationsScreen(agent: agent, services: widget.services),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Configured agents'),
-      actions: [
-        IconButton(
-          tooltip: 'Manage',
-          icon: const Icon(Icons.settings_outlined),
-          onPressed: _openSettings,
-        ),
-      ],
-    ),
-    body: FutureBuilder<void>(
-      future: _ready,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return _AgentList(
-          key: ValueKey(_agentListToken),
-          services: widget.services,
-          onSelected: _openConversations,
-          onManage: _openSettings,
-        );
-      },
-    ),
-  );
-}
-
-class _AgentList extends StatefulWidget {
-  const _AgentList({
-    required this.services,
-    required this.onSelected,
-    required this.onManage,
-    super.key,
-  });
-
-  final ServiceProvider services;
-  final void Function(SavedAgentConfig agent) onSelected;
-  final VoidCallback onManage;
-
-  @override
-  State<_AgentList> createState() => _AgentListState();
-}
-
-class _AgentListState extends State<_AgentList> {
-  late final Future<List<SavedAgentConfig>> _agents;
-  bool _initialized = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_initialized) return;
-    _initialized = true;
-    _agents = widget.services
-        .getRequiredService<ConfiguredAgentsManager>()
-        .agents
-        .listAgents();
-  }
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<List<SavedAgentConfig>>(
-    future: _agents,
-    builder: (context, snapshot) {
-      final agents = snapshot.data ?? const <SavedAgentConfig>[];
-      if (snapshot.connectionState != ConnectionState.done) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      if (agents.isEmpty) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'No agents yet. Add a source, model, and agent to begin.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: widget.onManage,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Manage agents'),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-      return ConfiguredAgentPicker(
-        agents: agents,
-        onSelected: widget.onSelected,
-      );
-    },
+    routerConfig: _router,
   );
 }
 
@@ -682,8 +591,10 @@ class AgentConversationsScreen extends StatefulWidget {
 }
 
 class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
-  late final ChatSessionStore _store;
-  late Future<List<ChatSessionRecord>> _conversations;
+  late final ConversationStore _store;
+  late final ConversationSessionStore _sessions;
+  late final ChatTranscriptStore _transcripts;
+  late Future<List<Conversation>> _conversations;
   bool _initialized = false;
 
   @override
@@ -691,9 +602,10 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    _store = ChatSessionStore(
-      widget.services.getRequiredService<KeyValueStore>(),
-    );
+    final records = widget.services.getRequiredService<RecordStore>();
+    _store = ConversationStore(records);
+    _sessions = ConversationSessionStore(records);
+    _transcripts = ChatTranscriptStore(records);
     _reload();
   }
 
@@ -701,8 +613,8 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
     _conversations = _listConversations();
   }
 
-  Future<List<ChatSessionRecord>> _listConversations() async {
-    final conversations = await _store.list(widget.agent.id);
+  Future<List<Conversation>> _listConversations() async {
+    final conversations = await _store.listForAgent(widget.agent.id);
     if (conversations.isNotEmpty) return conversations;
     return _store.listAll();
   }
@@ -719,7 +631,7 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
     }
   }
 
-  Future<void> _openConversation(ChatSessionRecord conversation) async {
+  Future<void> _openConversation(Conversation conversation) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ChatScreen(
@@ -734,7 +646,7 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
     }
   }
 
-  Future<void> _renameConversation(ChatSessionRecord conversation) async {
+  Future<void> _renameConversation(Conversation conversation) async {
     final title = await _showConversationTitleDialog(
       context,
       initialTitle: conversation.title,
@@ -742,15 +654,10 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
     if (title == null) return;
 
     await _store.save(
-      ChatSessionRecord(
-        id: conversation.id,
-        agentId: conversation.agentId,
+      conversation.copyWith(
         title: title,
-        titleSource: ChatSessionTitleSource.manual,
-        history: conversation.history,
-        createdAt: conversation.createdAt,
+        titleSource: ConversationTitleSource.manual,
         updatedAt: DateTime.now(),
-        serializedSession: conversation.serializedSession,
       ),
     );
     if (mounted) {
@@ -758,7 +665,7 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
     }
   }
 
-  Future<void> _deleteConversation(ChatSessionRecord conversation) async {
+  Future<void> _deleteConversation(Conversation conversation) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -780,6 +687,8 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
     );
     if (confirmed != true) return;
 
+    await _transcripts.deleteFor(conversation.id);
+    await _sessions.deleteFor(conversation.id);
     await _store.delete(conversation.id);
     if (mounted) {
       setState(_reload);
@@ -798,10 +707,10 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
         ),
       ],
     ),
-    body: FutureBuilder<List<ChatSessionRecord>>(
+    body: FutureBuilder<List<Conversation>>(
       future: _conversations,
       builder: (context, snapshot) {
-        final conversations = snapshot.data ?? const <ChatSessionRecord>[];
+        final conversations = snapshot.data ?? const <Conversation>[];
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -832,11 +741,16 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
           itemCount: conversations.length,
           itemBuilder: (context, index) {
             final conversation = conversations[index];
+            final preview = conversation.lastMessagePreview?.trim();
             return ListTile(
               title: Text(_conversationTitle(conversation)),
               subtitle: Text(
-                '${_formatConversationDate(conversation.updatedAt)}'
-                ' • ${_messageCountLabel(conversation.history.length)}',
+                preview == null || preview.isEmpty
+                    ? _formatConversationDate(conversation.updatedAt)
+                    : '${_formatConversationDate(conversation.updatedAt)}'
+                          ' • $preview',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               onTap: () => _openConversation(conversation),
               trailing: PopupMenuButton<_ConversationAction>(
@@ -872,13 +786,10 @@ class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
 
 enum _ConversationAction { rename, delete }
 
-String _conversationTitle(ChatSessionRecord conversation) =>
+String _conversationTitle(Conversation conversation) =>
     conversation.title.trim().isEmpty
     ? 'Untitled conversation'
     : conversation.title.trim();
-
-String _messageCountLabel(int count) =>
-    count == 1 ? '1 message' : '$count messages';
 
 String _formatConversationDate(DateTime dateTime) {
   final local = dateTime.toLocal();
@@ -974,6 +885,9 @@ class ChatScreen extends StatefulWidget {
     required this.agent,
     required this.services,
     this.conversationId,
+    this.embedded = false,
+    this.isPrivate = false,
+    this.channelId,
     super.key,
   });
 
@@ -986,6 +900,19 @@ class ChatScreen extends StatefulWidget {
   /// The conversation to resume, or `null` to start a blank conversation.
   final String? conversationId;
 
+  /// Whether this screen renders inside a two-pane layout rather than as a
+  /// pushed route. Embedded screens show no back button and do not
+  /// intercept pops; state still flushes on dispose.
+  final bool embedded;
+
+  /// Whether this is a private conversation: nothing is persisted — no
+  /// conversation record, no session state, no transcript.
+  final bool isPrivate;
+
+  /// The channel a NEW conversation should belong to, when starting one
+  /// from a channel. Resumed conversations keep their stored channel.
+  final String? channelId;
+
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -994,10 +921,16 @@ class _ChatScreenState extends State<ChatScreen> {
   late final Future<AgentLlmProvider> _providerFuture;
   bool _initialized = false;
   AgentLlmProvider? _provider;
-  ChatSessionStore? _store;
-  String? _conversationId;
+  ConversationStore? _conversations;
+  ConversationSessionStore? _sessions;
+  ChatTranscriptStore? _transcripts;
+  Conversation? _existingConversation;
+  late String _conversationId;
+  late String _sessionId;
+  DateTime? _sessionStartedAt;
+  bool _conversationExists = false;
   String _title = '';
-  ChatSessionTitleSource _titleSource = ChatSessionTitleSource.none;
+  ConversationTitleSource _titleSource = ConversationTitleSource.none;
   DateTime? _createdAt;
   Future<void> _pendingPersistence = Future<void>.value();
   bool _isPopping = false;
@@ -1007,112 +940,144 @@ class _ChatScreenState extends State<ChatScreen> {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
-    _store = ChatSessionStore(
-      widget.services.getRequiredService<KeyValueStore>(),
-    );
+    final records = widget.services.getRequiredService<RecordStore>();
+    _conversations = ConversationStore(records);
+    _sessions = ConversationSessionStore(records);
+    _transcripts = ChatTranscriptStore(records);
     _providerFuture = _createProvider(
       widget.services.getRequiredService<ConfiguredAgentFactory>(),
-      _store!,
     );
   }
 
   Future<AgentLlmProvider> _createProvider(
     ConfiguredAgentFactory factory,
-    ChatSessionStore store,
   ) async {
+    final conversations = _conversations!;
     final conversationId = widget.conversationId;
     final record = conversationId == null
         ? null
-        : await store.load(conversationId);
-    _conversationId = record?.id ?? conversationId;
+        : await conversations.get(conversationId);
+    _existingConversation = record;
+    _conversationId =
+        record?.id ?? conversationId ?? conversations.newConversationId();
+    _conversationExists = record != null;
     _title = record?.title ?? '';
-    _titleSource = record?.titleSource ?? ChatSessionTitleSource.none;
+    _titleSource = record?.titleSource ?? ConversationTitleSource.none;
     _createdAt = record?.createdAt;
 
-    final agent = await factory.createAgent(widget.agent);
-    final serialized = record?.serializedSession;
+    // Group conversations run through the coordinator with the other
+    // participants attached as background agents.
+    final extraDelegations = <AgentDelegationConfig>[
+      if (record != null && record.kind == ConversationKind.group)
+        for (final participantId in record.participantAgentIds)
+          if (participantId != widget.agent.id)
+            AgentDelegationConfig(agentId: participantId),
+    ];
+
+    final latestSession = widget.isPrivate
+        ? null
+        : await _sessions!.latestFor(_conversationId);
+    _sessionId = latestSession?.id ?? _sessions!.newSessionId();
+    _sessionStartedAt = latestSession?.startedAt;
+
+    // The scope routes the agent's chat history through the durable
+    // transcript, so the model resumes with full-fidelity context and no
+    // replay step. Private scopes keep the default in-memory history.
+    final agent = await factory.createAgent(
+      widget.agent,
+      scope: AgentScope(
+        conversationId: _conversationId,
+        sessionIdResolver: () => _sessionId,
+        isPrivate: widget.isPrivate,
+        channelId: record?.channelId ?? widget.channelId,
+      ),
+      extraDelegations: extraDelegations,
+    );
+    final serialized = latestSession?.serializedAgentSession;
     final session = serialized != null
         ? await agent.deserializeSession(serialized)
         : await agent.createSession();
 
-    if (record != null) {
-      _seedAgentHistory(agent, session, record.history);
-    }
+    final displayHistory = await _loadDisplayHistory();
 
     final provider = AgentLlmProvider(
       agent: agent,
       session: session,
-      history: record?.history ?? const [],
+      history: displayHistory,
     );
     // Attach after restore so persistence reflects ongoing turns only.
     provider.addListener(() {
-      _pendingPersistence = _persist(store, agent, session, provider);
+      _pendingPersistence = _persistMetadata(provider);
     });
     _provider = provider;
     _refreshTitle();
     return provider;
   }
 
-  /// Re-seeds the agent's in-memory chat history from a restored transcript.
+  /// Maps the durable transcript to displayable UI messages.
   ///
-  /// Serialized sessions for in-memory history providers only carry a
-  /// conversation id, so the prior context must be replayed here for the next
-  /// model call to see it. Sessions with a server-managed conversation id
-  /// ignore the seed.
-  void _seedAgentHistory(
-    AIAgent agent,
-    AgentSession session,
-    List<ChatMessage> history,
-  ) {
-    final provider = agent.getServiceOf<ChatHistoryProvider>();
-    if (provider is! InMemoryChatHistoryProvider) return;
-    provider.setMessages(session, [
-      for (final message in history)
-        if (message.text != null && message.text!.isNotEmpty)
-          ai.ChatMessage.fromText(
-            message.origin.isUser ? ai.ChatRole.user : ai.ChatRole.assistant,
-            message.text!,
-          ),
-    ]);
+  /// Tool-call-only turns carry no text and are skipped; the model still
+  /// sees them through the chat history provider.
+  Future<List<ChatMessage>> _loadDisplayHistory() async {
+    final entries = await _transcripts!.load(_conversationId);
+    return [
+      for (final entry in entries)
+        if (entry.message.text.trim().isNotEmpty)
+          entry.message.role == ai.ChatRole.user
+              ? ChatMessage.user(entry.message.text, const [])
+              : ChatMessage(
+                  origin: MessageOrigin.llm,
+                  text: entry.message.text,
+                  attachments: const [],
+                ),
+    ];
   }
 
-  Future<void> _persist(
-    ChatSessionStore store,
-    AIAgent agent,
-    AgentSession session,
-    AgentLlmProvider provider,
-  ) async {
+  /// Persists conversation metadata and the serialized agent session.
+  ///
+  /// The transcript itself is written by the agent's chat history provider
+  /// during invocation; this only maintains the list-view record.
+  Future<void> _persistMetadata(AgentLlmProvider provider) async {
+    if (widget.isPrivate) return;
     try {
       final history = provider.history.toList();
       if (history.isEmpty) return;
 
-      // Eagerly assign the conversation identity before any async work so
-      // the record is findable as soon as the first user message arrives.
       final now = DateTime.now();
       _createdAt ??= now;
-      _conversationId ??= store.createConversationId();
       _setDefaultTitleFrom(history);
 
-      // Save an optimistic record immediately (no serialized session yet) so
-      // the conversation shows up in the list right away.
-      await store.save(
-        ChatSessionRecord(
-          id: _conversationId!,
-          agentId: widget.agent.id,
+      String? preview;
+      for (final message in history.reversed) {
+        final text = message.text?.trim();
+        if (text != null && text.isNotEmpty) {
+          preview = text;
+          break;
+        }
+      }
+
+      final existing = _existingConversation;
+      await _conversations!.save(
+        Conversation(
+          id: _conversationId,
+          kind: existing?.kind ?? ConversationKind.direct,
           title: _title,
           titleSource: _titleSource,
-          history: history,
+          participantAgentIds:
+              existing?.participantAgentIds ?? [widget.agent.id],
+          coordinatorAgentId: existing?.coordinatorAgentId,
+          channelId: existing?.channelId ?? widget.channelId,
           createdAt: _createdAt!,
           updatedAt: now,
+          lastMessagePreview: preview,
         ),
       );
+      _conversationExists = true;
 
-      unawaited(
-        _persistSerializedSession(store, agent, session, _conversationId!),
-      );
+      unawaited(_persistSerializedSession(provider));
     } catch (e, s) {
       developer.log(
-        'Failed to persist chat session.',
+        'Failed to persist conversation metadata.',
         name: 'agents_app.chat_sessions',
         error: e,
         stackTrace: s,
@@ -1125,71 +1090,37 @@ class _ChatScreenState extends State<ChatScreen> {
     String prompt,
     Iterable<Attachment> attachments,
   ) async {
-    final store = _store;
-    if (store == null) return;
+    final text = prompt.trim();
+    if (text.isEmpty) return;
 
-    try {
-      final text = prompt.trim();
-      if (text.isEmpty) return;
-
-      final now = DateTime.now();
-      _createdAt ??= now;
-      _conversationId ??= store.createConversationId();
-
-      final history = [
-        ...provider.history,
-        ChatMessage.user(prompt, attachments),
-      ];
-      _setDefaultTitleFrom(history);
-
-      await store.save(
-        ChatSessionRecord(
-          id: _conversationId!,
-          agentId: widget.agent.id,
-          title: _title,
-          titleSource: _titleSource,
-          history: history,
-          createdAt: _createdAt!,
-          updatedAt: now,
-        ),
-      );
-    } catch (e, s) {
-      developer.log(
-        'Failed to persist submitted chat prompt.',
-        name: 'agents_app.chat_sessions',
-        error: e,
-        stackTrace: s,
-      );
-    }
+    final augmented = AgentLlmProvider(
+      agent: provider.agent,
+      session: provider.session,
+      history: [...provider.history, ChatMessage.user(prompt, attachments)],
+    );
+    await _persistMetadata(augmented);
   }
 
-  Future<void> _persistSerializedSession(
-    ChatSessionStore store,
-    AIAgent agent,
-    AgentSession session,
-    String conversationId,
-  ) async {
+  Future<void> _persistSerializedSession(AgentLlmProvider provider) async {
+    if (widget.isPrivate) return;
     try {
-      final serializedSession = await _serializeSession(agent, session);
+      final serializedSession = await _serializeSession(
+        provider.agent,
+        provider.session!,
+      );
       if (serializedSession == null) return;
 
-      final current = await store.load(conversationId);
-      if (current == null || current.history.isEmpty) return;
-      await store.save(
-        ChatSessionRecord(
-          id: current.id,
-          agentId: current.agentId,
-          title: current.title,
-          titleSource: current.titleSource,
-          history: current.history,
-          createdAt: current.createdAt,
-          updatedAt: current.updatedAt,
-          serializedSession: serializedSession,
+      await _sessions!.save(
+        ConversationSession(
+          id: _sessionId,
+          conversationId: _conversationId,
+          startedAt: _sessionStartedAt ??= DateTime.now(),
+          serializedAgentSession: serializedSession,
         ),
       );
     } catch (e, s) {
       developer.log(
-        'Failed to update persisted chat session state.',
+        'Failed to update persisted session state.',
         name: 'agents_app.chat_sessions',
         error: e,
         stackTrace: s,
@@ -1198,19 +1129,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _discardEmptyConversation() async {
-    final store = _store;
-    final conversationId = _conversationId;
     final provider = _provider;
-    if (store == null || conversationId == null || provider == null) return;
+    if (provider == null || _conversationExists) return;
     if (provider.history.isNotEmpty) return;
 
     try {
-      final saved = await store.load(conversationId);
-      if (saved != null && saved.history.isNotEmpty) return;
-      await store.delete(conversationId);
+      final entries = await _transcripts!.load(_conversationId);
+      if (entries.isNotEmpty) return;
+      await _sessions!.deleteFor(_conversationId);
+      await _conversations!.delete(_conversationId);
     } catch (e, s) {
       developer.log(
-        'Failed to discard empty chat session.',
+        'Failed to discard empty conversation.',
         name: 'agents_app.chat_sessions',
         error: e,
         stackTrace: s,
@@ -1233,10 +1163,105 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _renameConversation() async {
-    final store = _store;
+  /// Starts a NEW group conversation with this agent as coordinator plus a
+  /// chosen teammate; the current conversation is left untouched.
+  Future<void> _addAgentToChat() async {
+    final manager = widget.services
+        .getRequiredService<ConfiguredAgentsManager>();
+    final agents = await manager.agents.listAgents();
+    final existing = _existingConversation;
+    final participantIds = existing?.participantAgentIds ?? [widget.agent.id];
+    final candidates = agents
+        .where((agent) => !participantIds.contains(agent.id))
+        .toList();
+    if (!mounted) return;
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No other agents to add yet.')),
+      );
+      return;
+    }
+
+    final added = await showModalBottomSheet<SavedAgentConfig>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Add to a new group chat — this conversation stays as is.',
+              ),
+            ),
+            for (final candidate in candidates)
+              ListTile(
+                title: Text(candidate.name),
+                subtitle: candidate.description.isEmpty
+                    ? null
+                    : Text(
+                        candidate.description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                onTap: () => Navigator.of(context).pop(candidate),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (added == null || !mounted) return;
+
+    final original =
+        existing ??
+        Conversation(
+          id: _conversationId,
+          kind: ConversationKind.direct,
+          title: _title,
+          titleSource: _titleSource,
+          participantAgentIds: [widget.agent.id],
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+    final group = await ConversationService(_conversations!)
+        .createGroupFromDirect(
+          original: original,
+          addedAgentIds: [added.id],
+          coordinatorAgentId: widget.agent.id,
+          agentNamesById: {for (final agent in agents) agent.id: agent.name},
+        );
+    if (mounted) context.go('/chats/c/${group.id}');
+  }
+
+  /// Ends the current session and starts a fresh one.
+  ///
+  /// The conversation and its transcript continue (stitched display and
+  /// model context are conversation-scoped); only the session epoch — the
+  /// serialized agent-session state new turns are stamped with — resets.
+  Future<void> _startNewSession() async {
     final provider = _provider;
-    if (store == null || provider == null) return;
+    if (provider == null) return;
+    await _pendingPersistence;
+
+    final endedAt = DateTime.now();
+    final previous = await _sessions!.latestFor(_conversationId);
+    if (previous != null && previous.id == _sessionId) {
+      await _sessions!.save(previous.copyWith(endedAt: endedAt));
+    }
+    setState(() {
+      _sessionId = _sessions!.newSessionId();
+      _sessionStartedAt = null;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Started a new session.')));
+    }
+  }
+
+  Future<void> _renameConversation() async {
+    final provider = _provider;
+    if (provider == null) return;
 
     final title = await _showConversationTitleDialog(
       context,
@@ -1246,25 +1271,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
     setState(() {
       _title = title;
-      _titleSource = ChatSessionTitleSource.manual;
+      _titleSource = ConversationTitleSource.manual;
     });
-    _pendingPersistence = _persist(
-      store,
-      provider.agent,
-      provider.session!,
-      provider,
-    );
+    _pendingPersistence = _persistMetadata(provider);
     await _pendingPersistence;
   }
 
   void _setDefaultTitleFrom(List<ChatMessage> history) {
-    if (_titleSource != ChatSessionTitleSource.none) return;
+    if (_titleSource != ConversationTitleSource.none) return;
     for (final message in history) {
       if (!message.origin.isUser) continue;
       final text = message.text?.trim();
       if (text == null || text.isEmpty) continue;
       _title = _truncateTitle(text);
-      _titleSource = ChatSessionTitleSource.firstMessage;
+      _titleSource = ConversationTitleSource.firstMessage;
       _refreshTitle();
       return;
     }
@@ -1293,17 +1313,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _flushLatestConversationState() async {
-    final store = _store;
     final provider = _provider;
-    final session = provider?.session;
-    if (store == null ||
-        provider == null ||
-        session == null ||
+    if (provider == null ||
+        provider.session == null ||
         provider.history.isEmpty) {
       return;
     }
 
-    _pendingPersistence = _persist(store, provider.agent, session, provider);
+    _pendingPersistence = _persistMetadata(provider);
     await _pendingPersistence;
   }
 
@@ -1323,20 +1340,54 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) => PopScope<void>(
-    canPop: false,
+    canPop: widget.embedded,
     onPopInvokedWithResult: (didPop, result) {
       if (didPop) return;
       unawaited(_handlePop());
     },
     child: Scaffold(
       appBar: AppBar(
-        title: Text(_appBarTitle),
+        automaticallyImplyLeading: !widget.embedded,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.isPrivate) ...[
+              Tooltip(
+                message: 'Private chat — nothing is saved',
+                child: Icon(
+                  Icons.visibility_off_outlined,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: Text(_appBarTitle, overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
         actions: [
-          IconButton(
-            tooltip: 'Rename conversation',
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: _provider == null ? null : _renameConversation,
-          ),
+          if (!widget.isPrivate)
+            IconButton(
+              tooltip: 'Add agent to chat — starts a new group chat',
+              icon: const Icon(Icons.group_add_outlined),
+              onPressed: _provider == null ? null : _addAgentToChat,
+            ),
+          if (!widget.isPrivate)
+            IconButton(
+              tooltip:
+                  'New session — keeps the conversation, starts a fresh '
+                  'agent session',
+              icon: const Icon(Icons.restart_alt_outlined),
+              onPressed: _provider == null ? null : _startNewSession,
+            ),
+          if (!widget.isPrivate)
+            IconButton(
+              tooltip: 'Rename conversation',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: _provider == null ? null : _renameConversation,
+            ),
         ],
       ),
       body: FutureBuilder<AgentLlmProvider>(

@@ -274,8 +274,11 @@ class _LlmChatViewState extends State<LlmChatView>
     _pendingPromptResponse = LlmResponse(
       stream: sendMessageStream(prompt, attachments: attachments),
       // update during the streaming response input so that the end-user can see
-      // the response as it streams in
-      onUpdate: (_) => setState(() {}),
+      // the response as it streams in; the stream can outlive this state when
+      // the user navigates away mid-response
+      onUpdate: (_) {
+        if (mounted) setState(() {});
+      },
       onDone: _onPromptDone,
     );
 
@@ -283,6 +286,10 @@ class _LlmChatViewState extends State<LlmChatView>
   }
 
   void _onPromptDone(LlmException? error) {
+    if (!mounted) {
+      _pendingPromptResponse = null;
+      return;
+    }
     setState(() => _pendingPromptResponse = null);
     unawaited(_showLlmException(error));
   }
