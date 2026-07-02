@@ -12,6 +12,8 @@ import '../ui/screens/channel_screen.dart';
 import '../ui/screens/chats_home.dart';
 import '../ui/screens/manage_agents_screen.dart';
 import '../ui/screens/onboarding_screen.dart';
+import '../ui/screens/hosting_screen.dart';
+import '../ui/screens/network_pairing_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../data/task_scheduler_service.dart';
 import '../ui/screens/tasks_screen.dart';
@@ -30,7 +32,9 @@ GoRouter createAppRouter({
   redirect: (context, state) async {
     final atOnboarding = state.matchedLocation == '/onboarding';
     // Setup routes stay reachable so onboarding can add the first agent.
-    final atSetup = state.matchedLocation.startsWith('/settings/agents');
+    final atSetup =
+        state.matchedLocation.startsWith('/settings/agents') ||
+        state.matchedLocation.startsWith('/settings/network');
     final usable = await bootstrap.hasUsableAgent();
     if (!usable && !atOnboarding && !atSetup) return '/onboarding';
     if (usable && atOnboarding) return '/chats';
@@ -116,6 +120,16 @@ GoRouter createAppRouter({
                           AddAgentWizard(services: services),
                     ),
                   ],
+                ),
+                GoRoute(
+                  path: 'network/pair',
+                  builder: (context, state) =>
+                      NetworkPairingScreen(services: services),
+                ),
+                GoRoute(
+                  path: 'hosting',
+                  builder: (context, state) =>
+                      HostingScreen(services: services),
                 ),
               ],
             ),

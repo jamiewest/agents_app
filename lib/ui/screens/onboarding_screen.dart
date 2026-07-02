@@ -66,9 +66,9 @@ class OnboardingScreen extends StatelessWidget {
                   icon: Icons.lan_outlined,
                   title: 'Network agent',
                   subtitle:
-                      'Use an agent hosted on another machine. Available '
-                      'soon.',
-                  onTap: null,
+                      'Use an agent shared by another device on your '
+                      'network. Pair with a code from that device.',
+                  onTap: () => context.go('/settings/network/pair'),
                 ),
               ],
             ),

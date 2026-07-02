@@ -106,12 +106,30 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: switch (_step) {
-                0 => SourceEditor(
-                  style: style,
-                  strings: strings,
-                  onSubmit: (source, apiKey) =>
-                      unawaited(_submitSource(source, apiKey)),
-                  onCancel: _exit,
+                0 => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.lan_outlined),
+                        title: const Text('Network agent instead?'),
+                        subtitle: const Text(
+                          'Add an agent shared by another device with a '
+                          'pairing code.',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => context.go('/settings/network/pair'),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SourceEditor(
+                      style: style,
+                      strings: strings,
+                      onSubmit: (source, apiKey) =>
+                          unawaited(_submitSource(source, apiKey)),
+                      onCancel: _exit,
+                    ),
+                  ],
                 ),
                 1 => ModelEditor(
                   sources: [_source!],

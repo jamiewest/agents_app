@@ -39,6 +39,15 @@ class SettingsHomeScreen extends StatelessWidget {
           onTap: () => context.go('/settings/agents/add'),
         ),
         ListTile(
+          leading: const Icon(Icons.wifi_tethering),
+          title: const Text('Share agents on the network'),
+          subtitle: const Text(
+            'Let paired devices use this device\'s agents (A2A)',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.go('/settings/hosting'),
+        ),
+        ListTile(
           leading: const Icon(Icons.psychology_outlined),
           title: const Text('Memory embedding model'),
           subtitle: const Text(
