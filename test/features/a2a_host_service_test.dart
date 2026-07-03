@@ -143,6 +143,22 @@ void main() {
       },
     );
 
+    test('ping reflects reachability and credential validity', () async {
+      final client = PairingClient();
+      final result = await client.pair(
+        await loopbackOffer(),
+        clientName: 't',
+        clientId: 'c1',
+      );
+      final baseUrl = 'http://127.0.0.1:${host.port}';
+
+      expect(await client.ping(baseUrl, result.credential), isTrue);
+      expect(await client.ping(baseUrl, 'wrong-bearer'), isFalse);
+
+      await host.stop();
+      expect(await client.ping(baseUrl, result.credential), isFalse);
+    });
+
     test('a paired device runs the remote agent through the factory', () async {
       final client = PairingClient();
       final result = await client.pair(

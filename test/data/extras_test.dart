@@ -37,10 +37,7 @@ void main() {
           int.parse(model.settings['llama.contextSize']!),
           greaterThanOrEqualTo(4096),
         );
-        expect(
-          model.capabilities.minMemoryMb,
-          greaterThanOrEqualTo(4096),
-        );
+        expect(model.capabilities.minMemoryMb, greaterThanOrEqualTo(4096));
       }
     });
 

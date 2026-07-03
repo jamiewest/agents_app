@@ -153,7 +153,8 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
                                 label: Text(preset.name),
                                 onPressed: () => setState(() {
                                   _presetModel = preset.toModelConfig(
-                                    id: 'model-'
+                                    id:
+                                        'model-'
                                         '${DateTime.now().microsecondsSinceEpoch}',
                                     sourceId: _source!.id,
                                   );

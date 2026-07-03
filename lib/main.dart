@@ -14,7 +14,6 @@ import 'package:extensions/ai.dart' as ai;
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:go_router/go_router.dart';
 
@@ -23,10 +22,12 @@ import 'data/conversation_service.dart';
 import 'data/conversation_store.dart';
 import 'data/embedding_settings.dart';
 import 'data/task_scheduler_service.dart';
+import 'data/theme_settings.dart';
 import 'data/thinking_settings.dart';
 import 'domain/conversation.dart';
 import 'navigation/app_bootstrap.dart';
 import 'navigation/app_router.dart';
+import 'ui/app_theme.dart';
 import 'ui/providers/providers.dart';
 import 'ui/views/configured_agents/configured_agents.dart';
 import 'ui/views/llm_chat_view/llm_chat_view.dart';
@@ -49,6 +50,9 @@ final _builder = Host.createApplicationBuilder()
   ..services.addFlutter((flutter) {
     flutter.services.addDownloadService();
     flutter.services.addRecordStore();
+    flutter.services.tryAddSingleton<ThemeSettings>(
+      (sp) => ThemeSettings(sp.getRequiredService<KeyValueStore>()),
+    );
     flutter.services.tryAddSingleton<ThinkingSettings>(
       (sp) => ThinkingSettings(sp.getRequiredService<KeyValueStore>()),
     );
@@ -565,16 +569,34 @@ class _AgentsAppState extends State<AgentsApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp.router(
-    title: 'agents_app',
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-      textTheme: GoogleFonts.outfitTextTheme(),
-      useMaterial3: true,
-    ),
-    routerConfig: _router,
-  );
+  Widget build(BuildContext context) {
+    final themeSettings = widget.services.getRequiredService<ThemeSettings>();
+    return ListenableBuilder(
+      listenable: themeSettings,
+      builder: (context, _) => MaterialApp.router(
+        title: 'agents_app',
+        debugShowCheckedModeBanner: false,
+        theme: buildAppTheme(Brightness.light),
+        darkTheme: buildAppTheme(Brightness.dark),
+        themeMode: themeSettings.mode,
+        routerConfig: _router,
+        builder: (context, child) {
+          // Type scales gently with the window, on top of the user's own
+          // accessibility text scale.
+          final mediaQuery = MediaQuery.of(context);
+          return MediaQuery(
+            data: mediaQuery.copyWith(
+              textScaler: responsiveTextScaler(
+                width: mediaQuery.size.width,
+                userScaler: mediaQuery.textScaler,
+              ),
+            ),
+            child: child!,
+          );
+        },
+      ),
+    );
+  }
 }
 
 /// Lists saved conversations for one agent.
@@ -1041,13 +1063,13 @@ class _ChatScreenState extends State<ChatScreen> {
       for (final entry in entries)
         if (sessionId == null || entry.sessionId == sessionId)
           if (entry.message.text.trim().isNotEmpty)
-          entry.message.role == ai.ChatRole.user
-              ? ChatMessage.user(entry.message.text, const [])
-              : ChatMessage(
-                  origin: MessageOrigin.llm,
-                  text: entry.message.text,
-                  attachments: const [],
-                ),
+            entry.message.role == ai.ChatRole.user
+                ? ChatMessage.user(entry.message.text, const [])
+                : ChatMessage(
+                    origin: MessageOrigin.llm,
+                    text: entry.message.text,
+                    attachments: const [],
+                  ),
     ];
   }
 
@@ -1451,8 +1473,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
               ],
             ),
-          if (_model case final model?
-              when model.capabilities.supportsThinking)
+          if (_model case final model? when model.capabilities.supportsThinking)
             _ThinkingToggle(services: widget.services, modelConfigId: model.id),
           if (!widget.isPrivate)
             IconButton(

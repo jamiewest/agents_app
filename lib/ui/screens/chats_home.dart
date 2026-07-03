@@ -69,8 +69,10 @@ class _ChatsHomeState extends State<ChatsHome> {
     _conversations = ConversationStore(records);
     _channels = ChannelStore(records);
     _manager = widget.services.getRequiredService<ConfiguredAgentsManager>();
-    _conversationStream = _conversations.watchAll();
-    _channelStream = _channels.watchAll();
+    // Broadcast: the adaptive shell can briefly mount two copies of this
+    // body while animating slot changes.
+    _conversationStream = _conversations.watchAll().asBroadcastStream();
+    _channelStream = _channels.watchAll().asBroadcastStream();
     _loadAgents();
   }
 
@@ -137,31 +139,48 @@ class _ChatsHomeState extends State<ChatsHome> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= twoPaneBreakpoint;
-    final detail = _buildDetail(embedded: wide);
+  Widget build(BuildContext context) => LayoutBuilder(
+    // Sized from our own constraints (not the window): the adaptive shell
+    // animates slot widths, and the body must degrade gracefully while
+    // space is reclaimed.
+    builder: (context, constraints) {
+      final wide = constraints.maxWidth >= twoPaneBreakpoint;
+      final detail = _buildDetail(embedded: wide);
 
-    if (!wide) {
-      return detail ?? _buildList(context);
-    }
+      if (!wide) {
+        return detail ?? _buildList(context);
+      }
 
-    return Row(
-      children: [
-        SizedBox(width: 360, child: _buildList(context)),
-        const VerticalDivider(thickness: 1, width: 1),
-        Expanded(
-          child:
-              detail ??
-              Center(
-                child: Text(
-                  'Select a conversation or start a new chat.',
-                  style: Theme.of(context).textTheme.bodyLarge,
+      final listWidth = (constraints.maxWidth * 0.34).clamp(300.0, 400.0);
+      return Row(
+        children: [
+          SizedBox(width: listWidth, child: _buildList(context)),
+          const VerticalDivider(thickness: 1, width: 1),
+          Expanded(
+            child:
+                detail ??
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.forum_outlined,
+                        size: 56,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Select a conversation or start a new chat.',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-        ),
-      ],
-    );
-  }
+          ),
+        ],
+      );
+    },
+  );
 
   Widget? _buildDetail({required bool embedded}) {
     final conversationId = widget.conversationId;

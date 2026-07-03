@@ -7,6 +7,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 
 import '../data/embedding_settings.dart';
 import '../data/legacy_chat_migration.dart';
+import '../data/theme_settings.dart';
 import '../data/thinking_settings.dart';
 
 /// One-time application startup work: legacy data migration and optional
@@ -33,6 +34,7 @@ class AppBootstrap {
     // Optional: not registered in minimal test containers.
     await _services.getService<EmbeddingSettings>()?.reload();
     await _services.getService<ThinkingSettings>()?.load();
+    await _services.getService<ThemeSettings>()?.load();
   }
 
   /// Whether at least one saved agent can actually run: its model and
