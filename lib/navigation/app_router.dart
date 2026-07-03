@@ -9,7 +9,8 @@ import 'package:go_router/go_router.dart';
 
 import '../ui/screens/add_agent_wizard.dart';
 import '../ui/screens/channel_screen.dart';
-import '../ui/screens/chats_home.dart';
+import '../ui/screens/chats_home.dart'
+    show ChatDetailPane, ChatsHome, ChatsRootPane;
 import '../ui/screens/manage_agents_screen.dart';
 import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/hosting_screen.dart';
@@ -50,44 +51,64 @@ GoRouter createAppRouter({
       builder: (context, state, navigationShell) =>
           AppShell(shell: navigationShell),
       branches: [
+        // The Chats branch is itself a stateful shell: its builder renders
+        // the persistent conversations/channels sidebar, and its single
+        // inner branch is the detail navigator that swaps between the open
+        // chat, a channel, or an empty-state placeholder with a fade-through
+        // transition. Nesting keeps the sidebar mounted (and un-animated)
+        // while only the detail pane transitions.
         StatefulShellBranch(
           routes: [
-            GoRoute(
-              path: '/chats',
-              pageBuilder: (context, state) =>
-                  _fadeThroughPage(state, ChatsHome(services: services)),
-              routes: [
-                GoRoute(
-                  path: 'c/:conversationId',
-                  pageBuilder: (context, state) => _fadeThroughPage(
-                    state,
-                    ChatsHome(
-                      services: services,
-                      conversationId: state.pathParameters['conversationId'],
+            StatefulShellRoute.indexedStack(
+              builder: (context, state, navigationShell) => ChatsHome(
+                services: services,
+                navigationShell: navigationShell,
+              ),
+              branches: [
+                StatefulShellBranch(
+                  routes: [
+                    GoRoute(
+                      path: '/chats',
+                      builder: (context, state) =>
+                          ChatsRootPane(services: services),
+                      routes: [
+                        GoRoute(
+                          path: 'c/:conversationId',
+                          pageBuilder: (context, state) => _fadeThroughPage(
+                            state,
+                            ChatDetailPane(
+                              services: services,
+                              conversationId:
+                                  state.pathParameters['conversationId'],
+                            ),
+                          ),
+                        ),
+                        GoRoute(
+                          path: 'new/:agentId',
+                          pageBuilder: (context, state) => _fadeThroughPage(
+                            state,
+                            ChatDetailPane(
+                              services: services,
+                              newChatAgentId: state.pathParameters['agentId'],
+                              privateChat:
+                                  state.uri.queryParameters['private'] == '1',
+                              channelId: state.uri.queryParameters['channel'],
+                            ),
+                          ),
+                        ),
+                        GoRoute(
+                          path: 'channel/:channelId',
+                          pageBuilder: (context, state) => _fadeThroughPage(
+                            state,
+                            ChannelScreen(
+                              services: services,
+                              channelId: state.pathParameters['channelId']!,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-                GoRoute(
-                  path: 'new/:agentId',
-                  pageBuilder: (context, state) => _fadeThroughPage(
-                    state,
-                    ChatsHome(
-                      services: services,
-                      newChatAgentId: state.pathParameters['agentId'],
-                      privateChat: state.uri.queryParameters['private'] == '1',
-                      channelId: state.uri.queryParameters['channel'],
-                    ),
-                  ),
-                ),
-                GoRoute(
-                  path: 'channel/:channelId',
-                  pageBuilder: (context, state) => _fadeThroughPage(
-                    state,
-                    ChannelScreen(
-                      services: services,
-                      channelId: state.pathParameters['channelId']!,
-                    ),
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -142,11 +163,15 @@ GoRouter createAppRouter({
 
 /// Wraps [child] in a fade-through page transition, used for content
 /// changes within a section (for example switching conversations).
+///
+/// Keyed by the full location so switching between two conversations (both
+/// matching `c/:id`) is seen as distinct pages and animates, rather than an
+/// in-place swap.
 CustomTransitionPage<void> _fadeThroughPage(
   GoRouterState state,
   Widget child,
 ) => CustomTransitionPage<void>(
-  key: state.pageKey,
+  key: ValueKey(state.uri.toString()),
   child: child,
   transitionsBuilder: (context, animation, secondaryAnimation, child) =>
       FadeThroughTransition(

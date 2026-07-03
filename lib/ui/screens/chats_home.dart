@@ -23,42 +23,177 @@ import '../widgets/empty_state.dart';
 /// The width at which the chats branch shows list and detail side by side.
 const double twoPaneBreakpoint = 1000;
 
-/// The Chats destination: the conversation list plus, when a conversation
-/// (or new chat) is selected, its [ChatScreen].
+/// Shares the chats layout mode down to the panes built by the inner
+/// navigator, so the branch root and the open chat agree with [ChatsHome]
+/// on whether the persistent sidebar is showing.
+class ChatsScope extends InheritedWidget {
+  /// Creates a [ChatsScope].
+  const ChatsScope({required this.twoPane, required super.child, super.key});
+
+  /// Whether the sidebar and detail pane are shown side by side.
+  final bool twoPane;
+
+  /// Whether the nearest [ChatsHome] is in its two-pane (wide) layout.
+  static bool twoPaneOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ChatsScope>()?.twoPane ??
+      false;
+
+  @override
+  bool updateShouldNotify(ChatsScope oldWidget) => twoPane != oldWidget.twoPane;
+}
+
+/// The Chats destination shell: a persistent conversations/channels sidebar
+/// beside the inner navigator that hosts the open chat, channel, or an
+/// empty-state placeholder.
 ///
-/// Compact widths show either the list or the open chat; wide layouts show
-/// both panes side by side.
+/// This is the *inner* stateful shell. On wide layouts it lays the sidebar
+/// and the detail navigator ([navigationShell]) side by side; on compact
+/// widths it shows only the navigator, whose root renders the list.
 class ChatsHome extends StatefulWidget {
   /// Creates a [ChatsHome].
   const ChatsHome({
     required this.services,
-    this.conversationId,
-    this.newChatAgentId,
-    this.privateChat = false,
-    this.channelId,
+    required this.navigationShell,
     super.key,
   });
 
   /// The application service provider.
   final ServiceProvider services;
 
-  /// The open conversation, when resuming one.
-  final String? conversationId;
-
-  /// The agent to start a new conversation with, when starting one.
-  final String? newChatAgentId;
-
-  /// Whether a new chat should be private (nothing persisted).
-  final bool privateChat;
-
-  /// The channel a new chat should belong to, when started from one.
-  final String? channelId;
+  /// The inner navigator hosting the branch root and the open detail route.
+  final StatefulNavigationShell navigationShell;
 
   @override
   State<ChatsHome> createState() => _ChatsHomeState();
 }
 
 class _ChatsHomeState extends State<ChatsHome> {
+  double _sidebarWidth = 300;
+
+  /// The conversation the detail navigator currently shows, parsed from the
+  /// live location so the sidebar can highlight it and route deletions.
+  String? _selectedConversationId(BuildContext context) {
+    final segments = GoRouterState.of(context).uri.pathSegments;
+    if (segments.length >= 3 && segments[0] == 'chats' && segments[1] == 'c') {
+      return segments[2];
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    // Sized from our own constraints (not the window): the adaptive shell
+    // reclaims width for the rail, and the body must degrade gracefully.
+    builder: (context, constraints) {
+      final twoPane = constraints.maxWidth >= twoPaneBreakpoint;
+      final selectedId = _selectedConversationId(context);
+      return ChatsScope(
+        twoPane: twoPane,
+        child: twoPane
+            ? Row(
+                children: [
+                  SizedBox(
+                    width: _sidebarWidth,
+                    child: ChatsListView(
+                      services: widget.services,
+                      presentation: ChatsListPresentation.sidebar,
+                      selectedConversationId: selectedId,
+                    ),
+                  ),
+                  DraggableSeparator(
+                    onDragUpdate: (deltaX) => setState(() {
+                      // The floor keeps the brand + actions on one line.
+                      _sidebarWidth = (_sidebarWidth + deltaX).clamp(
+                        248.0,
+                        480.0,
+                      );
+                    }),
+                  ),
+                  Expanded(child: widget.navigationShell),
+                ],
+              )
+            : widget.navigationShell,
+      );
+    },
+  );
+}
+
+/// The inner navigator's root: the conversation list on compact widths, or
+/// a "pick a conversation" placeholder when the sidebar already shows the
+/// list beside it.
+class ChatsRootPane extends StatelessWidget {
+  /// Creates a [ChatsRootPane].
+  const ChatsRootPane({required this.services, super.key});
+
+  /// The application service provider.
+  final ServiceProvider services;
+
+  @override
+  Widget build(BuildContext context) {
+    if (ChatsScope.twoPaneOf(context)) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.forum_outlined,
+              size: 56,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Select a conversation or start a new chat.',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ],
+        ),
+      );
+    }
+    return ChatsListView(
+      services: services,
+      presentation: ChatsListPresentation.page,
+    );
+  }
+}
+
+/// How a [ChatsListView] frames its conversation/channel list.
+enum ChatsListPresentation {
+  /// A full screen with an app bar and a new-chat FAB (compact layouts).
+  page,
+
+  /// A branded side panel with a header and New Conversation button.
+  sidebar,
+}
+
+/// The conversations and channels list, shown either as a full page or as
+/// the persistent sidebar.
+///
+/// Owns the stores, live streams, and the new-chat / new-channel / rename /
+/// delete actions; navigation is driven through the router.
+class ChatsListView extends StatefulWidget {
+  /// Creates a [ChatsListView].
+  const ChatsListView({
+    required this.services,
+    required this.presentation,
+    this.selectedConversationId,
+    super.key,
+  });
+
+  /// The application service provider.
+  final ServiceProvider services;
+
+  /// How the list frames itself.
+  final ChatsListPresentation presentation;
+
+  /// The open conversation to highlight, when shown as the sidebar beside a
+  /// detail pane.
+  final String? selectedConversationId;
+
+  @override
+  State<ChatsListView> createState() => _ChatsListViewState();
+}
+
+class _ChatsListViewState extends State<ChatsListView> {
   late final ConversationStore _conversations;
   late final ConversationSessionStore _sessions;
   late final ChatTranscriptStore _transcripts;
@@ -68,7 +203,6 @@ class _ChatsHomeState extends State<ChatsHome> {
   late final Stream<List<Channel>> _channelStream;
   Map<String, SavedAgentConfig> _agentsById = const {};
   bool _initialized = false;
-  double _sidebarWidth = 300;
 
   @override
   void didChangeDependencies() {
@@ -81,8 +215,8 @@ class _ChatsHomeState extends State<ChatsHome> {
     _transcripts = ChatTranscriptStore(records);
     _channels = ChannelStore(records);
     _manager = widget.services.getRequiredService<ConfiguredAgentsManager>();
-    // Broadcast: the adaptive shell can briefly mount two copies of this
-    // body while animating slot changes.
+    // Broadcast: the adaptive shell can briefly mount two copies of a body
+    // while animating slot changes.
     _conversationStream = _conversations.watchAll().asBroadcastStream();
     _channelStream = _channels.watchAll().asBroadcastStream();
     _loadAgents();
@@ -166,103 +300,6 @@ class _ChatsHomeState extends State<ChatsHome> {
     return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
   }
 
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    // Sized from our own constraints (not the window): the adaptive shell
-    // animates slot widths, and the body must degrade gracefully while
-    // space is reclaimed.
-    builder: (context, constraints) {
-      final wide = constraints.maxWidth >= twoPaneBreakpoint;
-      final detail = _buildDetail(embedded: wide);
-
-      if (!wide) {
-        return detail ?? _buildListPage(context);
-      }
-
-      return Row(
-        children: [
-          SizedBox(width: _sidebarWidth, child: _buildSidebar(context)),
-          DraggableSeparator(
-            onDragUpdate: (deltaX) => setState(() {
-              // The floor keeps the header brand + actions on one line.
-              _sidebarWidth = (_sidebarWidth + deltaX).clamp(248.0, 480.0);
-            }),
-          ),
-          Expanded(
-            child:
-                detail ??
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.forum_outlined,
-                        size: 56,
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      Text(
-                        'Select a conversation or start a new chat.',
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ],
-                  ),
-                ),
-          ),
-        ],
-      );
-    },
-  );
-
-  Widget? _buildDetail({required bool embedded}) {
-    final conversationId = widget.conversationId;
-    final newChatAgentId = widget.newChatAgentId;
-    if (conversationId == null && newChatAgentId == null) return null;
-
-    return FutureBuilder<SavedAgentConfig?>(
-      key: ValueKey('detail-${conversationId ?? 'new-$newChatAgentId'}'),
-      future: _resolveAgent(conversationId, newChatAgentId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final agent = snapshot.data;
-        if (agent == null) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: const Center(
-              child: Text('This conversation\'s agent no longer exists.'),
-            ),
-          );
-        }
-        return ChatScreen(
-          key: ValueKey(conversationId ?? 'new-$newChatAgentId'),
-          agent: agent,
-          services: widget.services,
-          conversationId: conversationId,
-          embedded: embedded,
-          isPrivate: conversationId == null && widget.privateChat,
-          channelId: widget.channelId,
-        );
-      },
-    );
-  }
-
-  Future<SavedAgentConfig?> _resolveAgent(
-    String? conversationId,
-    String? newChatAgentId,
-  ) async {
-    if (newChatAgentId != null) {
-      return _manager.agents.getAgent(newChatAgentId);
-    }
-    final conversation = await _conversations.get(conversationId!);
-    if (conversation == null) return null;
-    // Group conversations run through their coordinator.
-    return _manager.agents.getAgent(
-      conversation.coordinatorAgentId ?? conversation.primaryAgentId,
-    );
-  }
-
   Future<void> _createChannel() async {
     var name = '';
     final submitted = await showDialog<String>(
@@ -311,56 +348,50 @@ class _ChatsHomeState extends State<ChatsHome> {
     if (mounted) context.go('/chats/channel/${channel.id}');
   }
 
+  @override
+  Widget build(BuildContext context) => switch (widget.presentation) {
+    ChatsListPresentation.page => _buildPage(context),
+    ChatsListPresentation.sidebar => _buildSidebar(context),
+  };
+
   /// The compact-width Chats page: app bar, list, and a new-chat FAB.
-  Widget _buildListPage(BuildContext context) => Scaffold(
+  Widget _buildPage(BuildContext context) => Scaffold(
     floatingActionButton: FloatingActionButton(
       tooltip: 'New chat',
       onPressed: _startNewChat,
       child: const Icon(Icons.add_comment_outlined),
     ),
-    body: StreamBuilder<List<Channel>>(
-      stream: _channelStream,
-      builder: (context, channelSnapshot) => StreamBuilder<List<Conversation>>(
-        stream: _conversationStream,
-        builder: (context, snapshot) {
-          final channels = channelSnapshot.data ?? const <Channel>[];
-          final conversations = snapshot.data;
-          if (conversations != null) _ensureAgentsFor(conversations);
-          return CustomScrollView(
-            slivers: [
-              SliverAppBar.medium(
-                title: const Text('Chats'),
-                actions: [
-                  IconButton(
-                    tooltip: 'New channel',
-                    icon: const Icon(Icons.tag),
-                    onPressed: _createChannel,
-                  ),
-                ],
+    body: _buildStreamed(
+      context,
+      (channels, conversations) => CustomScrollView(
+        slivers: [
+          SliverAppBar.medium(
+            title: const Text('Chats'),
+            actions: [
+              IconButton(
+                tooltip: 'New channel',
+                icon: const Icon(Icons.tag),
+                onPressed: _createChannel,
               ),
-              if (conversations == null)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (conversations.isEmpty && channels.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _buildEmptyState(),
-                )
-              else
-                SliverList.list(
-                  children: _listChildren(context, channels, conversations),
-                ),
             ],
-          );
-        },
+          ),
+          if (conversations == null)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (conversations.isEmpty && channels.isEmpty)
+            SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState())
+          else
+            SliverList.list(
+              children: _listChildren(context, channels, conversations),
+            ),
+        ],
       ),
     ),
   );
 
-  /// The persistent, branded sidebar shown beside the chat on wide layouts:
-  /// brand header, New Conversation button, and the chats/channels list.
+  /// The persistent, branded sidebar shown beside the chat on wide layouts.
   Widget _buildSidebar(BuildContext context) => ColoredBox(
     color: Theme.of(context).colorScheme.surfaceContainerLow,
     child: Column(
@@ -368,44 +399,48 @@ class _ChatsHomeState extends State<ChatsHome> {
       children: [
         _SidebarHeader(onNewChat: _startNewChat, onNewChannel: _createChannel),
         Expanded(
-          child: StreamBuilder<List<Channel>>(
-            stream: _channelStream,
-            builder: (context, channelSnapshot) =>
-                StreamBuilder<List<Conversation>>(
-                  stream: _conversationStream,
-                  builder: (context, snapshot) {
-                    final channels = channelSnapshot.data ?? const <Channel>[];
-                    final conversations = snapshot.data;
-                    if (conversations == null) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    _ensureAgentsFor(conversations);
-                    if (conversations.isEmpty && channels.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.all(AppSpacing.xxl),
-                        child: Text(
-                          'No conversations yet',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      );
-                    }
-                    return ListView(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppSpacing.xs,
-                      ),
-                      children: _listChildren(context, channels, conversations),
-                    );
-                  },
+          child: _buildStreamed(context, (channels, conversations) {
+            if (conversations == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (conversations.isEmpty && channels.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.all(AppSpacing.xxl),
+                child: Text(
+                  'No conversations yet',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
-          ),
+              );
+            }
+            return ListView(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+              children: _listChildren(context, channels, conversations),
+            );
+          }),
         ),
       ],
+    ),
+  );
+
+  /// Subscribes to the channel and conversation streams and hands the
+  /// latest snapshot (conversations `null` until first loaded) to [builder].
+  Widget _buildStreamed(
+    BuildContext context,
+    Widget Function(List<Channel> channels, List<Conversation>? conversations)
+    builder,
+  ) => StreamBuilder<List<Channel>>(
+    stream: _channelStream,
+    builder: (context, channelSnapshot) => StreamBuilder<List<Conversation>>(
+      stream: _conversationStream,
+      builder: (context, snapshot) {
+        final channels = channelSnapshot.data ?? const <Channel>[];
+        final conversations = snapshot.data;
+        if (conversations != null) _ensureAgentsFor(conversations);
+        return builder(channels, conversations);
+      },
     ),
   );
 
@@ -458,7 +493,9 @@ class _ChatsHomeState extends State<ChatsHome> {
       sessions: _sessions,
       transcripts: _transcripts,
     );
-    if (deleted && mounted && conversation.id == widget.conversationId) {
+    if (deleted &&
+        mounted &&
+        conversation.id == widget.selectedConversationId) {
       context.go('/chats');
     }
   }
@@ -517,7 +554,7 @@ class _ChatsHomeState extends State<ChatsHome> {
 
   Widget _conversationTile(BuildContext context, Conversation conversation) {
     final agent = _agentsById[conversation.primaryAgentId];
-    final selected = conversation.id == widget.conversationId;
+    final selected = conversation.id == widget.selectedConversationId;
     final title = conversation.title.trim().isEmpty
         ? (agent?.name ?? 'Untitled conversation')
         : conversation.title;
@@ -542,6 +579,102 @@ class _ChatsHomeState extends State<ChatsHome> {
       menuTooltip: 'Conversation actions',
       onRename: () => unawaited(_renameConversation(conversation)),
       onDelete: () => unawaited(_deleteConversation(conversation)),
+    );
+  }
+}
+
+/// The open conversation, channel, or new chat, resolved from its saved
+/// agent and rendered as the inner navigator's detail page.
+class ChatDetailPane extends StatefulWidget {
+  /// Creates a [ChatDetailPane].
+  const ChatDetailPane({
+    required this.services,
+    this.conversationId,
+    this.newChatAgentId,
+    this.privateChat = false,
+    this.channelId,
+    super.key,
+  });
+
+  /// The application service provider.
+  final ServiceProvider services;
+
+  /// The conversation to resume, when resuming one.
+  final String? conversationId;
+
+  /// The agent to start a new conversation with, when starting one.
+  final String? newChatAgentId;
+
+  /// Whether a new chat should be private (nothing persisted).
+  final bool privateChat;
+
+  /// The channel a new chat should belong to, when started from one.
+  final String? channelId;
+
+  @override
+  State<ChatDetailPane> createState() => _ChatDetailPaneState();
+}
+
+class _ChatDetailPaneState extends State<ChatDetailPane> {
+  late final ConfiguredAgentsManager _manager;
+  late final ConversationStore _conversations;
+  late final Future<SavedAgentConfig?> _agentFuture;
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    final records = widget.services.getRequiredService<RecordStore>();
+    _conversations = ConversationStore(records);
+    _manager = widget.services.getRequiredService<ConfiguredAgentsManager>();
+    _agentFuture = _resolveAgent();
+  }
+
+  Future<SavedAgentConfig?> _resolveAgent() async {
+    final newChatAgentId = widget.newChatAgentId;
+    if (newChatAgentId != null) {
+      return _manager.agents.getAgent(newChatAgentId);
+    }
+    final conversation = await _conversations.get(widget.conversationId!);
+    if (conversation == null) return null;
+    // Group conversations run through their coordinator.
+    return _manager.agents.getAgent(
+      conversation.coordinatorAgentId ?? conversation.primaryAgentId,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final embedded = ChatsScope.twoPaneOf(context);
+    return FutureBuilder<SavedAgentConfig?>(
+      future: _agentFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final agent = snapshot.data;
+        if (agent == null) {
+          return Scaffold(
+            appBar: AppBar(),
+            body: const Center(
+              child: Text('This conversation\'s agent no longer exists.'),
+            ),
+          );
+        }
+        return ChatScreen(
+          key: ValueKey(
+            widget.conversationId ?? 'new-${widget.newChatAgentId}',
+          ),
+          agent: agent,
+          services: widget.services,
+          conversationId: widget.conversationId,
+          embedded: embedded,
+          isPrivate: widget.conversationId == null && widget.privateChat,
+          channelId: widget.channelId,
+        );
+      },
     );
   }
 }

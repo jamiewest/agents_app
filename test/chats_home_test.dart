@@ -4,7 +4,8 @@ import 'package:agents_app/data/conversation_store.dart';
 import 'package:agents_app/domain/channel.dart';
 import 'package:agents_app/domain/conversation.dart';
 import 'package:agents_app/main.dart' show ChatScreen;
-import 'package:agents_app/ui/screens/chats_home.dart';
+import 'package:agents_app/ui/screens/chats_home.dart'
+    show ChatDetailPane, ChatsHome, ChatsRootPane;
 import 'package:agents_app/ui/views/action_button.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/extensions.dart';
@@ -14,37 +15,54 @@ import 'package:go_router/go_router.dart';
 
 import 'support/chat_test_harness.dart';
 
-/// A minimal mirror of the app's /chats routes, enough for ChatsHome's
-/// context.go navigation to work in tests.
+/// A mirror of the app's nested /chats shell: the inner stateful shell whose
+/// builder is [ChatsHome] (the persistent sidebar) and whose single branch is
+/// the detail navigator ([ChatsRootPane] plus the open chat/channel). Kept in
+/// step with `createAppRouter` so navigation and pop semantics match the app.
 GoRouter _buildRouter(ServiceProvider services, {String initial = '/chats'}) =>
     GoRouter(
       initialLocation: initial,
       routes: [
-        GoRoute(
-          path: '/chats',
-          builder: (context, state) => ChatsHome(services: services),
-          routes: [
-            GoRoute(
-              path: 'c/:conversationId',
-              builder: (context, state) => ChatsHome(
-                services: services,
-                conversationId: state.pathParameters['conversationId'],
-              ),
-            ),
-            GoRoute(
-              path: 'new/:agentId',
-              builder: (context, state) => ChatsHome(
-                services: services,
-                newChatAgentId: state.pathParameters['agentId'],
-                privateChat: state.uri.queryParameters['private'] == '1',
-                channelId: state.uri.queryParameters['channel'],
-              ),
-            ),
-            GoRoute(
-              path: 'channel/:channelId',
-              builder: (context, state) => Scaffold(
-                body: Text('channel:${state.pathParameters['channelId']}'),
-              ),
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, navigationShell) =>
+              ChatsHome(services: services, navigationShell: navigationShell),
+          branches: [
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/chats',
+                  builder: (context, state) =>
+                      ChatsRootPane(services: services),
+                  routes: [
+                    GoRoute(
+                      path: 'c/:conversationId',
+                      builder: (context, state) => ChatDetailPane(
+                        services: services,
+                        conversationId:
+                            state.pathParameters['conversationId'],
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'new/:agentId',
+                      builder: (context, state) => ChatDetailPane(
+                        services: services,
+                        newChatAgentId: state.pathParameters['agentId'],
+                        privateChat:
+                            state.uri.queryParameters['private'] == '1',
+                        channelId: state.uri.queryParameters['channel'],
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'channel/:channelId',
+                      builder: (context, state) => Scaffold(
+                        body: Text(
+                          'channel:${state.pathParameters['channelId']}',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),

@@ -16,6 +16,7 @@ import '../../domain/channel.dart';
 import '../../domain/conversation.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/empty_state.dart';
+import 'chats_home.dart' show ChatsScope;
 
 /// One channel workspace: its conversations, shared files, and member
 /// agents.
@@ -159,10 +160,14 @@ class _ChannelScreenState extends State<ChannelScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // In the two-pane layout the persistent sidebar already provides
+    // navigation, so the channel pane drops its redundant back button
+    // (matching the embedded chat).
+    final embedded = ChatsScope.twoPaneOf(context);
     final channel = _channel;
     if (channel == null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(automaticallyImplyLeading: !embedded),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -170,6 +175,7 @@ class _ChannelScreenState extends State<ChannelScreen> {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: !embedded,
           title: Text(channel.name),
           actions: [
             IconButton(

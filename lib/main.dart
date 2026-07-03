@@ -32,6 +32,7 @@ import 'ui/providers/providers.dart';
 import 'ui/views/configured_agents/configured_agents.dart';
 import 'ui/views/llm_chat_view/llm_chat_view.dart';
 import 'ui/widgets/conversation_actions.dart';
+import 'ui/widgets/prompt_inspector_panel.dart';
 
 // Optional seed values so the demo can start with a working Anthropic agent.
 // Supply them as compile-time defines, e.g.
@@ -53,6 +54,11 @@ final _builder = Host.createApplicationBuilder()
     flutter.services.addRecordStore();
     flutter.services.tryAddSingleton<ThemeSettings>(
       (sp) => ThemeSettings(sp.getRequiredService<KeyValueStore>()),
+    );
+    // Captures the exact wire-format prompt sent to local llama models so the
+    // in-app inspector can show what the model actually received.
+    flutter.services.tryAddSingleton<llama.PromptInspector>(
+      (sp) => llama.PromptInspector(),
     );
     flutter.services.tryAddSingleton<ThinkingSettings>(
       (sp) => ThinkingSettings(sp.getRequiredService<KeyValueStore>()),
@@ -276,6 +282,7 @@ ai.ChatClient _createLocalLlamaClient(
   return llama.createLlamaChatClient(
     spec: spec,
     sessionProvider: sessionProvider,
+    inspector: services.getService<llama.PromptInspector>(),
     // Evaluated per request, so the chat toggle applies mid-conversation.
     isThinkingEnabled: () =>
         (thinking?.enabledFor(model.id) ?? false) || spec.enableThinking,
@@ -1152,6 +1159,18 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
+          Builder(
+            builder: (context) {
+              final inspector = widget.services
+                  .getService<llama.PromptInspector>();
+              if (inspector == null) return const SizedBox.shrink();
+              return IconButton(
+                tooltip: 'Inspect prompt sent to model',
+                icon: const Icon(Icons.data_object_rounded),
+                onPressed: () => showPromptInspector(context, inspector),
+              );
+            },
+          ),
           if (!widget.isPrivate && _sessionList.length > 1)
             PopupMenuButton<String?>(
               tooltip: 'View a session',
