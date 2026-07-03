@@ -1145,6 +1145,9 @@ class _ChatScreenState extends State<ChatScreen> {
     },
     child: Scaffold(
       appBar: AppBar(
+        // Match the LlmChatView body (scheme.surface) so the chat window
+        // reads as one continuous surface rather than a banded app bar.
+        backgroundColor: Theme.of(context).colorScheme.surface,
         automaticallyImplyLeading: !widget.embedded,
         title: Row(
           mainAxisSize: MainAxisSize.min,
