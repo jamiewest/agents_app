@@ -102,8 +102,18 @@ class ChatTextField extends StatelessWidget {
             textInputAction: TextInputAction.newline,
             onSubmitted: onSubmitted,
             style: style,
+            // The rounded pill is drawn by the parent DecoratedBox. Clear
+            // the fill and every border state so the app-wide
+            // InputDecorationTheme (filled, radius-12 outline) can't paint a
+            // second, differently-rounded box inside the pill.
             decoration: InputDecoration(
+              filled: false,
               border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              focusedErrorBorder: InputBorder.none,
               hintText: hintText,
               hintStyle: hintStyle,
               contentPadding: hintPadding,

@@ -21,6 +21,8 @@ import 'data/chat_transcript_store.dart';
 import 'data/conversation_service.dart';
 import 'data/conversation_store.dart';
 import 'data/embedding_settings.dart';
+import 'data/prompt_log.dart';
+import 'data/prompt_logging.dart';
 import 'data/task_scheduler_service.dart';
 import 'data/theme_settings.dart';
 import 'data/thinking_settings.dart';
@@ -55,10 +57,14 @@ final _builder = Host.createApplicationBuilder()
     flutter.services.tryAddSingleton<ThemeSettings>(
       (sp) => ThemeSettings(sp.getRequiredService<KeyValueStore>()),
     );
-    // Captures the exact wire-format prompt sent to local llama models so the
-    // in-app inspector can show what the model actually received.
+    // Unified log of every prompt sent to any model (local or cloud), so the
+    // in-app inspector shows exactly what each model received.
+    flutter.services.tryAddSingleton<PromptLog>((sp) => PromptLog());
+    // The local llama render seam writes its exact wire-format prompt through
+    // a PromptInspector; the bridging subclass mirrors those into the shared
+    // PromptLog alongside cloud requests.
     flutter.services.tryAddSingleton<llama.PromptInspector>(
-      (sp) => llama.PromptInspector(),
+      (sp) => PromptLogInspector(sp.getRequiredService<PromptLog>()),
     );
     flutter.services.tryAddSingleton<ThinkingSettings>(
       (sp) => ThinkingSettings(sp.getRequiredService<KeyValueStore>()),
@@ -71,7 +77,8 @@ final _builder = Host.createApplicationBuilder()
     );
     flutter.useFlutterHarnessAgent();
     flutter.useConfiguredAgents(
-      chatClientFactory: (sp) => ConfiguredChatClientFactory(
+      chatClientFactory: (sp) => LoggingConfiguredChatClientFactory(
+        log: sp.getRequiredService<PromptLog>(),
         customClientResolver: ({required source, required model, httpClient}) =>
             _createLocalLlamaClient(sp, source: source, model: model),
       ),
@@ -1161,13 +1168,12 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           Builder(
             builder: (context) {
-              final inspector = widget.services
-                  .getService<llama.PromptInspector>();
-              if (inspector == null) return const SizedBox.shrink();
+              final log = widget.services.getService<PromptLog>();
+              if (log == null) return const SizedBox.shrink();
               return IconButton(
-                tooltip: 'Inspect prompt sent to model',
+                tooltip: 'Inspect prompts sent to models',
                 icon: const Icon(Icons.data_object_rounded),
-                onPressed: () => showPromptInspector(context, inspector),
+                onPressed: () => showPromptInspector(context, log),
               );
             },
           ),
