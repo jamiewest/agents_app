@@ -65,9 +65,7 @@ class FileAttachmentStyle {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
     filenameStyle: textStyles.filename.copyWith(color: scheme.onSurface),
-    filetypeStyle: textStyles.filetype.copyWith(
-      color: scheme.onSurfaceVariant,
-    ),
+    filetypeStyle: textStyles.filetype.copyWith(color: scheme.onSurfaceVariant),
   );
 
   /// Provides a default style.

@@ -15,7 +15,9 @@ import '../../data/conversation_store.dart';
 import '../../domain/channel.dart';
 import '../../domain/conversation.dart';
 import '../../main.dart' show ChatScreen;
+import '../app_theme.dart';
 import '../widgets/conversation_actions.dart';
+import '../widgets/draggable_separator.dart';
 import '../widgets/empty_state.dart';
 
 /// The width at which the chats branch shows list and detail side by side.
@@ -66,6 +68,7 @@ class _ChatsHomeState extends State<ChatsHome> {
   late final Stream<List<Channel>> _channelStream;
   Map<String, SavedAgentConfig> _agentsById = const {};
   bool _initialized = false;
+  double _sidebarWidth = 300;
 
   @override
   void didChangeDependencies() {
@@ -173,14 +176,18 @@ class _ChatsHomeState extends State<ChatsHome> {
       final detail = _buildDetail(embedded: wide);
 
       if (!wide) {
-        return detail ?? _buildList(context);
+        return detail ?? _buildListPage(context);
       }
 
-      final listWidth = (constraints.maxWidth * 0.34).clamp(300.0, 400.0);
       return Row(
         children: [
-          SizedBox(width: listWidth, child: _buildList(context)),
-          const VerticalDivider(thickness: 1, width: 1),
+          SizedBox(width: _sidebarWidth, child: _buildSidebar(context)),
+          DraggableSeparator(
+            onDragUpdate: (deltaX) => setState(() {
+              // The floor keeps the header brand + actions on one line.
+              _sidebarWidth = (_sidebarWidth + deltaX).clamp(248.0, 480.0);
+            }),
+          ),
           Expanded(
             child:
                 detail ??
@@ -193,7 +200,7 @@ class _ChatsHomeState extends State<ChatsHome> {
                         size: 56,
                         color: Theme.of(context).colorScheme.outline,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppSpacing.md),
                       Text(
                         'Select a conversation or start a new chat.',
                         style: Theme.of(context).textTheme.bodyLarge,
@@ -304,7 +311,8 @@ class _ChatsHomeState extends State<ChatsHome> {
     if (mounted) context.go('/chats/channel/${channel.id}');
   }
 
-  Widget _buildList(BuildContext context) => Scaffold(
+  /// The compact-width Chats page: app bar, list, and a new-chat FAB.
+  Widget _buildListPage(BuildContext context) => Scaffold(
     floatingActionButton: FloatingActionButton(
       tooltip: 'New chat',
       onPressed: _startNewChat,
@@ -342,16 +350,7 @@ class _ChatsHomeState extends State<ChatsHome> {
                 )
               else
                 SliverList.list(
-                  children: [
-                    if (channels.isNotEmpty) ...[
-                      const _SectionHeader('Channels'),
-                      for (final channel in channels)
-                        _channelTile(context, channel),
-                      const _SectionHeader('Conversations'),
-                    ],
-                    for (final conversation in conversations)
-                      _conversationTile(context, conversation),
-                  ],
+                  children: _listChildren(context, channels, conversations),
                 ),
             ],
           );
@@ -359,6 +358,70 @@ class _ChatsHomeState extends State<ChatsHome> {
       ),
     ),
   );
+
+  /// The persistent, branded sidebar shown beside the chat on wide layouts:
+  /// brand header, New Conversation button, and the chats/channels list.
+  Widget _buildSidebar(BuildContext context) => ColoredBox(
+    color: Theme.of(context).colorScheme.surfaceContainerLow,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SidebarHeader(onNewChat: _startNewChat, onNewChannel: _createChannel),
+        Expanded(
+          child: StreamBuilder<List<Channel>>(
+            stream: _channelStream,
+            builder: (context, channelSnapshot) =>
+                StreamBuilder<List<Conversation>>(
+                  stream: _conversationStream,
+                  builder: (context, snapshot) {
+                    final channels = channelSnapshot.data ?? const <Channel>[];
+                    final conversations = snapshot.data;
+                    if (conversations == null) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    _ensureAgentsFor(conversations);
+                    if (conversations.isEmpty && channels.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.all(AppSpacing.xxl),
+                        child: Text(
+                          'No conversations yet',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      );
+                    }
+                    return ListView(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.xs,
+                      ),
+                      children: _listChildren(context, channels, conversations),
+                    );
+                  },
+                ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  List<Widget> _listChildren(
+    BuildContext context,
+    List<Channel> channels,
+    List<Conversation> conversations,
+  ) => [
+    if (channels.isNotEmpty) ...[
+      const _SectionHeader('Channels'),
+      for (final channel in channels) _channelTile(context, channel),
+      const _SectionHeader('Conversations'),
+    ],
+    for (final conversation in conversations)
+      _conversationTile(context, conversation),
+  ];
 
   Widget _buildEmptyState() => EmptyState(
     icon: Icons.forum_outlined,
@@ -437,31 +500,19 @@ class _ChatsHomeState extends State<ChatsHome> {
     await _channels.delete(channel.id);
   }
 
-  Widget _channelTile(BuildContext context, Channel channel) => ListTile(
-    leading: const CircleAvatar(child: Icon(Icons.tag)),
-    title: Text(channel.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-    subtitle: channel.description.isEmpty
-        ? null
-        : Text(
-            channel.description,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-    onTap: () => context.go('/chats/channel/${channel.id}'),
-    trailing: PopupMenuButton<void Function()>(
-      tooltip: 'Channel actions',
-      onSelected: (action) => action(),
-      itemBuilder: (context) => [
-        PopupMenuItem(
-          value: () => unawaited(_renameChannel(channel)),
-          child: const Text('Rename'),
-        ),
-        PopupMenuItem(
-          value: () => unawaited(_deleteChannel(channel)),
-          child: const Text('Delete'),
-        ),
-      ],
+  Widget _channelTile(BuildContext context, Channel channel) => _EntryTile(
+    leading: Icon(
+      Icons.tag,
+      size: 18,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
     ),
+    title: channel.name,
+    subtitle: channel.description.isEmpty ? null : channel.description,
+    selected: false,
+    onTap: () => context.go('/chats/channel/${channel.id}'),
+    menuTooltip: 'Channel actions',
+    onRename: () => unawaited(_renameChannel(channel)),
+    onDelete: () => unawaited(_deleteChannel(channel)),
   );
 
   Widget _conversationTile(BuildContext context, Conversation conversation) {
@@ -471,35 +522,218 @@ class _ChatsHomeState extends State<ChatsHome> {
         ? (agent?.name ?? 'Untitled conversation')
         : conversation.title;
     final preview = conversation.lastMessagePreview?.trim();
-    return ListTile(
-      selected: selected,
+    final isGroup = conversation.kind == ConversationKind.group;
+    return _EntryTile(
       leading: CircleAvatar(
-        child: conversation.kind == ConversationKind.group
-            ? const Icon(Icons.group_outlined)
-            : Text(_initialFor(agent?.name ?? title)),
+        radius: 14,
+        child: isGroup
+            ? const Icon(Icons.group_outlined, size: 16)
+            : Text(
+                _initialFor(agent?.name ?? title),
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
       ),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: title,
       subtitle: preview == null || preview.isEmpty
-          ? Text(agent?.name ?? '')
-          : Text(
-              '${agent?.name ?? ''} • $preview',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+          ? agent?.name
+          : '${agent?.name ?? ''} • $preview',
+      selected: selected,
       onTap: () => context.go('/chats/c/${conversation.id}'),
-      trailing: PopupMenuButton<void Function()>(
-        tooltip: 'Conversation actions',
-        onSelected: (action) => action(),
-        itemBuilder: (context) => [
-          PopupMenuItem(
-            value: () => unawaited(_renameConversation(conversation)),
-            child: const Text('Rename'),
+      menuTooltip: 'Conversation actions',
+      onRename: () => unawaited(_renameConversation(conversation)),
+      onDelete: () => unawaited(_deleteConversation(conversation)),
+    );
+  }
+}
+
+/// The sidebar's brand header and New Conversation button.
+class _SidebarHeader extends StatelessWidget {
+  const _SidebarHeader({required this.onNewChat, required this.onNewChannel});
+
+  final VoidCallback onNewChat;
+  final VoidCallback onNewChannel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.blur_on_rounded, color: scheme.primary, size: 24),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  'AGENT TEAMS',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                    color: scheme.onSurface,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'New channel',
+                icon: const Icon(Icons.tag, size: 20),
+                visualDensity: VisualDensity.compact,
+                onPressed: onNewChannel,
+              ),
+            ],
           ),
-          PopupMenuItem(
-            value: () => unawaited(_deleteConversation(conversation)),
-            child: const Text('Delete'),
+          const SizedBox(height: AppSpacing.lg),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppShape.small),
+              ),
+            ),
+            onPressed: onNewChat,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text(
+              'New Conversation',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A compact stadium-shaped list tile for conversations and channels,
+/// with an inline Rename/Delete menu.
+class _EntryTile extends StatelessWidget {
+  const _EntryTile({
+    required this.leading,
+    required this.title,
+    required this.selected,
+    required this.onTap,
+    required this.menuTooltip,
+    required this.onRename,
+    required this.onDelete,
+    this.subtitle,
+  });
+
+  final Widget leading;
+  final String title;
+  final String? subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+  final String menuTooltip;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 1,
+      ),
+      child: Material(
+        shape: const StadiumBorder(),
+        color: selected ? scheme.secondaryContainer : Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: 6,
+            ),
+            child: Row(
+              children: [
+                leading,
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: selected
+                              ? scheme.onSecondaryContainer
+                              : scheme.onSurface,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      if (subtitle != null && subtitle!.isNotEmpty)
+                        Text(
+                          subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: selected
+                                ? scheme.onSecondaryContainer.withValues(
+                                    alpha: 0.7,
+                                  )
+                                : scheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<void Function()>(
+                  tooltip: menuTooltip,
+                  onSelected: (action) => action(),
+                  icon: Icon(
+                    Icons.more_horiz,
+                    size: 18,
+                    color: selected
+                        ? scheme.onSecondaryContainer.withValues(alpha: 0.7)
+                        : scheme.onSurfaceVariant,
+                  ),
+                  iconSize: 18,
+                  padding: const EdgeInsets.all(AppSpacing.xs),
+                  constraints: const BoxConstraints(),
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: onRename,
+                      child: const Row(
+                        children: [
+                          Icon(Icons.edit_outlined, size: 18),
+                          SizedBox(width: AppSpacing.md),
+                          Text('Rename'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: onDelete,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                            color: scheme.error,
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Text('Delete', style: TextStyle(color: scheme.error)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

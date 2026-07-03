@@ -5,26 +5,35 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 
-/// The persisted light/dark preference.
+import '../ui/app_theme.dart';
+
+/// The persisted light/dark preference and Material 3 seed color.
 ///
 /// A [ChangeNotifier] so the root app rebuilds immediately when the user
-/// switches modes in Settings.
+/// switches modes or seeds in Settings.
 class ThemeSettings extends ChangeNotifier {
   /// Creates a [ThemeSettings] over [keyValueStore].
   ThemeSettings(this._keyValueStore);
 
-  static const String _key = 'agents_app.settings.theme_mode';
+  static const String _modeKey = 'agents_app.settings.theme_mode';
+  static const String _seedKey = 'agents_app.settings.theme_seed';
 
   final KeyValueStore _keyValueStore;
   ThemeMode _mode = ThemeMode.system;
+  AppThemeSeed _seed = AppThemeSeed.indigo;
 
   /// The active theme mode.
   ThemeMode get mode => _mode;
 
-  /// Loads the persisted preference.
+  /// The active seed color both schemes derive from.
+  AppThemeSeed get seed => _seed;
+
+  /// Loads the persisted preferences.
   Future<void> load() async {
-    final stored = await _keyValueStore.read(_key);
-    _mode = ThemeMode.values.asNameMap()[stored] ?? ThemeMode.system;
+    final storedMode = await _keyValueStore.read(_modeKey);
+    _mode = ThemeMode.values.asNameMap()[storedMode] ?? ThemeMode.system;
+    final storedSeed = await _keyValueStore.read(_seedKey);
+    _seed = AppThemeSeed.values.asNameMap()[storedSeed] ?? AppThemeSeed.indigo;
     notifyListeners();
   }
 
@@ -33,9 +42,20 @@ class ThemeSettings extends ChangeNotifier {
     _mode = mode;
     notifyListeners();
     if (mode == ThemeMode.system) {
-      await _keyValueStore.delete(_key);
+      await _keyValueStore.delete(_modeKey);
     } else {
-      await _keyValueStore.write(_key, mode.name);
+      await _keyValueStore.write(_modeKey, mode.name);
+    }
+  }
+
+  /// Persists and applies [seed].
+  Future<void> setSeed(AppThemeSeed seed) async {
+    _seed = seed;
+    notifyListeners();
+    if (seed == AppThemeSeed.indigo) {
+      await _keyValueStore.delete(_seedKey);
+    } else {
+      await _keyValueStore.write(_seedKey, seed.name);
     }
   }
 }

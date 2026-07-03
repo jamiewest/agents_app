@@ -5,6 +5,7 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 
+import '../data/demo_seed.dart';
 import '../data/embedding_settings.dart';
 import '../data/legacy_chat_migration.dart';
 import '../data/theme_settings.dart';
@@ -31,6 +32,7 @@ class AppBootstrap {
       records: _services.getRequiredService<RecordStore>(),
     ).run();
     await _seedIfNeeded();
+    if (DemoSeed.requested) await DemoSeed(_services).run();
     // Optional: not registered in minimal test containers.
     await _services.getService<EmbeddingSettings>()?.reload();
     await _services.getService<ThinkingSettings>()?.load();

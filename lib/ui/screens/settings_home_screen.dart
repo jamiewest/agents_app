@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/embedding_settings.dart';
 import '../../data/theme_settings.dart';
+import '../app_theme.dart';
 import '../widgets/page_body.dart';
 
 /// The Settings destination: entry points into configuration surfaces.
@@ -148,26 +149,92 @@ class _AppearanceSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: settings,
-    builder: (context, _) => SegmentedButton<ThemeMode>(
-      segments: const [
-        ButtonSegment(
-          value: ThemeMode.system,
-          icon: Icon(Icons.brightness_auto_outlined),
-          label: Text('System'),
+    builder: (context, _) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SegmentedButton<ThemeMode>(
+          segments: const [
+            ButtonSegment(
+              value: ThemeMode.system,
+              icon: Icon(Icons.brightness_auto_outlined),
+              label: Text('System'),
+            ),
+            ButtonSegment(
+              value: ThemeMode.light,
+              icon: Icon(Icons.light_mode_outlined),
+              label: Text('Light'),
+            ),
+            ButtonSegment(
+              value: ThemeMode.dark,
+              icon: Icon(Icons.dark_mode_outlined),
+              label: Text('Dark'),
+            ),
+          ],
+          selected: {settings.mode},
+          onSelectionChanged: (selection) => settings.setMode(selection.single),
         ),
-        ButtonSegment(
-          value: ThemeMode.light,
-          icon: Icon(Icons.light_mode_outlined),
-          label: Text('Light'),
-        ),
-        ButtonSegment(
-          value: ThemeMode.dark,
-          icon: Icon(Icons.dark_mode_outlined),
-          label: Text('Dark'),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final seed in AppThemeSeed.values)
+              _SeedSwatch(
+                seed: seed,
+                selected: seed == settings.seed,
+                onTap: () => settings.setSeed(seed),
+              ),
+          ],
         ),
       ],
-      selected: {settings.mode},
-      onSelectionChanged: (selection) => settings.setMode(selection.single),
     ),
   );
+}
+
+/// A tappable color dot for one [AppThemeSeed] choice.
+class _SeedSwatch extends StatelessWidget {
+  const _SeedSwatch({
+    required this.seed,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppThemeSeed seed;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: seed.label,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: seed.color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? scheme.onSurface : scheme.outlineVariant,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: selected
+              ? Icon(
+                  Icons.check,
+                  size: 18,
+                  color:
+                      ThemeData.estimateBrightnessForColor(seed.color) ==
+                          Brightness.dark
+                      ? Colors.white
+                      : Colors.black,
+                )
+              : null,
+        ),
+      ),
+    );
+  }
 }

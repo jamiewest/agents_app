@@ -9,9 +9,8 @@ import 'package:go_router/go_router.dart';
 /// The responsive top-level scaffold around the Chats/Tasks/Settings shell.
 ///
 /// Built on the adaptive-layout primitives: a bottom [NavigationBar] on
-/// compact widths, a [NavigationRail] from medium, and an extended rail
-/// with a leading FAB-style affordance from large. Branch state is
-/// preserved by the underlying [StatefulNavigationShell]; slot changes
+/// compact widths and a compact [NavigationRail] from medium. Branch state
+/// is preserved by the underlying [StatefulNavigationShell]; slot changes
 /// animate as the window resizes.
 class AppShell extends StatelessWidget {
   /// Creates an [AppShell].
@@ -26,7 +25,7 @@ class AppShell extends StatelessWidget {
       selected: Icons.chat_bubble,
       label: 'Chats',
     ),
-    (icon: Icons.task_alt_outlined, selected: Icons.task_alt, label: 'Tasks'),
+    (icon: Icons.alarm_rounded, selected: Icons.alarm_rounded, label: 'Tasks'),
     (
       icon: Icons.settings_outlined,
       selected: Icons.settings,
@@ -50,13 +49,9 @@ class AppShell extends StatelessWidget {
       internalAnimations: false,
       primaryNavigation: SlotLayout(
         config: <Breakpoint, SlotLayoutConfig>{
-          Breakpoints.medium: SlotLayout.from(
+          Breakpoints.mediumAndUp: SlotLayout.from(
             key: const Key('primary-rail'),
-            builder: (context) => _buildRail(context, extended: false),
-          ),
-          Breakpoints.mediumLargeAndUp: SlotLayout.from(
-            key: const Key('primary-rail-extended'),
-            builder: (context) => _buildRail(context, extended: true),
+            builder: _buildRail,
           ),
         },
       ),
@@ -90,52 +85,30 @@ class AppShell extends StatelessWidget {
     ),
   );
 
-  Widget _buildRail(BuildContext context, {required bool extended}) {
-    final scheme = Theme.of(context).colorScheme;
-    // The adaptive layout hands navigation slots LOOSE full-screen
-    // constraints and trusts them to size themselves; a bare
-    // NavigationRail expands under loose width and starves the body, so
-    // pin the slot's width here.
-    return SizedBox(
-      width: extended ? 200 : 88,
-      child: SafeArea(
-        child: NavigationRail(
-          extended: extended,
-          minExtendedWidth: 172,
-          selectedIndex: shell.currentIndex,
-          onDestinationSelected: _goBranch,
-          labelType: extended
-              ? NavigationRailLabelType.none
-              : NavigationRailLabelType.all,
-          leading: Padding(
-            padding: const EdgeInsets.only(top: 8, bottom: 12),
-            child: extended
-                ? FloatingActionButton.extended(
-                    elevation: 0,
-                    backgroundColor: scheme.tertiaryContainer,
-                    foregroundColor: scheme.onTertiaryContainer,
-                    onPressed: () => context.go('/chats'),
-                    icon: const Icon(Icons.forum_outlined),
-                    label: const Text('agents'),
-                  )
-                : FloatingActionButton.small(
-                    elevation: 0,
-                    backgroundColor: scheme.tertiaryContainer,
-                    foregroundColor: scheme.onTertiaryContainer,
-                    onPressed: () => context.go('/chats'),
-                    child: const Icon(Icons.forum_outlined),
+  Widget _buildRail(BuildContext context) =>
+      // The adaptive layout hands navigation slots LOOSE full-screen
+      // constraints and trusts them to size themselves; a bare
+      // NavigationRail expands under loose width and starves the body, so
+      // pin the slot's width here.
+      SizedBox(
+        width: 78,
+        child: SafeArea(
+          child: NavigationRail(
+            selectedIndex: shell.currentIndex,
+            onDestinationSelected: _goBranch,
+            labelType: NavigationRailLabelType.all,
+            destinations: [
+              for (final destination in _destinations)
+                NavigationRailDestination(
+                  icon: Icon(destination.icon),
+                  selectedIcon: Icon(destination.selected),
+                  label: Text(
+                    destination.label,
+                    style: Theme.of(context).textTheme.labelSmall,
                   ),
+                ),
+            ],
           ),
-          destinations: [
-            for (final destination in _destinations)
-              NavigationRailDestination(
-                icon: Icon(destination.icon),
-                selectedIcon: Icon(destination.selected),
-                label: Text(destination.label),
-              ),
-          ],
         ),
-      ),
-    );
-  }
+      );
 }

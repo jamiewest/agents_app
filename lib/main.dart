@@ -577,24 +577,16 @@ class _AgentsAppState extends State<AgentsApp> {
       builder: (context, _) => MaterialApp.router(
         title: 'agents_app',
         debugShowCheckedModeBanner: false,
-        theme: buildAppTheme(Brightness.light),
-        darkTheme: buildAppTheme(Brightness.dark),
+        theme: buildAppTheme(
+          seedColor: themeSettings.seed.color,
+          brightness: Brightness.light,
+        ),
+        darkTheme: buildAppTheme(
+          seedColor: themeSettings.seed.color,
+          brightness: Brightness.dark,
+        ),
         themeMode: themeSettings.mode,
         routerConfig: _router,
-        builder: (context, child) {
-          // Type scales gently with the window, on top of the user's own
-          // accessibility text scale.
-          final mediaQuery = MediaQuery.of(context);
-          return MediaQuery(
-            data: mediaQuery.copyWith(
-              textScaler: responsiveTextScaler(
-                width: mediaQuery.size.width,
-                userScaler: mediaQuery.textScaler,
-              ),
-            ),
-            child: child!,
-          );
-        },
       ),
     );
   }

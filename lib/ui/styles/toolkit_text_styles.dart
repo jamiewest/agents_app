@@ -52,8 +52,7 @@ class ToolkitTextStyles {
     final body = textTheme.bodyMedium ?? const TextStyle();
     final bodySmall = textTheme.bodySmall ?? body;
     final onSurface = scheme?.onSurface ?? ToolkitColors.enabledText;
-    final onSurfaceVariant =
-        scheme?.onSurfaceVariant ?? ToolkitColors.hintText;
+    final onSurfaceVariant = scheme?.onSurfaceVariant ?? ToolkitColors.hintText;
     final tooltipColor =
         scheme?.onInverseSurface ?? ToolkitColors.tooltipText.withAlpha(230);
     final linkColor = scheme?.primary ?? ToolkitColors.link;
