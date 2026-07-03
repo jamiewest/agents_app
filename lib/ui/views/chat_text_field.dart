@@ -8,7 +8,6 @@ import 'package:flutter/material.dart'
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import '../styles/toolkit_colors.dart';
 import '../utility.dart';
 
 /// A text field that adapts to the current app style (Material or Cupertino).
@@ -88,7 +87,7 @@ class ChatTextField extends StatelessWidget {
             placeholderStyle: hintStyle,
             padding: hintPadding ?? EdgeInsets.zero,
             decoration: BoxDecoration(
-              border: Border.all(width: 0, color: ToolkitColors.transparent),
+              border: Border.all(width: 0, color: const Color(0x00000000)),
             ),
             keyboardType: TextInputType.multiline,
             textInputAction: TextInputAction.newline,

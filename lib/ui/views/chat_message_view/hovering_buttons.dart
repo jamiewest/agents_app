@@ -77,9 +77,10 @@ class HoveringButtons extends StatelessWidget {
                                   child: Icon(
                                     chatStyle.editButtonStyle!.icon,
                                     size: _iconSize.toDouble(),
-                                    color: invertColor(
-                                      chatStyle.editButtonStyle!.iconColor,
-                                    ),
+                                    // Theme-derived hover-action colors are
+                                    // designed for bare rendering; no
+                                    // inversion.
+                                    color: chatStyle.editButtonStyle!.iconColor,
                                   ),
                                 ),
                               GestureDetector(
@@ -93,9 +94,7 @@ class HoveringButtons extends StatelessWidget {
                                 child: Icon(
                                   chatStyle.copyButtonStyle!.icon,
                                   size: 12,
-                                  color: invertColor(
-                                    chatStyle.copyButtonStyle!.iconColor,
-                                  ),
+                                  color: chatStyle.copyButtonStyle!.iconColor,
                                 ),
                               ),
                             ],

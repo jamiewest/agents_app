@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/widgets.dart';
 
 import '../strings/strings.dart';
@@ -232,7 +233,10 @@ class LlmChatViewStyle {
     );
   }
 
-  /// Resolves the provided [style] against text styles from [context].
+  /// Resolves the provided [style] against the app [Theme].
+  ///
+  /// Defaults derive from the theme's [ColorScheme], so the chat follows
+  /// the app's light/dark mode without per-widget styling.
   factory LlmChatViewStyle.resolveFor(
     BuildContext context,
     LlmChatViewStyle? style, {
@@ -242,8 +246,48 @@ class LlmChatViewStyle {
     return LlmChatViewStyle.resolve(
       style,
       defaultStyle:
-          defaultStyle ?? LlmChatViewStyle.defaultStyle(textStyles: textStyles),
+          defaultStyle ?? LlmChatViewStyle.fromTheme(context, textStyles),
       textStyles: textStyles,
+    );
+  }
+
+  /// Builds the whole chat style bundle from [context]'s [Theme].
+  factory LlmChatViewStyle.fromTheme(
+    BuildContext context,
+    ToolkitTextStyles textStyles,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    ActionButtonStyle button(ActionButtonType type) =>
+        ActionButtonStyle.fromTheme(type, scheme, textStyles);
+    return LlmChatViewStyle(
+      backgroundColor: scheme.surface,
+      menuColor: scheme.surfaceContainerHigh,
+      progressIndicatorColor: scheme.onSurfaceVariant,
+      userMessageStyle: UserMessageStyle.fromTheme(scheme, textStyles),
+      llmMessageStyle: LlmMessageStyle.fromTheme(scheme, textStyles),
+      chatInputStyle: ChatInputStyle.fromTheme(scheme, textStyles),
+      addButtonStyle: button(ActionButtonType.add),
+      stopButtonStyle: button(ActionButtonType.stop),
+      recordButtonStyle: button(ActionButtonType.record),
+      submitButtonStyle: button(ActionButtonType.submit),
+      disabledButtonStyle: button(ActionButtonType.disabled),
+      closeMenuButtonStyle: button(ActionButtonType.closeMenu),
+      attachFileButtonStyle: button(ActionButtonType.attachFile),
+      galleryButtonStyle: button(ActionButtonType.gallery),
+      cameraButtonStyle: button(ActionButtonType.camera),
+      closeButtonStyle: button(ActionButtonType.close),
+      cancelButtonStyle: button(ActionButtonType.cancel),
+      copyButtonStyle: button(ActionButtonType.copy),
+      editButtonStyle: button(ActionButtonType.edit),
+      urlButtonStyle: button(ActionButtonType.url),
+      actionButtonBarDecoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      fileAttachmentStyle: FileAttachmentStyle.fromTheme(scheme, textStyles),
+      suggestionStyle: SuggestionStyle.fromTheme(scheme, textStyles),
+      voiceNoteRecorderStyle: VoiceNoteRecorderStyle.fromTheme(scheme),
+      strings: LlmChatViewStrings.defaults,
     );
   }
 
@@ -252,13 +296,30 @@ class LlmChatViewStyle {
     ActionButtonType type,
     LlmChatViewStrings? strings,
     ToolkitTextStyles textStyles,
-  ) => strings == null && defaultStyle != null
-      ? defaultStyle
-      : ActionButtonStyle.defaultStyle(
+  ) {
+    final base =
+        defaultStyle ??
+        ActionButtonStyle.defaultStyle(
           type,
           strings: strings,
           textStyles: textStyles,
         );
+    if (strings == null) return base;
+    // Merge the caller's strings onto the (possibly theme-derived) default
+    // instead of discarding its colors for the hardcoded light palette.
+    final texted = ActionButtonStyle.defaultStyle(
+      type,
+      strings: strings,
+      textStyles: textStyles,
+    );
+    return ActionButtonStyle(
+      icon: base.icon,
+      iconColor: base.iconColor,
+      iconDecoration: base.iconDecoration,
+      text: texted.text,
+      textStyle: base.textStyle,
+    );
+  }
 
   /// Provides default style if none is specified.
   factory LlmChatViewStyle.defaultStyle({ToolkitTextStyles? textStyles}) =>

@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/agent_task_store.dart';
 import '../../data/task_scheduler_service.dart';
 import '../../domain/agent_task.dart';
+import '../widgets/empty_state.dart';
 
 /// The Tasks destination: scheduled and background agent work.
 ///
@@ -75,49 +76,51 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Tasks'),
-      actions: [
-        IconButton(
-          tooltip: 'New task',
-          icon: const Icon(Icons.add_task_outlined),
-          onPressed: _createTask,
-        ),
-      ],
-    ),
     body: StreamBuilder<List<AgentTask>>(
       stream: _tasks.watchAll(),
       builder: (context, snapshot) {
         final tasks = snapshot.data;
-        if (tasks == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (tasks.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'No tasks yet. Tasks run while the app is open and '
-                    'leave a conversation you can inspect.',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _createTask,
-                    icon: const Icon(Icons.add),
-                    label: const Text('New task'),
-                  ),
-                ],
-              ),
+        return CustomScrollView(
+          slivers: [
+            SliverAppBar.medium(
+              title: const Text('Tasks'),
+              actions: [
+                IconButton(
+                  tooltip: 'New task',
+                  icon: const Icon(Icons.add_task_outlined),
+                  onPressed: _createTask,
+                ),
+              ],
             ),
-          );
-        }
-        return ListView.builder(
-          itemCount: tasks.length,
-          itemBuilder: (context, index) => _taskTile(context, tasks[index]),
+            if (tasks == null)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (tasks.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: EmptyState(
+                  icon: Icons.task_alt_outlined,
+                  title: 'No tasks yet',
+                  message:
+                      'Tasks run while the app is open and leave a '
+                      'conversation you can inspect.',
+                  actionLabel: 'New task',
+                  onAction: _createTask,
+                ),
+              )
+            else
+              SliverList.builder(
+                itemCount: tasks.length,
+                itemBuilder: (context, index) => Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: _taskTile(context, tasks[index]),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     ),

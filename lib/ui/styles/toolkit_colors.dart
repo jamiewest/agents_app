@@ -4,7 +4,12 @@
 
 import 'package:flutter/widgets.dart';
 
-/// A collection of color constants used throughout the application.
+/// Legacy fallback palette only.
+///
+/// These constants back the context-free style fallbacks
+/// (`LlmChatViewStyle.defaultStyle`, `ToolkitTextStyles.fallback`).
+/// Themed UI must use `ColorScheme` roles via the `fromTheme`
+/// factories instead; do not add new references to this class.
 @immutable
 abstract final class ToolkitColors {
   /// Fully transparent color.
@@ -16,9 +21,6 @@ abstract final class ToolkitColors {
   /// Pure red color.
   static const Color red = Color(0xFFFF0000);
   // Color 0 (#FFFFFF)
-  /// White color used for button backgrounds.
-  static const Color whiteButtonBackground = Color(0xFFFFFFFF);
-
   /// White color used for container backgrounds.
   static const Color containerBackground = Color(0xFFFFFFFF);
 
@@ -44,9 +46,6 @@ abstract final class ToolkitColors {
   /// Light gray color used for light button backgrounds.
   static const Color lightButtonBackground = Color(0xFFF5F5F5);
 
-  /// Light gray color used for dark button icons.
-  static const Color darkButtonIcon = Color(0xFFF5F5F5);
-
   // Color 200 (#E5E5E5)
   /// Light gray color used for outlines.
   static const Color outline = Color(0xFFE5E5E5);
@@ -64,30 +63,9 @@ abstract final class ToolkitColors {
   /// Gray color used for file attachment icon backgrounds.
   static const Color fileAttachmentIconBackground = Color(0xFFCACACA);
 
-  /// Gray color used for grey button backgrounds.
-  static const Color greyButtonBackground = Color(0xFFCACACA);
-
-  /// Gray color used for light icons.
-  static const Color lightIcon = Color(0xFFCACACA);
-
-  /// Gray color used for image placeholders.
-  static const Color imagePlaceholder = Color(0xFFCACACA);
-
-  /// Gray color used for light pagination circles.
-  static const Color lightPaginationCircle = Color(0xFFCACACA);
-
-  /// Gray color used for light voice bar lines.
-  static const Color lightVoiceBarLine = Color(0xFFCACACA);
-
   // Color 400 (#535353)
   /// Dark gray color used for grey backgrounds.
   static const Color greyBackground = Color(0xFF535353);
-
-  /// Dark gray color used for LLM name text.
-  static const Color llmNameText = Color(0xFF535353);
-
-  /// Dark gray color used for tooltip backgrounds.
-  static const Color tooltipBackground = Color(0xFF535353);
 
   // Color 500 (#2F2F2F)
   /// Very dark gray color used for dark button backgrounds.

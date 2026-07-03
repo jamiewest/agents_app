@@ -92,42 +92,49 @@ class AppShell extends StatelessWidget {
 
   Widget _buildRail(BuildContext context, {required bool extended}) {
     final scheme = Theme.of(context).colorScheme;
-    return SafeArea(
-      child: NavigationRail(
-        extended: extended,
-        minExtendedWidth: 172,
-        selectedIndex: shell.currentIndex,
-        onDestinationSelected: _goBranch,
-        labelType: extended
-            ? NavigationRailLabelType.none
-            : NavigationRailLabelType.all,
-        leading: Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 12),
-          child: extended
-              ? FloatingActionButton.extended(
-                  elevation: 0,
-                  backgroundColor: scheme.tertiaryContainer,
-                  foregroundColor: scheme.onTertiaryContainer,
-                  onPressed: () => context.go('/chats'),
-                  icon: const Icon(Icons.forum_outlined),
-                  label: const Text('agents'),
-                )
-              : FloatingActionButton.small(
-                  elevation: 0,
-                  backgroundColor: scheme.tertiaryContainer,
-                  foregroundColor: scheme.onTertiaryContainer,
-                  onPressed: () => context.go('/chats'),
-                  child: const Icon(Icons.forum_outlined),
-                ),
+    // The adaptive layout hands navigation slots LOOSE full-screen
+    // constraints and trusts them to size themselves; a bare
+    // NavigationRail expands under loose width and starves the body, so
+    // pin the slot's width here.
+    return SizedBox(
+      width: extended ? 200 : 88,
+      child: SafeArea(
+        child: NavigationRail(
+          extended: extended,
+          minExtendedWidth: 172,
+          selectedIndex: shell.currentIndex,
+          onDestinationSelected: _goBranch,
+          labelType: extended
+              ? NavigationRailLabelType.none
+              : NavigationRailLabelType.all,
+          leading: Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 12),
+            child: extended
+                ? FloatingActionButton.extended(
+                    elevation: 0,
+                    backgroundColor: scheme.tertiaryContainer,
+                    foregroundColor: scheme.onTertiaryContainer,
+                    onPressed: () => context.go('/chats'),
+                    icon: const Icon(Icons.forum_outlined),
+                    label: const Text('agents'),
+                  )
+                : FloatingActionButton.small(
+                    elevation: 0,
+                    backgroundColor: scheme.tertiaryContainer,
+                    foregroundColor: scheme.onTertiaryContainer,
+                    onPressed: () => context.go('/chats'),
+                    child: const Icon(Icons.forum_outlined),
+                  ),
+          ),
+          destinations: [
+            for (final destination in _destinations)
+              NavigationRailDestination(
+                icon: Icon(destination.icon),
+                selectedIcon: Icon(destination.selected),
+                label: Text(destination.label),
+              ),
+          ],
         ),
-        destinations: [
-          for (final destination in _destinations)
-            NavigationRailDestination(
-              icon: Icon(destination.icon),
-              selectedIcon: Icon(destination.selected),
-              label: Text(destination.label),
-            ),
-        ],
       ),
     );
   }

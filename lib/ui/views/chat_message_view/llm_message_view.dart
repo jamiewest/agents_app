@@ -20,17 +20,10 @@ class LlmMessageView extends StatelessWidget {
   ///
   /// The [message] parameter is required and represents the LLM chat message to
   /// be displayed.
-  const LlmMessageView(
-    this.message, {
-    this.isWelcomeMessage = false,
-    super.key,
-  });
+  const LlmMessageView(this.message, {super.key});
 
   /// The LLM chat message to be displayed.
   final ChatMessage message;
-
-  /// Whether the message is the welcome message.
-  final bool isWelcomeMessage;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -59,13 +52,13 @@ class LlmMessageView extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Container(
-                      height: 20,
-                      width: 20,
+                      height: 28,
+                      width: 28,
                       decoration: llmStyle.iconDecoration,
                       child: Icon(
                         llmStyle.icon,
                         color: llmStyle.iconColor,
-                        size: 12,
+                        size: 16,
                       ),
                     ),
                   ),
@@ -77,7 +70,7 @@ class LlmMessageView extends StatelessWidget {
                     child: Container(
                       width: double.infinity,
                       decoration: llmStyle.decoration,
-                      margin: const EdgeInsets.only(left: 28),
+                      margin: const EdgeInsets.only(left: 40),
                       padding: llmStyle.padding,
                       child: text == null
                           ? SizedBox(
@@ -91,9 +84,7 @@ class LlmMessageView extends StatelessWidget {
                               clipboardText: text,
                               chatStyle: chatStyle,
                               chatStrings: chatString,
-                              child:
-                                  isWelcomeMessage ||
-                                      viewModel.responseBuilder == null
+                              child: viewModel.responseBuilder == null
                                   ? MarkdownBody(
                                       data: text,
                                       selectable: false,

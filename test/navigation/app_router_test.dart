@@ -84,7 +84,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ChatsHome), findsOneWidget);
-      expect(find.text('No conversations yet.'), findsOneWidget);
+      expect(find.text('No conversations yet'), findsOneWidget);
     });
 
     testWidgets('onboarding routes into the add-agent wizard', (tester) async {
@@ -130,6 +130,10 @@ void main() {
 
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);
+      // The rail must not starve the body: text finders still match
+      // zero-width widgets, so assert real geometry.
+      expect(tester.getSize(find.byType(ChatsHome)).width, greaterThan(1000));
+      expect(tester.getSize(find.byType(NavigationRail)).width, lessThan(260));
     });
 
     testWidgets('shell shows a bottom bar on compact layouts', (tester) async {
@@ -156,7 +160,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No tasks yet.', findRichText: true), findsNothing);
-      expect(find.textContaining('No tasks yet.'), findsOneWidget);
+      expect(find.textContaining('No tasks yet'), findsOneWidget);
 
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();

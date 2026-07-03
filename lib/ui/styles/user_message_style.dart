@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:flutter/material.dart' show ColorScheme;
 import 'package:flutter/widgets.dart';
 
 import 'toolkit_colors.dart';
@@ -35,6 +36,24 @@ class UserMessageStyle {
       decoration: style?.decoration ?? defaultStyle.decoration,
     );
   }
+
+  /// Builds the style from a theme [ColorScheme]: a tonal
+  /// secondary-container bubble with a small corner toward the sender.
+  factory UserMessageStyle.fromTheme(
+    ColorScheme scheme,
+    ToolkitTextStyles textStyles,
+  ) => UserMessageStyle(
+    textStyle: textStyles.body1.copyWith(color: scheme.onSecondaryContainer),
+    decoration: BoxDecoration(
+      color: scheme.secondaryContainer,
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(4),
+        bottomLeft: Radius.circular(20),
+        bottomRight: Radius.circular(20),
+      ),
+    ),
+  );
 
   /// Provides default style data for user messages.
   factory UserMessageStyle.defaultStyle({ToolkitTextStyles? textStyles}) =>

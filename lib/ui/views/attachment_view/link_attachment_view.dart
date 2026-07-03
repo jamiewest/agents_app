@@ -5,7 +5,6 @@
 import 'package:flutter/material.dart';
 
 import '../../providers/interface/attachments.dart';
-import '../../styles/toolkit_colors.dart';
 import '../../styles/toolkit_text_styles.dart';
 
 /// A widget that displays a link attachment with a preview.
@@ -52,20 +51,16 @@ class LinkAttachmentView extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     final textStyles = ToolkitTextStyles.fromTheme(context);
 
     return Container(
       width: 300,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? ToolkitColors.darkButtonBackground : Colors.white,
+        color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
-          width: 1,
-        ),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -78,7 +73,7 @@ class LinkAttachmentView extends StatelessWidget {
                 height: 24,
                 margin: const EdgeInsets.only(right: 8),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[700] : Colors.grey[200],
+                  color: scheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Image.network(
@@ -88,7 +83,7 @@ class LinkAttachmentView extends StatelessWidget {
                   errorBuilder: (context, error, stackTrace) => Icon(
                     Icons.link,
                     size: 14,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: scheme.onSurfaceVariant,
                   ),
                   frameBuilder:
                       (context, child, frame, wasSynchronouslyLoaded) {
@@ -96,7 +91,7 @@ class LinkAttachmentView extends StatelessWidget {
                           return Icon(
                             Icons.link,
                             size: 14,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: scheme.onSurfaceVariant,
                           );
                         }
                         return child;
@@ -107,7 +102,7 @@ class LinkAttachmentView extends StatelessWidget {
                 child: Text(
                   _getDisplayUrl(attachment.url),
                   style: textStyles.label.copyWith(
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: scheme.onSurfaceVariant,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -119,7 +114,7 @@ class LinkAttachmentView extends StatelessWidget {
           Text(
             _getPageTitle(attachment),
             style: textStyles.body1.copyWith(
-              color: isDark ? Colors.white : Colors.black87,
+              color: scheme.onSurface,
               fontWeight: FontWeight.w500,
             ),
             maxLines: 2,

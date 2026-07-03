@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:flutter/material.dart' show ColorScheme;
 import 'package:flutter/widgets.dart';
 
 import 'toolkit_colors.dart';
@@ -33,6 +34,22 @@ class ChatInputStyle {
       decoration: style?.decoration ?? defaultStyle.decoration,
     );
   }
+
+  /// Builds the style from a theme [ColorScheme]: a borderless filled
+  /// pill sitting on the surface.
+  factory ChatInputStyle.fromTheme(
+    ColorScheme scheme,
+    ToolkitTextStyles textStyles,
+  ) => ChatInputStyle(
+    textStyle: textStyles.body2.copyWith(color: scheme.onSurface),
+    hintStyle: textStyles.body2.copyWith(color: scheme.onSurfaceVariant),
+    hintText: 'Ask me anything...',
+    backgroundColor: scheme.surface,
+    decoration: BoxDecoration(
+      color: scheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(28),
+    ),
+  );
 
   /// Provides a default style.
   factory ChatInputStyle.defaultStyle({ToolkitTextStyles? textStyles}) =>

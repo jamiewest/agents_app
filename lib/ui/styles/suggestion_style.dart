@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:flutter/material.dart' show ColorScheme;
 import 'package:flutter/widgets.dart';
 
 import 'toolkit_colors.dart';
@@ -32,6 +33,20 @@ class SuggestionStyle {
       decoration: style?.decoration ?? defaultStyle.decoration,
     );
   }
+
+  /// Builds the style from a theme [ColorScheme]: an outlined
+  /// suggestion-chip look.
+  factory SuggestionStyle.fromTheme(
+    ColorScheme scheme,
+    ToolkitTextStyles textStyles,
+  ) => SuggestionStyle(
+    textStyle: textStyles.body2.copyWith(color: scheme.onSurface),
+    decoration: BoxDecoration(
+      color: scheme.surfaceContainerLow,
+      border: Border.all(color: scheme.outlineVariant),
+      borderRadius: const BorderRadius.all(Radius.circular(16)),
+    ),
+  );
 
   /// Provides a default style.
   ///

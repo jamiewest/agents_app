@@ -32,6 +32,14 @@ class VoiceNoteRecorderStyle {
     );
   }
 
+  /// Builds the style from a theme [ColorScheme].
+  factory VoiceNoteRecorderStyle.fromTheme(ColorScheme scheme) =>
+      VoiceNoteRecorderStyle(
+        height: 48.0,
+        waveColor: scheme.primary,
+        durationTextStyle: TextStyle(color: scheme.onSurfaceVariant),
+      );
+
   /// Provides default style if none is specified.
   factory VoiceNoteRecorderStyle.defaultStyle() => const VoiceNoteRecorderStyle(
     height: 48.0,

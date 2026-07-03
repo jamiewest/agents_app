@@ -171,6 +171,8 @@ class _HostingScreenState extends State<HostingScreen> {
                 const SizedBox(height: 16),
                 Center(
                   child: Container(
+                    // QR codes need a white quiet zone for scanner
+                    // contrast in both themes; not a theme role.
                     color: Colors.white,
                     padding: const EdgeInsets.all(12),
                     child: QrImageView(data: offer.encode(), size: 220),

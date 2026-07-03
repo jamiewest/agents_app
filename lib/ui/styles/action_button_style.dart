@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:flutter/material.dart' show ColorScheme;
 import 'package:flutter/widgets.dart';
 
 import '../strings/llm_chat_view_strings.dart';
@@ -53,6 +54,68 @@ class ActionButtonStyle {
       type,
       resolvedStrings,
       textStyles ?? ToolkitTextStyles.fallback(),
+    );
+  }
+
+  /// Builds the style for [type] from a theme [ColorScheme].
+  ///
+  /// Same icons and tooltip text as [defaultStyle]; every color comes from
+  /// scheme roles so buttons read correctly in both brightnesses.
+  factory ActionButtonStyle.fromTheme(
+    ActionButtonType type,
+    ColorScheme scheme,
+    ToolkitTextStyles textStyles, {
+    LlmChatViewStrings? strings,
+  }) {
+    final base = ActionButtonStyle.defaultStyle(
+      type,
+      strings: strings,
+      textStyles: textStyles,
+    );
+    final (Color color, Color background, bool menuItem) = switch (type) {
+      // The primary send/stop affordance: an M3 filled icon button.
+      ActionButtonType.submit ||
+      ActionButtonType.stop => (scheme.onPrimary, scheme.primary, false),
+      ActionButtonType.disabled => (
+        scheme.onSurface.withValues(alpha: 0.38),
+        scheme.onSurface.withValues(alpha: 0.12),
+        false,
+      ),
+      ActionButtonType.close ||
+      ActionButtonType.cancel ||
+      ActionButtonType.closeMenu => (
+        scheme.onSecondaryContainer,
+        scheme.secondaryContainer,
+        false,
+      ),
+      ActionButtonType.add || ActionButtonType.record => (
+        scheme.onSurfaceVariant,
+        scheme.surfaceContainerHighest,
+        false,
+      ),
+      // Menu rows and hover actions: plain icons, no fill.
+      ActionButtonType.attachFile ||
+      ActionButtonType.camera ||
+      ActionButtonType.gallery ||
+      ActionButtonType.url => (
+        scheme.onSurfaceVariant,
+        const Color(0x00000000),
+        true,
+      ),
+      ActionButtonType.copy || ActionButtonType.edit => (
+        scheme.onSurfaceVariant,
+        const Color(0x00000000),
+        false,
+      ),
+    };
+    return ActionButtonStyle(
+      icon: base.icon,
+      iconColor: color,
+      iconDecoration: BoxDecoration(color: background, shape: BoxShape.circle),
+      text: base.text,
+      textStyle: menuItem
+          ? textStyles.body2.copyWith(color: scheme.onSurface)
+          : textStyles.tooltip,
     );
   }
 

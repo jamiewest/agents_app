@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import '../strings/configured_agents_strings.dart';
 import 'toolkit_colors.dart';
@@ -73,9 +73,39 @@ class ConfiguredAgentsStyle {
     return ConfiguredAgentsStyle.resolve(
       style,
       defaultStyle:
-          defaultStyle ??
-          ConfiguredAgentsStyle.defaultStyle(textStyles: textStyles),
+          defaultStyle ?? ConfiguredAgentsStyle.fromTheme(context, textStyles),
       textStyles: textStyles,
+    );
+  }
+
+  /// Builds a style entirely from [context]'s [ColorScheme], so the
+  /// configured-agents surfaces match the app theme in both brightnesses.
+  factory ConfiguredAgentsStyle.fromTheme(
+    BuildContext context,
+    ToolkitTextStyles textStyles,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurface = TextStyle(color: scheme.onSurface);
+    final onVariant = TextStyle(color: scheme.onSurfaceVariant);
+    return ConfiguredAgentsStyle(
+      backgroundColor: scheme.surface,
+      surfaceColor: scheme.surfaceContainerLow,
+      dividerColor: scheme.outlineVariant,
+      accentColor: scheme.primary,
+      errorColor: scheme.error,
+      titleTextStyle: textStyles.heading2.merge(onSurface),
+      subtitleTextStyle: textStyles.label.merge(onVariant),
+      bodyTextStyle: textStyles.body1.merge(onSurface),
+      labelTextStyle: textStyles.label.merge(onVariant),
+      errorTextStyle: textStyles.label.copyWith(color: scheme.error),
+      hintTextStyle: textStyles.body2.copyWith(
+        color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+      ),
+      fieldDecoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
+      ),
     );
   }
 

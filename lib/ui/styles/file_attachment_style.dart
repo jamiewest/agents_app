@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:flutter/material.dart' show ColorScheme;
 import 'package:flutter/widgets.dart';
 
 import 'tookit_icons.dart';
@@ -47,6 +48,27 @@ class FileAttachmentStyle {
       filetypeStyle: style?.filetypeStyle ?? defaultStyle.filetypeStyle,
     );
   }
+
+  /// Builds the style from a theme [ColorScheme].
+  factory FileAttachmentStyle.fromTheme(
+    ColorScheme scheme,
+    ToolkitTextStyles textStyles,
+  ) => FileAttachmentStyle(
+    decoration: ShapeDecoration(
+      color: scheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    icon: ToolkitIcons.attach_file,
+    iconColor: scheme.onSecondaryContainer,
+    iconDecoration: ShapeDecoration(
+      color: scheme.secondaryContainer,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ),
+    filenameStyle: textStyles.filename.copyWith(color: scheme.onSurface),
+    filetypeStyle: textStyles.filetype.copyWith(
+      color: scheme.onSurfaceVariant,
+    ),
+  );
 
   /// Provides a default style.
   factory FileAttachmentStyle.defaultStyle({ToolkitTextStyles? textStyles}) =>

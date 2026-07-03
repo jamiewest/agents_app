@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/local_model_presets.dart';
 import '../strings/configured_agents_strings.dart';
+import '../widgets/page_body.dart';
 import '../styles/configured_agents_style.dart';
 import '../views/configured_agents/agent_editor.dart';
 import '../views/configured_agents/model_editor.dart';
@@ -103,91 +104,146 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
       ),
       body: Column(
         children: [
-          LinearProgressIndicator(value: (_step + 1) / _stepTitles.length),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: _StepIndicator(step: _step, titles: _stepTitles),
+          ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: switch (_step) {
-                0 => Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.lan_outlined),
-                        title: const Text('Network agent instead?'),
-                        subtitle: const Text(
-                          'Add an agent shared by another device with a '
-                          'pairing code.',
+              child: PageBody(
+                child: switch (_step) {
+                  0 => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.lan_outlined),
+                          title: const Text('Network agent instead?'),
+                          subtitle: const Text(
+                            'Add an agent shared by another device with a '
+                            'pairing code.',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => context.go('/settings/network/pair'),
                         ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => context.go('/settings/network/pair'),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SourceEditor(
-                      style: style,
-                      strings: strings,
-                      onSubmit: (source, apiKey) =>
-                          unawaited(_submitSource(source, apiKey)),
-                      onCancel: _exit,
-                    ),
-                  ],
-                ),
-                1 => Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_source!.providerType == ProviderType.localLlama) ...[
-                      Text(
-                        'Start from a known-good model',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final preset in localModelPresets)
-                            Tooltip(
-                              message: preset.subtitle,
-                              child: ActionChip(
-                                label: Text(preset.name),
-                                onPressed: () => setState(() {
-                                  _presetModel = preset.toModelConfig(
-                                    id:
-                                        'model-'
-                                        '${DateTime.now().microsecondsSinceEpoch}',
-                                    sourceId: _source!.id,
-                                  );
-                                }),
-                              ),
-                            ),
-                        ],
                       ),
                       const SizedBox(height: 16),
+                      SourceEditor(
+                        style: style,
+                        strings: strings,
+                        onSubmit: (source, apiKey) =>
+                            unawaited(_submitSource(source, apiKey)),
+                        onCancel: _exit,
+                      ),
                     ],
-                    ModelEditor(
-                      key: ValueKey(_presetModel?.id ?? 'blank'),
-                      initial: _presetModel,
-                      sources: [_source!],
-                      style: style,
-                      strings: strings,
-                      onSubmit: (model) => unawaited(_submitModel(model)),
-                      onCancel: _back,
-                    ),
-                  ],
-                ),
-                _ => AgentEditor(
-                  models: [_model!],
-                  style: style,
-                  strings: strings,
-                  onSubmit: (agent) => unawaited(_submitAgent(agent)),
-                  onCancel: _back,
-                ),
-              },
+                  ),
+                  1 => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_source!.providerType == ProviderType.localLlama) ...[
+                        Text(
+                          'Start from a known-good model',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final preset in localModelPresets)
+                              Tooltip(
+                                message: preset.subtitle,
+                                child: ActionChip(
+                                  label: Text(preset.name),
+                                  onPressed: () => setState(() {
+                                    _presetModel = preset.toModelConfig(
+                                      id:
+                                          'model-'
+                                          '${DateTime.now().microsecondsSinceEpoch}',
+                                      sourceId: _source!.id,
+                                    );
+                                  }),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      ModelEditor(
+                        key: ValueKey(_presetModel?.id ?? 'blank'),
+                        initial: _presetModel,
+                        sources: [_source!],
+                        style: style,
+                        strings: strings,
+                        onSubmit: (model) => unawaited(_submitModel(model)),
+                        onCancel: _back,
+                      ),
+                    ],
+                  ),
+                  _ => AgentEditor(
+                    models: [_model!],
+                    style: style,
+                    strings: strings,
+                    onSubmit: (agent) => unawaited(_submitAgent(agent)),
+                    onCancel: _back,
+                  ),
+                },
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Numbered step chips for the wizard header.
+class _StepIndicator extends StatelessWidget {
+  const _StepIndicator({required this.step, required this.titles});
+
+  final int step;
+  final List<String> titles;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final labelStyle = Theme.of(context).textTheme.labelLarge;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < titles.length; i++) ...[
+          if (i > 0)
+            Container(
+              width: 28,
+              height: 1,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              color: scheme.outlineVariant,
+            ),
+          CircleAvatar(
+            radius: 13,
+            backgroundColor: i <= step
+                ? scheme.primary
+                : scheme.surfaceContainerHighest,
+            child: i < step
+                ? Icon(Icons.check, size: 15, color: scheme.onPrimary)
+                : Text(
+                    '${i + 1}',
+                    style: labelStyle?.copyWith(
+                      color: i <= step
+                          ? scheme.onPrimary
+                          : scheme.onSurfaceVariant,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            titles[i],
+            style: labelStyle?.copyWith(
+              color: i == step ? scheme.onSurface : scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -158,7 +158,7 @@ class _ChatInputState extends State<ChatInput> {
   @override
   Widget build(BuildContext context) => Container(
     color: _inputStyle!.backgroundColor,
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
     child: Column(
       children: [
         AttachmentsView(

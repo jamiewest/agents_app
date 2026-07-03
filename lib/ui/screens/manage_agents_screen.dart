@@ -36,15 +36,27 @@ class _WebSecurityNotice extends StatelessWidget {
   const _WebSecurityNotice();
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    padding: const EdgeInsets.all(12),
-    child: Text(
-      'Keys are stored in secure storage. On the web this falls back to '
-      'browser storage, which does not protect secrets — production apps '
-      'should proxy provider requests through a backend.',
-      style: Theme.of(context).textTheme.bodySmall,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_outline, size: 18, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Keys are stored in secure storage. On the web this falls '
+              'back to browser storage — production apps should proxy '
+              'provider requests through a backend.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

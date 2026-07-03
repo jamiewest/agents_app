@@ -1,3 +1,4 @@
+import 'package:agents_app/ui/strings/strings.dart';
 import 'package:agents_app/ui/styles/styles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -98,6 +99,116 @@ void main() {
     );
     expect(resolved.chatInputStyle!.textStyle!.fontFamily, 'ExampleSans');
   });
+
+  group('material 3 color roles', () {
+    for (final brightness in Brightness.values) {
+      testWidgets('chat defaults map to scheme roles ($brightness)', (
+        tester,
+      ) async {
+        final (resolved, scheme) = await _resolveUnder(tester, brightness);
+
+        final userBubble =
+            resolved.userMessageStyle!.decoration! as BoxDecoration;
+        expect(userBubble.color, scheme.secondaryContainer);
+        expect(
+          resolved.userMessageStyle!.textStyle!.color,
+          scheme.onSecondaryContainer,
+        );
+
+        final inputPill = resolved.chatInputStyle!.decoration! as BoxDecoration;
+        expect(inputPill.color, scheme.surfaceContainerHigh);
+
+        expect(resolved.progressIndicatorColor, scheme.onSurfaceVariant);
+
+        final markdown = resolved.llmMessageStyle!.markdownStyle!;
+        final codeBlock = markdown.codeblockDecoration! as BoxDecoration;
+        expect(codeBlock.color, scheme.surfaceContainerHighest);
+        expect(markdown.a!.color, scheme.primary);
+
+        expect(resolved.submitButtonStyle!.iconColor, scheme.onPrimary);
+        final submitBg =
+            resolved.submitButtonStyle!.iconDecoration! as BoxDecoration;
+        expect(submitBg.color, scheme.primary);
+      });
+    }
+
+    testWidgets('user bubble has M3 asymmetric corners', (tester) async {
+      final (resolved, _) = await _resolveUnder(tester, Brightness.light);
+
+      final bubble = resolved.userMessageStyle!.decoration! as BoxDecoration;
+      final radius = bubble.borderRadius! as BorderRadius;
+      expect(radius.topRight, const Radius.circular(4));
+      expect(radius.topLeft, const Radius.circular(20));
+      expect(radius.bottomLeft, const Radius.circular(20));
+      expect(radius.bottomRight, const Radius.circular(20));
+    });
+
+    testWidgets('light and dark resolve to different chat colors', (
+      tester,
+    ) async {
+      final (light, _) = await _resolveUnder(tester, Brightness.light);
+      final (dark, _) = await _resolveUnder(tester, Brightness.dark);
+
+      Color bubble(LlmChatViewStyle style) =>
+          (style.userMessageStyle!.decoration! as BoxDecoration).color!;
+      Color input(LlmChatViewStyle style) =>
+          (style.chatInputStyle!.decoration! as BoxDecoration).color!;
+
+      expect(bubble(light), isNot(bubble(dark)));
+      expect(input(light), isNot(input(dark)));
+      expect(light.backgroundColor, isNot(dark.backgroundColor));
+    });
+
+    testWidgets('custom strings keep theme-derived button colors', (
+      tester,
+    ) async {
+      final (resolved, scheme) = await _resolveUnder(
+        tester,
+        Brightness.dark,
+        style: const LlmChatViewStyle(
+          strings: LlmChatViewStrings(submitMessage: 'Send it'),
+        ),
+      );
+
+      expect(resolved.submitButtonStyle!.text, 'Send it');
+      expect(resolved.submitButtonStyle!.iconColor, scheme.onPrimary);
+      final submitBg =
+          resolved.submitButtonStyle!.iconDecoration! as BoxDecoration;
+      expect(submitBg.color, scheme.primary);
+    });
+  });
+}
+
+Future<(LlmChatViewStyle, ColorScheme)> _resolveUnder(
+  WidgetTester tester,
+  Brightness brightness, {
+  LlmChatViewStyle? style,
+}) async {
+  late LlmChatViewStyle resolved;
+  late ColorScheme scheme;
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF00658F),
+          brightness: brightness,
+        ),
+      ),
+      home: Builder(
+        builder: (context) {
+          scheme = Theme.of(context).colorScheme;
+          resolved = LlmChatViewStyle.resolveFor(context, style);
+          return const SizedBox.shrink();
+        },
+      ),
+    ),
+  );
+  // MaterialApp animates theme changes across pumps; settle so the
+  // builder captures the final theme, not a mid-lerp frame.
+  await tester.pumpAndSettle();
+
+  return (resolved, scheme);
 }
 
 TextTheme _textTheme(String fontFamily) => TextTheme(

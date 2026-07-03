@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:flutter/material.dart' show ColorScheme;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
@@ -20,7 +21,7 @@ class LlmMessageStyle {
     this.decoration,
     this.markdownStyle,
     this.maxWidth = 600.0,
-    this.minWidth = 300.0,
+    this.minWidth = 0.0,
     this.flex = 6,
     this.padding = const EdgeInsets.all(12.0),
     this.margin = const EdgeInsets.symmetric(vertical: 4.0),
@@ -59,6 +60,63 @@ class LlmMessageStyle {
       margin: style?.margin ?? defaultStyle.margin,
     );
   }
+
+  /// Builds the style from a theme [ColorScheme].
+  ///
+  /// Every markdown decoration field is set explicitly: any field left
+  /// null falls back to flutter_markdown_plus's light-biased defaults and
+  /// breaks dark mode.
+  factory LlmMessageStyle.fromTheme(
+    ColorScheme scheme,
+    ToolkitTextStyles textStyles,
+  ) => LlmMessageStyle(
+    icon: ToolkitIcons.spark_icon,
+    iconColor: scheme.onPrimaryContainer,
+    iconDecoration: BoxDecoration(
+      color: scheme.primaryContainer,
+      shape: BoxShape.circle,
+    ),
+    markdownStyle: MarkdownStyleSheet(
+      a: textStyles.link,
+      blockquote: textStyles.body1.copyWith(color: scheme.onSurfaceVariant),
+      blockquoteDecoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: scheme.primary, width: 3)),
+      ),
+      checkbox: textStyles.body1,
+      code: textStyles.code.copyWith(
+        backgroundColor: scheme.surfaceContainerHighest,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      codeblockPadding: const EdgeInsets.all(12),
+      del: textStyles.body1,
+      em: textStyles.body1.copyWith(fontStyle: FontStyle.italic),
+      h1: textStyles.heading1,
+      h2: textStyles.heading2,
+      h3: textStyles.body1.copyWith(fontWeight: FontWeight.bold),
+      h4: textStyles.body1,
+      h5: textStyles.body1,
+      h6: textStyles.body1,
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+      ),
+      listBullet: textStyles.body1,
+      img: textStyles.body1,
+      strong: textStyles.body1.copyWith(fontWeight: FontWeight.bold),
+      p: textStyles.body1,
+      tableBody: textStyles.body1,
+      tableHead: textStyles.body1.copyWith(fontWeight: FontWeight.w600),
+      tableBorder: TableBorder.all(color: scheme.outlineVariant),
+    ),
+    // Model turns render bubble-less on the chat surface, so only the
+    // markdown content and avatar carry the visual weight.
+    decoration: const BoxDecoration(color: Color(0x00000000)),
+    padding: const EdgeInsets.symmetric(vertical: 4),
+  );
 
   /// Provides a default style.
   factory LlmMessageStyle.defaultStyle({ToolkitTextStyles? textStyles}) =>

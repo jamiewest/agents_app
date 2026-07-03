@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/embedding_settings.dart';
 import '../../data/theme_settings.dart';
+import '../widgets/page_body.dart';
 
 /// The Settings destination: entry points into configuration surfaces.
 class SettingsHomeScreen extends StatelessWidget {
@@ -20,58 +21,70 @@ class SettingsHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Settings')),
-    body: ListView(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            'Appearance',
-            style: Theme.of(context).textTheme.labelLarge,
+    body: CustomScrollView(
+      slivers: [
+        SliverAppBar.medium(title: const Text('Settings')),
+        SliverToBoxAdapter(
+          child: PageBody(
+            padding: EdgeInsets.zero,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    'Appearance',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _AppearanceSelector(
+                    settings: services.getRequiredService<ThemeSettings>(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.smart_toy_outlined),
+                  title: const Text('Agents & providers'),
+                  subtitle: const Text(
+                    'Model sources, API keys, models, and saved agents',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/settings/agents'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.person_add_alt_outlined),
+                  title: const Text('Add agent'),
+                  subtitle: const Text('Guided setup for a new agent'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/settings/agents/add'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.wifi_tethering),
+                  title: const Text('Share agents on the network'),
+                  subtitle: const Text(
+                    'Let paired devices use this device\'s agents (A2A)',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/settings/hosting'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.psychology_outlined),
+                  title: const Text('Memory embedding model'),
+                  subtitle: const Text(
+                    'How agent memory is searched. Defaults to keyword matching; '
+                    'pick an OpenAI-compatible model for semantic recall.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _pickEmbeddingModel(context),
+                ),
+              ],
+            ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _AppearanceSelector(
-            settings: services.getRequiredService<ThemeSettings>(),
-          ),
-        ),
-        const SizedBox(height: 16),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.smart_toy_outlined),
-          title: const Text('Agents & providers'),
-          subtitle: const Text(
-            'Model sources, API keys, models, and saved agents',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.go('/settings/agents'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.person_add_alt_outlined),
-          title: const Text('Add agent'),
-          subtitle: const Text('Guided setup for a new agent'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.go('/settings/agents/add'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.wifi_tethering),
-          title: const Text('Share agents on the network'),
-          subtitle: const Text(
-            'Let paired devices use this device\'s agents (A2A)',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.go('/settings/hosting'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.psychology_outlined),
-          title: const Text('Memory embedding model'),
-          subtitle: const Text(
-            'How agent memory is searched. Defaults to keyword matching; '
-            'pick an OpenAI-compatible model for semantic recall.',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _pickEmbeddingModel(context),
         ),
       ],
     ),

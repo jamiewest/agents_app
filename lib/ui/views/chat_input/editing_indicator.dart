@@ -1,8 +1,8 @@
+import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/widgets.dart';
 
 import '../../styles/action_button_style.dart';
 import '../../styles/toolkit_text_styles.dart';
-import '../../utility.dart';
 import '../action_button.dart';
 
 /// A widget that displays an editing indicator with a cancel button.
@@ -47,7 +47,7 @@ class EditingIndicator extends StatelessWidget {
           Text(
             editingTitle,
             style: textStyles.label.copyWith(
-              color: invertColor(cancelButtonStyle.iconColor),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           ActionButton(

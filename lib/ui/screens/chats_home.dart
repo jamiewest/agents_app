@@ -2,16 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/channel_store.dart';
+import '../../data/chat_transcript_store.dart';
 import '../../data/conversation_store.dart';
 import '../../domain/channel.dart';
 import '../../domain/conversation.dart';
 import '../../main.dart' show ChatScreen;
+import '../widgets/conversation_actions.dart';
+import '../widgets/empty_state.dart';
 
 /// The width at which the chats branch shows list and detail side by side.
 const double twoPaneBreakpoint = 1000;
@@ -53,6 +58,8 @@ class ChatsHome extends StatefulWidget {
 
 class _ChatsHomeState extends State<ChatsHome> {
   late final ConversationStore _conversations;
+  late final ConversationSessionStore _sessions;
+  late final ChatTranscriptStore _transcripts;
   late final ChannelStore _channels;
   late final ConfiguredAgentsManager _manager;
   late final Stream<List<Conversation>> _conversationStream;
@@ -67,6 +74,8 @@ class _ChatsHomeState extends State<ChatsHome> {
     _initialized = true;
     final records = widget.services.getRequiredService<RecordStore>();
     _conversations = ConversationStore(records);
+    _sessions = ConversationSessionStore(records);
+    _transcripts = ChatTranscriptStore(records);
     _channels = ChannelStore(records);
     _manager = widget.services.getRequiredService<ConfiguredAgentsManager>();
     // Broadcast: the adaptive shell can briefly mount two copies of this
@@ -296,20 +305,10 @@ class _ChatsHomeState extends State<ChatsHome> {
   }
 
   Widget _buildList(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Chats'),
-      actions: [
-        IconButton(
-          tooltip: 'New channel',
-          icon: const Icon(Icons.tag),
-          onPressed: _createChannel,
-        ),
-        IconButton(
-          tooltip: 'New chat',
-          icon: const Icon(Icons.add_comment_outlined),
-          onPressed: _startNewChat,
-        ),
-      ],
+    floatingActionButton: FloatingActionButton(
+      tooltip: 'New chat',
+      onPressed: _startNewChat,
+      child: const Icon(Icons.add_comment_outlined),
     ),
     body: StreamBuilder<List<Channel>>(
       stream: _channelStream,
@@ -318,38 +317,42 @@ class _ChatsHomeState extends State<ChatsHome> {
         builder: (context, snapshot) {
           final channels = channelSnapshot.data ?? const <Channel>[];
           final conversations = snapshot.data;
-          if (conversations == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          _ensureAgentsFor(conversations);
-          if (conversations.isEmpty && channels.isEmpty) {
-            return _buildEmptyState();
-          }
-          return ListView(
-            children: [
-              if (channels.isNotEmpty) ...[
-                const _SectionHeader('Channels'),
-                for (final channel in channels)
-                  ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.tag)),
-                    title: Text(
-                      channel.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: channel.description.isEmpty
-                        ? null
-                        : Text(
-                            channel.description,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                    onTap: () => context.go('/chats/channel/${channel.id}'),
+          if (conversations != null) _ensureAgentsFor(conversations);
+          return CustomScrollView(
+            slivers: [
+              SliverAppBar.medium(
+                title: const Text('Chats'),
+                actions: [
+                  IconButton(
+                    tooltip: 'New channel',
+                    icon: const Icon(Icons.tag),
+                    onPressed: _createChannel,
                   ),
-                const _SectionHeader('Conversations'),
-              ],
-              for (final conversation in conversations)
-                _conversationTile(context, conversation),
+                ],
+              ),
+              if (conversations == null)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (conversations.isEmpty && channels.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _buildEmptyState(),
+                )
+              else
+                SliverList.list(
+                  children: [
+                    if (channels.isNotEmpty) ...[
+                      const _SectionHeader('Channels'),
+                      for (final channel in channels)
+                        _channelTile(context, channel),
+                      const _SectionHeader('Conversations'),
+                    ],
+                    for (final conversation in conversations)
+                      _conversationTile(context, conversation),
+                  ],
+                ),
             ],
           );
         },
@@ -357,21 +360,107 @@ class _ChatsHomeState extends State<ChatsHome> {
     ),
   );
 
-  Widget _buildEmptyState() => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('No conversations yet.', textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _startNewChat,
-            icon: const Icon(Icons.add),
-            label: const Text('New chat'),
+  Widget _buildEmptyState() => EmptyState(
+    icon: Icons.forum_outlined,
+    title: 'No conversations yet',
+    message:
+        'Start a chat with one of your agents — they pick up right '
+        'where you left off.',
+    actionLabel: 'New chat',
+    onAction: _startNewChat,
+  );
+
+  Future<void> _renameConversation(Conversation conversation) async {
+    final title = await showRenameDialog(
+      context,
+      dialogTitle: 'Rename conversation',
+      initialTitle: conversation.title,
+    );
+    if (title == null) return;
+    await _conversations.save(
+      conversation.copyWith(
+        title: title,
+        titleSource: ConversationTitleSource.manual,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  Future<void> _deleteConversation(Conversation conversation) async {
+    final deleted = await confirmAndDeleteConversation(
+      context,
+      conversationId: conversation.id,
+      title: conversationDisplayTitle(conversation),
+      conversations: _conversations,
+      sessions: _sessions,
+      transcripts: _transcripts,
+    );
+    if (deleted && mounted && conversation.id == widget.conversationId) {
+      context.go('/chats');
+    }
+  }
+
+  Future<void> _renameChannel(Channel channel) async {
+    final name = await showRenameDialog(
+      context,
+      dialogTitle: 'Rename channel',
+      initialTitle: channel.name,
+    );
+    if (name == null) return;
+    await _channels.save(
+      channel.copyWith(name: name, updatedAt: DateTime.now()),
+    );
+  }
+
+  Future<void> _deleteChannel(Channel channel) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete channel?'),
+        content: Text(
+          'Delete "${channel.name}"? Its conversations are kept and stay '
+          'available in Chats.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
           ),
         ],
       ),
+    );
+    if (confirmed != true) return;
+    await _channels.delete(channel.id);
+  }
+
+  Widget _channelTile(BuildContext context, Channel channel) => ListTile(
+    leading: const CircleAvatar(child: Icon(Icons.tag)),
+    title: Text(channel.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+    subtitle: channel.description.isEmpty
+        ? null
+        : Text(
+            channel.description,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+    onTap: () => context.go('/chats/channel/${channel.id}'),
+    trailing: PopupMenuButton<void Function()>(
+      tooltip: 'Channel actions',
+      onSelected: (action) => action(),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: () => unawaited(_renameChannel(channel)),
+          child: const Text('Rename'),
+        ),
+        PopupMenuItem(
+          value: () => unawaited(_deleteChannel(channel)),
+          child: const Text('Delete'),
+        ),
+      ],
     ),
   );
 
@@ -398,6 +487,20 @@ class _ChatsHomeState extends State<ChatsHome> {
               overflow: TextOverflow.ellipsis,
             ),
       onTap: () => context.go('/chats/c/${conversation.id}'),
+      trailing: PopupMenuButton<void Function()>(
+        tooltip: 'Conversation actions',
+        onSelected: (action) => action(),
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: () => unawaited(_renameConversation(conversation)),
+            child: const Text('Rename'),
+          ),
+          PopupMenuItem(
+            value: () => unawaited(_deleteConversation(conversation)),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -410,6 +513,11 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-    child: Text(title, style: Theme.of(context).textTheme.labelLarge),
+    child: Text(
+      title,
+      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    ),
   );
 }

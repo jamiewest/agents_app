@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:file_selector/file_selector.dart';
@@ -12,6 +14,8 @@ import '../../data/channel_store.dart';
 import '../../data/conversation_store.dart';
 import '../../domain/channel.dart';
 import '../../domain/conversation.dart';
+import '../widgets/conversation_actions.dart';
+import '../widgets/empty_state.dart';
 
 /// One channel workspace: its conversations, shared files, and member
 /// agents.
@@ -98,6 +102,48 @@ class _ChannelScreenState extends State<ChannelScreen> {
     }
   }
 
+  Future<void> _renameChannel() async {
+    final channel = _channel;
+    if (channel == null) return;
+    final name = await showRenameDialog(
+      context,
+      dialogTitle: 'Rename channel',
+      initialTitle: channel.name,
+    );
+    if (name == null) return;
+    final updated = channel.copyWith(name: name, updatedAt: DateTime.now());
+    await _channels.save(updated);
+    if (mounted) setState(() => _channel = updated);
+  }
+
+  Future<void> _deleteChannel() async {
+    final channel = _channel;
+    if (channel == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete channel?'),
+        content: Text(
+          'Delete "${channel.name}"? Its conversations are kept and stay '
+          'available in Chats.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _channels.delete(channel.id);
+    if (mounted) context.go('/chats');
+  }
+
   Future<void> _toggleMember(String agentId, bool member) async {
     final channel = _channel;
     if (channel == null) return;
@@ -130,6 +176,20 @@ class _ChannelScreenState extends State<ChannelScreen> {
               tooltip: 'New channel chat',
               icon: const Icon(Icons.add_comment_outlined),
               onPressed: _startChannelChat,
+            ),
+            PopupMenuButton<void Function()>(
+              tooltip: 'Channel actions',
+              onSelected: (action) => action(),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: () => unawaited(_renameChannel()),
+                  child: const Text('Rename channel'),
+                ),
+                PopupMenuItem(
+                  value: () => unawaited(_deleteChannel()),
+                  child: const Text('Delete channel'),
+                ),
+              ],
             ),
           ],
           bottom: const TabBar(
@@ -177,7 +237,11 @@ class _ConversationsTab extends StatelessWidget {
         return const Center(child: CircularProgressIndicator());
       }
       if (items.isEmpty) {
-        return const Center(child: Text('No channel conversations yet.'));
+        return const EmptyState(
+          icon: Icons.tag,
+          title: 'No channel conversations yet',
+          message: 'Start one with a member agent using the button above.',
+        );
       }
       return ListView.builder(
         itemCount: items.length,

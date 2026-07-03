@@ -31,6 +31,7 @@ import 'ui/app_theme.dart';
 import 'ui/providers/providers.dart';
 import 'ui/views/configured_agents/configured_agents.dart';
 import 'ui/views/llm_chat_view/llm_chat_view.dart';
+import 'ui/widgets/conversation_actions.dart';
 
 // Optional seed values so the demo can start with a working Anthropic agent.
 // Supply them as compile-time defines, e.g.
@@ -599,314 +600,6 @@ class _AgentsAppState extends State<AgentsApp> {
   }
 }
 
-/// Lists saved conversations for one agent.
-class AgentConversationsScreen extends StatefulWidget {
-  /// Creates an [AgentConversationsScreen].
-  const AgentConversationsScreen({
-    required this.agent,
-    required this.services,
-    super.key,
-  });
-
-  /// The saved agent whose conversations should be listed.
-  final SavedAgentConfig agent;
-
-  /// The application service provider.
-  final ServiceProvider services;
-
-  @override
-  State<AgentConversationsScreen> createState() =>
-      _AgentConversationsScreenState();
-}
-
-class _AgentConversationsScreenState extends State<AgentConversationsScreen> {
-  late final ConversationStore _store;
-  late final ConversationSessionStore _sessions;
-  late final ChatTranscriptStore _transcripts;
-  late Future<List<Conversation>> _conversations;
-  bool _initialized = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_initialized) return;
-    _initialized = true;
-    final records = widget.services.getRequiredService<RecordStore>();
-    _store = ConversationStore(records);
-    _sessions = ConversationSessionStore(records);
-    _transcripts = ChatTranscriptStore(records);
-    _reload();
-  }
-
-  void _reload() {
-    _conversations = _listConversations();
-  }
-
-  Future<List<Conversation>> _listConversations() async {
-    final conversations = await _store.listForAgent(widget.agent.id);
-    if (conversations.isNotEmpty) return conversations;
-    return _store.listAll();
-  }
-
-  Future<void> _openNewChat() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            ChatScreen(agent: widget.agent, services: widget.services),
-      ),
-    );
-    if (mounted) {
-      setState(_reload);
-    }
-  }
-
-  Future<void> _openConversation(Conversation conversation) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ChatScreen(
-          agent: widget.agent,
-          services: widget.services,
-          conversationId: conversation.id,
-        ),
-      ),
-    );
-    if (mounted) {
-      setState(_reload);
-    }
-  }
-
-  Future<void> _renameConversation(Conversation conversation) async {
-    final title = await _showConversationTitleDialog(
-      context,
-      initialTitle: conversation.title,
-    );
-    if (title == null) return;
-
-    await _store.save(
-      conversation.copyWith(
-        title: title,
-        titleSource: ConversationTitleSource.manual,
-        updatedAt: DateTime.now(),
-      ),
-    );
-    if (mounted) {
-      setState(_reload);
-    }
-  }
-
-  Future<void> _deleteConversation(Conversation conversation) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete conversation?'),
-        content: Text(
-          'Delete "${_conversationTitle(conversation)}"? This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    await _transcripts.deleteFor(conversation.id);
-    await _sessions.deleteFor(conversation.id);
-    await _store.delete(conversation.id);
-    if (mounted) {
-      setState(_reload);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.agent.name),
-      actions: [
-        IconButton(
-          tooltip: 'New chat',
-          icon: const Icon(Icons.add_comment_outlined),
-          onPressed: _openNewChat,
-        ),
-      ],
-    ),
-    body: FutureBuilder<List<Conversation>>(
-      future: _conversations,
-      builder: (context, snapshot) {
-        final conversations = snapshot.data ?? const <Conversation>[];
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (conversations.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'No conversations yet.',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _openNewChat,
-                    icon: const Icon(Icons.add),
-                    label: const Text('New chat'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          itemCount: conversations.length,
-          itemBuilder: (context, index) {
-            final conversation = conversations[index];
-            final preview = conversation.lastMessagePreview?.trim();
-            return ListTile(
-              title: Text(_conversationTitle(conversation)),
-              subtitle: Text(
-                preview == null || preview.isEmpty
-                    ? _formatConversationDate(conversation.updatedAt)
-                    : '${_formatConversationDate(conversation.updatedAt)}'
-                          ' • $preview',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              onTap: () => _openConversation(conversation),
-              trailing: PopupMenuButton<_ConversationAction>(
-                tooltip: 'Conversation actions',
-                onSelected: (action) {
-                  switch (action) {
-                    case _ConversationAction.rename:
-                      unawaited(_renameConversation(conversation));
-                      break;
-                    case _ConversationAction.delete:
-                      unawaited(_deleteConversation(conversation));
-                      break;
-                  }
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: _ConversationAction.rename,
-                    child: Text('Rename'),
-                  ),
-                  PopupMenuItem(
-                    value: _ConversationAction.delete,
-                    child: Text('Delete'),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    ),
-  );
-}
-
-enum _ConversationAction { rename, delete }
-
-String _conversationTitle(Conversation conversation) =>
-    conversation.title.trim().isEmpty
-    ? 'Untitled conversation'
-    : conversation.title.trim();
-
-String _formatConversationDate(DateTime dateTime) {
-  final local = dateTime.toLocal();
-  final month = local.month.toString().padLeft(2, '0');
-  final day = local.day.toString().padLeft(2, '0');
-  final hour = local.hour.toString().padLeft(2, '0');
-  final minute = local.minute.toString().padLeft(2, '0');
-  return '${local.year}-$month-$day $hour:$minute';
-}
-
-Future<String?> _showConversationTitleDialog(
-  BuildContext context, {
-  required String initialTitle,
-}) async {
-  var title = initialTitle;
-  return showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Rename conversation'),
-      content: TextFormField(
-        initialValue: initialTitle,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: 'Title'),
-        textInputAction: TextInputAction.done,
-        onChanged: (value) => title = value,
-        onFieldSubmitted: (_) {
-          final trimmed = title.trim();
-          if (trimmed.isNotEmpty) Navigator.of(context).pop(trimmed);
-        },
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final trimmed = title.trim();
-            if (trimmed.isNotEmpty) Navigator.of(context).pop(trimmed);
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    ),
-  );
-}
-
-/// The settings surface, composed entirely from the package's
-/// [ConfiguredAgentsView].
-class SettingsScreen extends StatelessWidget {
-  /// Creates a [SettingsScreen].
-  const SettingsScreen({required this.services, super.key});
-
-  /// The application service provider.
-  final ServiceProvider services;
-
-  @override
-  Widget build(BuildContext context) {
-    final manager = services.getRequiredService<ConfiguredAgentsManager>();
-    return Scaffold(
-      appBar: AppBar(title: const Text('Manage agents')),
-      body: Column(
-        children: [
-          const _WebSecurityNotice(),
-          Expanded(child: ConfiguredAgentsView(manager: manager)),
-        ],
-      ),
-    );
-  }
-}
-
-class _WebSecurityNotice extends StatelessWidget {
-  const _WebSecurityNotice();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    padding: const EdgeInsets.all(12),
-    child: Text(
-      'Keys are stored in secure storage. On the web this falls back to '
-      'browser storage, which does not protect secrets — production apps '
-      'should proxy provider requests through a backend.',
-      style: Theme.of(context).textTheme.bodySmall,
-    ),
-  );
-}
-
 /// Resolves a saved agent and shows a chat against it.
 class ChatScreen extends StatefulWidget {
   /// Creates a [ChatScreen].
@@ -966,6 +659,7 @@ class _ChatScreenState extends State<ChatScreen> {
   DateTime? _createdAt;
   Future<void> _pendingPersistence = Future<void>.value();
   bool _isPopping = false;
+  bool _deleted = false;
 
   @override
   void didChangeDependencies() {
@@ -1341,8 +1035,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final provider = _provider;
     if (provider == null) return;
 
-    final title = await _showConversationTitleDialog(
+    final title = await showRenameDialog(
       context,
+      dialogTitle: 'Rename conversation',
       initialTitle: _title,
     );
     if (title == null) return;
@@ -1353,6 +1048,22 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _pendingPersistence = _persistMetadata(provider);
     await _pendingPersistence;
+  }
+
+  /// Deletes this conversation (with confirmation) and leaves the chat.
+  Future<void> _deleteConversation() async {
+    if (_provider == null) return;
+    final deleted = await confirmAndDeleteConversation(
+      context,
+      conversationId: _conversationId,
+      title: _appBarTitle,
+      conversations: _conversations!,
+      sessions: _sessions!,
+      transcripts: _transcripts!,
+    );
+    if (!deleted) return;
+    _deleted = true;
+    if (mounted) context.go('/chats');
   }
 
   void _setDefaultTitleFrom(List<ChatMessage> history) {
@@ -1385,6 +1096,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _finishStateChangesBeforePop() async {
+    // A deleted conversation must stay deleted: flushing here would
+    // re-save its metadata and resurrect the record.
+    if (_deleted) return;
     await _pendingPersistence;
     await _flushLatestConversationState();
     await _discardEmptyConversation();
@@ -1467,7 +1181,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     value: session.id,
                     checked: _viewSessionId == session.id,
                     child: Text(
-                      '${_formatConversationDate(session.startedAt)}'
+                      '${formatConversationDate(session.startedAt)}'
                       '${session.id == _sessionId ? ' • current' : ''}',
                     ),
                   ),
@@ -1476,24 +1190,32 @@ class _ChatScreenState extends State<ChatScreen> {
           if (_model case final model? when model.capabilities.supportsThinking)
             _ThinkingToggle(services: widget.services, modelConfigId: model.id),
           if (!widget.isPrivate)
-            IconButton(
-              tooltip: 'Add agent to chat — starts a new group chat',
-              icon: const Icon(Icons.group_add_outlined),
-              onPressed: _provider == null ? null : _addAgentToChat,
-            ),
-          if (!widget.isPrivate)
-            IconButton(
-              tooltip:
-                  'New session — keeps the conversation, starts a fresh '
-                  'agent session',
-              icon: const Icon(Icons.restart_alt_outlined),
-              onPressed: _provider == null ? null : _startNewSession,
-            ),
-          if (!widget.isPrivate)
-            IconButton(
-              tooltip: 'Rename conversation',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: _provider == null ? null : _renameConversation,
+            PopupMenuButton<void Function()>(
+              tooltip: 'Conversation actions',
+              onSelected: (action) => action(),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  enabled: _provider != null,
+                  value: () => unawaited(_startNewSession()),
+                  child: const Text('New session'),
+                ),
+                PopupMenuItem(
+                  enabled: _provider != null,
+                  value: () => unawaited(_addAgentToChat()),
+                  child: const Text('Add agent to chat'),
+                ),
+                PopupMenuItem(
+                  enabled: _provider != null,
+                  value: () => unawaited(_renameConversation()),
+                  child: const Text('Rename'),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  enabled: _provider != null,
+                  value: () => unawaited(_deleteConversation()),
+                  child: const Text('Delete conversation'),
+                ),
+              ],
             ),
         ],
       ),

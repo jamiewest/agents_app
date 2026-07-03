@@ -69,6 +69,8 @@ ThemeData buildAppTheme(Brightness brightness) {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       iconColor: scheme.onSurfaceVariant,
+      selectedTileColor: scheme.secondaryContainer,
+      selectedColor: scheme.onSecondaryContainer,
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
