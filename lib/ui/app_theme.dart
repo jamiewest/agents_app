@@ -44,9 +44,7 @@ ThemeData buildAppTheme(Brightness brightness) {
       backgroundColor: scheme.surface,
       surfaceTintColor: scheme.surfaceTint,
       scrolledUnderElevation: 2,
-      titleTextStyle: textTheme.titleLarge?.copyWith(
-        color: scheme.onSurface,
-      ),
+      titleTextStyle: textTheme.titleLarge?.copyWith(color: scheme.onSurface),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: 68,
@@ -110,17 +108,13 @@ ThemeData buildAppTheme(Brightness brightness) {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     dividerTheme: DividerThemeData(

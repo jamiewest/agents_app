@@ -21,7 +21,11 @@ class AppShell extends StatelessWidget {
   final StatefulNavigationShell shell;
 
   static const _destinations = [
-    (icon: Icons.chat_bubble_outline, selected: Icons.chat_bubble, label: 'Chats'),
+    (
+      icon: Icons.chat_bubble_outline,
+      selected: Icons.chat_bubble,
+      label: 'Chats',
+    ),
     (icon: Icons.task_alt_outlined, selected: Icons.task_alt, label: 'Tasks'),
     (
       icon: Icons.settings_outlined,
@@ -40,6 +44,10 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     body: AdaptiveLayout(
       transitionDuration: const Duration(milliseconds: 250),
+      // The default entrance/exit animations keep the ticker busy (they
+      // starve pumpAndSettle and add churn on every resize); breakpoint
+      // swaps are instant instead.
+      internalAnimations: false,
       primaryNavigation: SlotLayout(
         config: <Breakpoint, SlotLayoutConfig>{
           Breakpoints.medium: SlotLayout.from(

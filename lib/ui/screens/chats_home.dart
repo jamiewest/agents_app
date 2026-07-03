@@ -76,12 +76,28 @@ class _ChatsHomeState extends State<ChatsHome> {
     _loadAgents();
   }
 
+  bool _agentReloadScheduled = false;
+
   Future<void> _loadAgents() async {
     final agents = await _manager.agents.listAgents();
+    _agentReloadScheduled = false;
     if (!mounted) return;
     setState(() {
       _agentsById = {for (final agent in agents) agent.id: agent};
     });
+  }
+
+  /// Reloads agent names when the list mentions an agent we have not seen
+  /// — e.g. one added in Settings after this screen was first built.
+  void _ensureAgentsFor(List<Conversation> conversations) {
+    if (_agentReloadScheduled) return;
+    final unknown = conversations.any(
+      (conversation) => !_agentsById.containsKey(conversation.primaryAgentId),
+    );
+    if (unknown) {
+      _agentReloadScheduled = true;
+      Future<void>.microtask(_loadAgents);
+    }
   }
 
   Future<void> _startNewChat() async {
@@ -305,6 +321,7 @@ class _ChatsHomeState extends State<ChatsHome> {
           if (conversations == null) {
             return const Center(child: CircularProgressIndicator());
           }
+          _ensureAgentsFor(conversations);
           if (conversations.isEmpty && channels.isEmpty) {
             return _buildEmptyState();
           }

@@ -1,4 +1,5 @@
 import 'package:agents_app/data/task_scheduler_service.dart';
+import 'package:agents_app/data/theme_settings.dart';
 import 'package:agents_app/navigation/app_bootstrap.dart';
 import 'package:agents_app/navigation/app_router.dart';
 import 'package:agents_app/ui/screens/add_agent_wizard.dart';
@@ -27,7 +28,9 @@ const _agent = SavedAgentConfig(
 );
 
 ServiceProvider _buildServices() {
+  final kv = InMemoryKeyValueStore();
   final services = ServiceCollection()
+    ..addSingleton<ThemeSettings>((_) => ThemeSettings(kv))
     ..addRecordStore(recordStore: (_) => InMemoryRecordStore())
     ..addConfiguredAgents(
       keyValueStore: (_) => InMemoryKeyValueStore(),

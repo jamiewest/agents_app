@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/embedding_settings.dart';
+import '../../data/theme_settings.dart';
 
 /// The Settings destination: entry points into configuration surfaces.
 class SettingsHomeScreen extends StatelessWidget {
@@ -22,6 +23,21 @@ class SettingsHomeScreen extends StatelessWidget {
     appBar: AppBar(title: const Text('Settings')),
     body: ListView(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            'Appearance',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _AppearanceSelector(
+            settings: services.getRequiredService<ThemeSettings>(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Divider(),
         ListTile(
           leading: const Icon(Icons.smart_toy_outlined),
           title: const Text('Agents & providers'),
@@ -109,4 +125,36 @@ class SettingsHomeScreen extends StatelessWidget {
     if (selection == null) return;
     await settings.select(selection.$1);
   }
+}
+
+class _AppearanceSelector extends StatelessWidget {
+  const _AppearanceSelector({required this.settings});
+
+  final ThemeSettings settings;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: settings,
+    builder: (context, _) => SegmentedButton<ThemeMode>(
+      segments: const [
+        ButtonSegment(
+          value: ThemeMode.system,
+          icon: Icon(Icons.brightness_auto_outlined),
+          label: Text('System'),
+        ),
+        ButtonSegment(
+          value: ThemeMode.light,
+          icon: Icon(Icons.light_mode_outlined),
+          label: Text('Light'),
+        ),
+        ButtonSegment(
+          value: ThemeMode.dark,
+          icon: Icon(Icons.dark_mode_outlined),
+          label: Text('Dark'),
+        ),
+      ],
+      selected: {settings.mode},
+      onSelectionChanged: (selection) => settings.setMode(selection.single),
+    ),
+  );
 }

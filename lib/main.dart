@@ -947,7 +947,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  late final Future<AgentLlmProvider> _providerFuture;
+  late Future<AgentLlmProvider> _providerFuture;
   bool _initialized = false;
   AgentLlmProvider? _provider;
   ConversationStore? _conversations;
@@ -1501,14 +1501,13 @@ class _ChatScreenState extends State<ChatScreen> {
         future: _providerFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Could not start the agent.\n\n${snapshot.error}',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            return _AgentStartError(
+              error: snapshot.error!,
+              onRetry: () => setState(() {
+                _providerFuture = _createProvider(
+                  widget.services.getRequiredService<ConfiguredAgentFactory>(),
+                );
+              }),
             );
           }
           final provider = snapshot.data;
@@ -1534,6 +1533,70 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     ),
   );
+}
+
+/// Friendly failure state when an agent cannot start, with recovery
+/// actions instead of a dead end.
+class _AgentStartError extends StatelessWidget {
+  const _AgentStartError({required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 48,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Could not start this agent',
+                style: theme.textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$error',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => context.go('/settings/agents'),
+                    icon: const Icon(Icons.settings_outlined),
+                    label: const Text('Check configuration'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Toggles extended reasoning for the chat's model.
