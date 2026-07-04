@@ -140,7 +140,15 @@ class A2AHostService {
           .replaceAll(RegExp(r'^-+|-+$'), '');
       final path = '/agents/${slug.isEmpty ? config.id : slug}';
       final agent = await factory.createAgent(config);
-      final host = AIHostAgent(agent, InMemoryAgentSessionStore());
+      // Sessions are scoped per paired client so two peers talking to the
+      // same hosted agent never share conversation state.
+      final host = AIHostAgent(
+        agent,
+        IsolationKeyScopedAgentSessionStore(
+          InMemoryAgentSessionStore(),
+          _CallerIsolationKeyProvider(),
+        ),
+      );
       final handler = A2AAgentHandler(host, AgentRunMode.disallowBackground);
       final requestHandler = a2a.A2ADefaultRequestHandler(
         _cardFor(config, path),
@@ -241,6 +249,11 @@ class A2AHostService {
           !await _clients.verify(authorization.substring(scheme.length))) {
         return shelf.Response(401, body: 'Pairing required.');
       }
+      // The bearer's hash doubles as the caller's session isolation key;
+      // the raw bearer itself is never retained.
+      final callerKey = PairingCrypto.sha256Hex(
+        authorization.substring(scheme.length),
+      );
 
       if (request.method == 'GET' && path == '/agents') {
         return shelf.Response.ok(
@@ -274,7 +287,7 @@ class A2AHostService {
           );
         }
         if (request.method == 'POST' && path == hosted.path) {
-          return _handleRpc(hosted, await request.readAsString());
+          return _handleRpc(hosted, await request.readAsString(), callerKey);
         }
       }
 
@@ -314,9 +327,16 @@ class A2AHostService {
     );
   }
 
-  Future<shelf.Response> _handleRpc(HostedAgent hosted, String body) =>
+  Future<shelf.Response> _handleRpc(
+    HostedAgent hosted,
+    String body,
+    String callerKey,
+  ) =>
       // One inbound run at a time: peers queue instead of being bounced.
-      _runPool.withResource(() async {
+      // The caller key rides a zone value because the transport resolves
+      // sessions deep inside `handle` (and, for streaming, after this
+      // method has already returned its response).
+      _runPool.withResource(() => runZoned(() async {
         final result = await hosted._transport.handle(body);
         if (result is Function) {
           // Streaming: the transport returns a generator of JSON-RPC
@@ -352,5 +372,18 @@ class A2AHostService {
           jsonEncode((result as dynamic).toJson()),
           headers: const {'content-type': 'application/json'},
         );
-      });
+      }, zoneValues: {_CallerIsolationKeyProvider.zoneKey: callerKey}));
+}
+
+/// Resolves the session isolation key from the zone value stamped by
+/// [A2AHostService._handleRpc], so each paired client gets its own session
+/// namespace in the hosted agent's session store.
+class _CallerIsolationKeyProvider extends SessionIsolationKeyProvider {
+  /// The zone key carrying the caller's bearer hash during RPC handling.
+  static const Symbol zoneKey = #a2aCallerIsolationKey;
+
+  @override
+  Future<String?> getSessionIsolationKey({
+    CancellationToken? cancellationToken,
+  }) async => Zone.current[zoneKey] as String?;
 }

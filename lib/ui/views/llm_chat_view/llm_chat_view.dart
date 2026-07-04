@@ -16,11 +16,13 @@ import '../../platform_helper/platform_helper.dart' as ph;
 import '../../providers/interface/attachments.dart';
 import '../../providers/interface/chat_message.dart';
 import '../../providers/interface/llm_provider.dart';
+import '../../providers/interface/tool_approval.dart';
 import '../../strings/llm_chat_view_strings.dart';
 import '../../styles/llm_chat_view_style.dart';
 import '../chat_history_view.dart';
 import '../chat_input/chat_input.dart';
 import '../response_builder.dart';
+import '../tool_approval_view.dart';
 import 'llm_response.dart';
 
 /// A widget that displays a chat interface for interacting with an LLM
@@ -198,6 +200,11 @@ class _LlmChatViewState extends State<LlmChatView>
       context,
       widget.viewModel.style,
     );
+    final provider = widget.viewModel.provider;
+    final pendingApproval =
+        provider is ToolApprovalSupport && _pendingPromptResponse == null
+        ? provider.pendingToolApproval
+        : null;
     return ListenableBuilder(
       listenable: widget.viewModel.provider,
       builder: (context, child) => ChatViewModelProvider(
@@ -227,6 +234,12 @@ class _LlmChatViewState extends State<LlmChatView>
                     ],
                   ),
                 ),
+                if (pendingApproval != null)
+                  ToolApprovalView(
+                    request: pendingApproval,
+                    onDecision: _onToolApprovalDecision,
+                    strings: widget.strings,
+                  ),
                 SafeArea(
                   child: ChatInput(
                     initialMessage: _initialMessage,
@@ -295,6 +308,22 @@ class _LlmChatViewState extends State<LlmChatView>
   }
 
   void _onCancelMessage() => _pendingPromptResponse?.cancel();
+
+  void _onToolApprovalDecision(ToolApprovalDecision decision) {
+    final provider = widget.viewModel.provider;
+    if (provider is! ToolApprovalSupport) return;
+
+    _initialMessage = null;
+    _associatedResponse = null;
+    _pendingPromptResponse = LlmResponse(
+      stream: provider.sendToolApprovalStream(decision),
+      onUpdate: (_) {
+        if (mounted) setState(() {});
+      },
+      onDone: _onPromptDone,
+    );
+    setState(() {});
+  }
 
   void _onEditMessage(ChatMessage message) {
     assert(_pendingPromptResponse == null);

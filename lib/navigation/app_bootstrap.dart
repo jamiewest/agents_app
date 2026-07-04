@@ -8,8 +8,10 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import '../data/demo_seed.dart';
 import '../data/embedding_settings.dart';
 import '../data/legacy_chat_migration.dart';
+import '../data/local_model_store.dart';
 import '../data/theme_settings.dart';
 import '../data/thinking_settings.dart';
+import '../ui/views/configured_agents/configured_agents.dart';
 
 /// One-time application startup work: legacy data migration and optional
 /// compile-time seeding, plus the "is the app usable yet" check that drives
@@ -37,6 +39,37 @@ class AppBootstrap {
     await _services.getService<EmbeddingSettings>()?.reload();
     await _services.getService<ThinkingSettings>()?.load();
     await _services.getService<ThemeSettings>()?.load();
+    await _restoreLocalModelFiles();
+  }
+
+  /// Re-registers picked local GGUF files that were persisted to local
+  /// storage in a previous session, so neither a web page reload nor a
+  /// sandboxed native restart (where the originally picked path is no longer
+  /// readable) requires the user to reselect them.
+  Future<void> _restoreLocalModelFiles() async {
+    if (!localModelPersistenceSupported) return;
+    final manager = _services.getRequiredService<ConfiguredAgentsManager>();
+    final fileModelIds = <String>{};
+    for (final model in await manager.sources.listModels()) {
+      if (model.settings['llama.modelSource'] != 'file') continue;
+      fileModelIds.add(model.id);
+      for (final kind in LlamaArtifactKind.values) {
+        // A live selection made this session always wins.
+        if (selectedLlamaModelFilePathFor(model.id, kind: kind) != null) {
+          continue;
+        }
+        final location = await restoreLocalModelLocation(
+          modelId: model.id,
+          kindKey: kind.name,
+        );
+        if (location != null) {
+          registerSelectedLlamaModelFile(model.id, location, kind: kind);
+        }
+      }
+    }
+    // Reclaim storage from models deleted (or picked-then-cancelled) in a way
+    // that skipped the normal delete path.
+    await pruneLocalModelFiles(fileModelIds);
   }
 
   /// Whether at least one saved agent can actually run: its model and

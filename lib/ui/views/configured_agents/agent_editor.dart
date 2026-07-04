@@ -299,6 +299,14 @@ class _AgentEditorState extends State<AgentEditor> {
                   onChanged: (value) =>
                       _updateAccess(_access.copyWith(enableFileAccess: value)),
                 ),
+                if (_access.enableFileAccess)
+                  _AccessSwitchConfig(
+                    label: strings.fileWriteToolsLabel,
+                    value: _access.enableFileWriteTools,
+                    onChanged: (value) => _updateAccess(
+                      _access.copyWith(enableFileWriteTools: value),
+                    ),
+                  ),
                 _AccessSwitchConfig(
                   label: strings.todoListAccessLabel,
                   value: _access.enableTodoList,
@@ -319,6 +327,8 @@ class _AgentEditorState extends State<AgentEditor> {
                 ),
               ],
             ),
+            if (_access.enableFileAccess)
+              _buildFileApprovalModeField(style, strings),
             if (_delegateCandidates.isNotEmpty)
               _buildDelegationSection(style, strings),
           ],
@@ -378,6 +388,46 @@ class _AgentEditorState extends State<AgentEditor> {
               hintText: strings.delegationGuidanceHint,
             ),
         ],
+      ],
+    ),
+  );
+
+  Widget _buildFileApprovalModeField(
+    ConfiguredAgentsStyle style,
+    ConfiguredAgentsStrings strings,
+  ) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(strings.fileToolApprovalLabel, style: style.labelTextStyle),
+        const SizedBox(height: 6),
+        DropdownButton<FileToolApprovalMode>(
+          value: _access.fileToolApprovalMode,
+          isExpanded: true,
+          onChanged: (mode) {
+            if (mode != null) {
+              _updateAccess(_access.copyWith(fileToolApprovalMode: mode));
+            }
+          },
+          items: [
+            for (final mode in FileToolApprovalMode.values)
+              DropdownMenuItem(
+                value: mode,
+                child: Text(
+                  switch (mode) {
+                    FileToolApprovalMode.alwaysAsk =>
+                      strings.fileToolApprovalAlwaysAsk,
+                    FileToolApprovalMode.autoApproveReadOnly =>
+                      strings.fileToolApprovalAutoReadOnly,
+                    FileToolApprovalMode.autoApproveAll =>
+                      strings.fileToolApprovalAutoAll,
+                  },
+                  style: style.bodyTextStyle,
+                ),
+              ),
+          ],
+        ),
       ],
     ),
   );

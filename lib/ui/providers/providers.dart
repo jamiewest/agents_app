@@ -8,4 +8,5 @@ export 'interface/attachments.dart';
 export 'interface/chat_message.dart';
 export 'interface/llm_provider.dart';
 export 'interface/message_origin.dart';
+export 'interface/tool_approval.dart';
 export 'token_smoother.dart';

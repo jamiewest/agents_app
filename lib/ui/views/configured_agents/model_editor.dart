@@ -10,6 +10,7 @@ import 'package:file_selector/file_selector.dart' as file_selector;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../data/local_model_store.dart';
 import '../../strings/configured_agents_strings.dart';
 import '../../styles/configured_agents_style.dart';
 import 'configured_agents_form_field.dart';
@@ -30,6 +31,9 @@ class LlamaModelFileSelection {
 
 /// Opens a GGUF model file picker.
 typedef LlamaModelFilePicker = Future<LlamaModelFileSelection?> Function();
+
+/// Reads GGUF metadata from a file path or URL for format detection.
+typedef GgufMetadataSniffer = Future<GgufMetadata?> Function(String source);
 
 /// The role a locally selected GGUF file plays for a local llama model.
 enum LlamaArtifactKind {
@@ -106,6 +110,7 @@ class ModelEditor extends StatefulWidget {
     required this.onCancel,
     this.initial,
     this.pickLlamaModelFile = pickDefaultLlamaModelFile,
+    this.sniffGguf = sniffGgufMetadata,
     super.key,
   });
 
@@ -130,6 +135,9 @@ class ModelEditor extends StatefulWidget {
   /// Selects a local GGUF model file for local llama models.
   final LlamaModelFilePicker pickLlamaModelFile;
 
+  /// Reads GGUF metadata for the detection hint; overridable in tests.
+  final GgufMetadataSniffer sniffGguf;
+
   @override
   State<ModelEditor> createState() => _ModelEditorState();
 }
@@ -152,6 +160,11 @@ class _ModelEditorState extends State<ModelEditor> {
   String? _llamaDraftPath;
   String? _llamaDraftFileName;
 
+  /// Artifacts picked during this editor session, whose live `blob:` URLs can
+  /// still be streamed into persistent storage (web). Only these are persisted
+  /// on save; an unchanged file already lives in storage from before.
+  final Set<LlamaArtifactKind> _pickedThisSession = <LlamaArtifactKind>{};
+
   /// Selected chat format; empty means auto-detect at runtime.
   late String _chatFormat;
 
@@ -165,6 +178,8 @@ class _ModelEditorState extends State<ModelEditor> {
   /// What name-based (or GGUF) detection currently suggests, for the
   /// "Auto" helper text.
   String? _detectedFormat;
+  Timer? _urlSniffDebounce;
+  int _sniffTicket = 0;
 
   @override
   void initState() {
@@ -182,7 +197,10 @@ class _ModelEditorState extends State<ModelEditor> {
       text: initial?.settings['llama.draftModelUrl'] ?? '',
     );
     _llamaContextSize = TextEditingController(
-      text: initial?.settings['llama.contextSize'] ?? '4096',
+      // 8192 is the smallest context that comfortably fits the harness system
+      // prompt plus tool declarations (~5k tokens) with room to generate; the
+      // old 4096 default made that prompt overflow and stall prefill.
+      text: initial?.settings['llama.contextSize'] ?? '8192',
     );
     _llamaGpuLayers = TextEditingController(
       text: initial?.settings['llama.gpuLayers'] ?? '999',
@@ -216,7 +234,43 @@ class _ModelEditorState extends State<ModelEditor> {
     _llamaDraftFileName = settings['llama.draftModelFileName'];
     _modelId.addListener(_refreshDetection);
     _llamaModelUrl.addListener(_refreshDetection);
+    _llamaModelUrl.addListener(_scheduleUrlSniff);
     _refreshDetection();
+    _sniffInitialSelection();
+  }
+
+  /// Sniffs the model this editor opened with, so the Auto hint reflects
+  /// the actual GGUF metadata and not just its name.
+  void _sniffInitialSelection() {
+    if (_selectedSource.providerType != ProviderType.localLlama) return;
+    if (_llamaModelSource == _LlamaModelSource.file) {
+      final source =
+          _llamaModelPath ??
+          (widget.initial == null
+              ? null
+              : selectedLlamaModelFilePathFor(widget.initial!.id));
+      if (source != null && source.trim().isNotEmpty) {
+        unawaited(_sniffGgufFormat(source));
+      }
+    } else if (_llamaModelUrl.text.trim().isNotEmpty) {
+      _scheduleUrlSniff();
+    }
+  }
+
+  /// Debounced GGUF sniff of the model URL, so typing does not fire a
+  /// ranged request per keystroke.
+  void _scheduleUrlSniff() {
+    _urlSniffDebounce?.cancel();
+    if (_selectedSource.providerType != ProviderType.localLlama) return;
+    if (_llamaModelSource != _LlamaModelSource.url) return;
+    final text = _llamaModelUrl.text.trim();
+    final uri = Uri.tryParse(text);
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
+      return;
+    }
+    _urlSniffDebounce = Timer(const Duration(milliseconds: 800), () {
+      unawaited(_sniffGgufFormat(text));
+    });
   }
 
   /// Normalizes a stored format name: unknown or empty becomes auto ('').
@@ -240,11 +294,16 @@ class _ModelEditorState extends State<ModelEditor> {
     }
   }
 
-  /// Sniffs a picked GGUF file's metadata for a higher-confidence
-  /// detection than the file name; no-op on the web.
-  Future<void> _sniffGgufFormat(String path) async {
-    final metadata = await readGgufMetadata(path);
-    if (metadata == null || !mounted) return;
+  /// Sniffs GGUF metadata (file path or URL) for a higher-confidence
+  /// detection than the name heuristic.
+  ///
+  /// The ticket guards against a slow older sniff (e.g. a ranged fetch of
+  /// a previous URL) landing after a newer selection already updated the
+  /// hint.
+  Future<void> _sniffGgufFormat(String source) async {
+    final ticket = ++_sniffTicket;
+    final metadata = await widget.sniffGguf(source);
+    if (metadata == null || !mounted || ticket != _sniffTicket) return;
     final detected = chatFormatFromGgufMetadata(metadata);
     if (detected != null && detected != _detectedFormat) {
       setState(() => _detectedFormat = detected);
@@ -253,6 +312,7 @@ class _ModelEditorState extends State<ModelEditor> {
 
   @override
   void dispose() {
+    _urlSniffDebounce?.cancel();
     _modelId.dispose();
     _displayName.dispose();
     _llamaModelUrl.dispose();
@@ -263,7 +323,7 @@ class _ModelEditorState extends State<ModelEditor> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final displayName = _displayName.text.trim();
     final isLocal = _selectedSource.providerType == ProviderType.localLlama;
@@ -273,14 +333,58 @@ class _ModelEditorState extends State<ModelEditor> {
       ProviderType.openAiCompatible => _openAiCompatibleSettings(),
       _ => widget.initial?.settings ?? const <String, String>{},
     };
-    widget.onSubmit(
-      ModelConfig(
-        id: id,
-        sourceId: _sourceId,
-        modelId: isLocal ? widget.initial?.modelId ?? id : _modelId.text.trim(),
-        displayName: displayName.isEmpty ? null : displayName,
-        settings: settings,
-      ),
+    final model = ModelConfig(
+      id: id,
+      sourceId: _sourceId,
+      modelId: isLocal ? widget.initial?.modelId ?? id : _modelId.text.trim(),
+      displayName: displayName.isEmpty ? null : displayName,
+      settings: settings,
+    );
+
+    // Copy freshly picked files into persistent storage before finishing —
+    // OPFS on web, the app container on native — so a reload/restart can
+    // reopen them. A no-op when nothing was (re)picked this session.
+    if (isLocal) {
+      final persists = _persistPickedFiles(id);
+      if (persists.isNotEmpty) await _awaitPersist(persists);
+    }
+    widget.onSubmit(model);
+  }
+
+  /// Starts copying any artifacts picked this session into persistent
+  /// storage and returns the in-flight writes. Empty when nothing was
+  /// (re)picked (an unchanged file is already stored).
+  List<Future<void>> _persistPickedFiles(String modelId) {
+    if (!localModelPersistenceSupported) return const <Future<void>>[];
+    final artifacts = <(LlamaArtifactKind, String?)>[
+      (LlamaArtifactKind.model, _llamaModelPath),
+      (LlamaArtifactKind.mmproj, _llamaMmprojPath),
+      (LlamaArtifactKind.draft, _llamaDraftPath),
+    ];
+    return <Future<void>>[
+      for (final (kind, path) in artifacts)
+        if (_pickedThisSession.contains(kind) &&
+            (path?.trim().isNotEmpty ?? false))
+          persistLocalModelFile(
+            modelId: modelId,
+            kindKey: kind.name,
+            sourcePath: path!.trim(),
+          ),
+    ];
+  }
+
+  /// Shows a blocking "saving for offline use" dialog until [persists] finish.
+  ///
+  /// The dialog pops itself when the writes complete: popping from here would
+  /// race a fast persist (native copies can fail-fast before the dialog route
+  /// is even pushed) and pop the editor instead.
+  Future<void> _awaitPersist(List<Future<void>> persists) async {
+    if (!mounted) return;
+    final done = Future.wait(persists);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _SavingForOfflineDialog(done: done),
     );
   }
 
@@ -393,6 +497,7 @@ class _ModelEditorState extends State<ModelEditor> {
     final path = await _chooseLlamaFile((selection) {
       _llamaModelPath = selection.path;
       _llamaModelFileName = selection.name;
+      _pickedThisSession.add(LlamaArtifactKind.model);
     });
     if (path != null) {
       _refreshDetection();
@@ -404,11 +509,13 @@ class _ModelEditorState extends State<ModelEditor> {
   Future<String?> _chooseLlamaMmprojFile() => _chooseLlamaFile((selection) {
     _llamaMmprojPath = selection.path;
     _llamaMmprojFileName = selection.name;
+    _pickedThisSession.add(LlamaArtifactKind.mmproj);
   });
 
   Future<String?> _chooseLlamaDraftFile() => _chooseLlamaFile((selection) {
     _llamaDraftPath = selection.path;
     _llamaDraftFileName = selection.name;
+    _pickedThisSession.add(LlamaArtifactKind.draft);
   });
 
   void _clearLlamaMmprojFile() => setState(() {
@@ -684,7 +791,7 @@ class _ModelEditorState extends State<ModelEditor> {
             style: style,
             strings: strings,
             onCancel: widget.onCancel,
-            onSave: _submit,
+            onSave: () => unawaited(_submit()),
           ),
         ],
       ),
@@ -782,4 +889,57 @@ class _LlamaModelFileField extends StatelessWidget {
         ? 'No file selected'
         : _filenameFromPath(selectedPath);
   }
+}
+
+/// Blocking dialog shown while a picked GGUF is copied into persistent
+/// storage; it dismisses itself when [done] completes.
+///
+/// It cannot stop a browser reload or an app quit, but it tells the user not
+/// to trigger one until the copy finishes, which is the point where the file
+/// becomes restart-safe.
+class _SavingForOfflineDialog extends StatefulWidget {
+  const _SavingForOfflineDialog({required this.done});
+
+  /// The in-flight persistence writes this dialog is waiting on.
+  final Future<void> done;
+
+  @override
+  State<_SavingForOfflineDialog> createState() =>
+      _SavingForOfflineDialogState();
+}
+
+class _SavingForOfflineDialogState extends State<_SavingForOfflineDialog> {
+  @override
+  void initState() {
+    super.initState();
+    widget.done.whenComplete(() {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: false,
+    child: AlertDialog(
+      content: Row(
+        children: [
+          const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 3),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              kIsWeb
+                  ? 'Saving model for offline use…\n'
+                        'Don’t reload the page until this finishes.'
+                  : 'Copying model into the app’s storage…\n'
+                        'Don’t quit the app until this finishes.',
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }

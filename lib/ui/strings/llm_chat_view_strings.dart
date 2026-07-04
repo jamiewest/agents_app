@@ -149,6 +149,19 @@ class LlmChatViewStrings {
   /// Message shown when no search results are found.
   final String noResultsFound;
 
+  /// Title for the tool approval card.
+  final String toolApprovalTitle;
+
+  /// Label for approving a pending tool call once.
+  final String toolApprovalAllowOnce;
+
+  /// Label for approving a pending tool call and all future calls to the
+  /// same tool.
+  final String toolApprovalAlwaysAllow;
+
+  /// Label for denying a pending tool call.
+  final String toolApprovalDeny;
+
   /// Creates a new instance of [LlmChatViewStrings] with the given strings.
   ///
   /// All parameters are optional and will default to the provided values.
@@ -204,6 +217,12 @@ class LlmChatViewStrings {
     this.noMessagesYet = 'No messages yet',
     this.tapToRetry = 'Tap to retry',
     this.noResultsFound = 'No results found',
+
+    // Tool approval
+    this.toolApprovalTitle = 'The agent wants to use a tool',
+    this.toolApprovalAllowOnce = 'Allow once',
+    this.toolApprovalAlwaysAllow = 'Always allow',
+    this.toolApprovalDeny = 'Deny',
   });
 
   /// Creates a copy of this [LlmChatViewStrings] with the given fields replaced
@@ -258,6 +277,10 @@ class LlmChatViewStrings {
     String? yesterday,
     String? lastWeek,
     String? older,
+    String? toolApprovalTitle,
+    String? toolApprovalAllowOnce,
+    String? toolApprovalAlwaysAllow,
+    String? toolApprovalDeny,
   }) {
     return LlmChatViewStrings(
       addAttachment: addAttachment ?? this.addAttachment,
@@ -309,6 +332,12 @@ class LlmChatViewStrings {
       search: search ?? this.search,
       clear: clear ?? this.clear,
       noResultsFound: noResultsFound ?? this.noResultsFound,
+      toolApprovalTitle: toolApprovalTitle ?? this.toolApprovalTitle,
+      toolApprovalAllowOnce:
+          toolApprovalAllowOnce ?? this.toolApprovalAllowOnce,
+      toolApprovalAlwaysAllow:
+          toolApprovalAlwaysAllow ?? this.toolApprovalAlwaysAllow,
+      toolApprovalDeny: toolApprovalDeny ?? this.toolApprovalDeny,
     );
   }
 

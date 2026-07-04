@@ -1,3 +1,6 @@
+import 'dart:io' as io;
+
+import 'package:agents_app/data/local_model_store_io.dart';
 import 'package:agents_app/data/task_scheduler_service.dart';
 import 'package:agents_app/data/theme_settings.dart';
 import 'package:agents_app/navigation/app_bootstrap.dart';
@@ -62,6 +65,19 @@ Widget _app(ServiceProvider services, {String initialLocation = '/chats'}) =>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  // Root the local model store in a temp directory: bootstrap's restore pass
+  // would otherwise call path_provider, whose platform channel never answers
+  // in widget tests.
+  late io.Directory storeRoot;
+  setUp(() {
+    storeRoot = io.Directory.systemTemp.createTempSync('app_router_test');
+    debugLocalModelStoreRoot = storeRoot;
+  });
+  tearDown(() {
+    debugLocalModelStoreRoot = null;
+    storeRoot.deleteSync(recursive: true);
+  });
 
   group('app router', () {
     testWidgets('redirects to onboarding when no usable agent exists', (

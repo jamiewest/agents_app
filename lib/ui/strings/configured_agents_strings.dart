@@ -42,6 +42,11 @@ class ConfiguredAgentsStrings {
     this.agentContextLabel = 'Context',
     this.fileMemoryAccessLabel = 'File memory',
     this.fileAccessLabel = 'File access',
+    this.fileWriteToolsLabel = 'File write tools',
+    this.fileToolApprovalLabel = 'File tool approvals',
+    this.fileToolApprovalAlwaysAsk = 'Always ask',
+    this.fileToolApprovalAutoReadOnly = 'Auto-approve read-only',
+    this.fileToolApprovalAutoAll = 'Auto-approve all',
     this.webSearchAccessLabel = 'Web search',
     this.todoListAccessLabel = 'Todo list',
     this.agentModeAccessLabel = 'Agent mode',
@@ -156,6 +161,21 @@ class ConfiguredAgentsStrings {
 
   /// Label for file-access context.
   final String fileAccessLabel;
+
+  /// Label for the file write tools toggle.
+  final String fileWriteToolsLabel;
+
+  /// Label for the file tool approval mode picker.
+  final String fileToolApprovalLabel;
+
+  /// Approval mode label: prompt for every file tool call.
+  final String fileToolApprovalAlwaysAsk;
+
+  /// Approval mode label: auto-approve read-only file tools.
+  final String fileToolApprovalAutoReadOnly;
+
+  /// Approval mode label: auto-approve all file tools.
+  final String fileToolApprovalAutoAll;
 
   /// Label for hosted web-search tool access.
   final String webSearchAccessLabel;
@@ -282,6 +302,11 @@ class ConfiguredAgentsStrings {
     String? agentContextLabel,
     String? fileMemoryAccessLabel,
     String? fileAccessLabel,
+    String? fileWriteToolsLabel,
+    String? fileToolApprovalLabel,
+    String? fileToolApprovalAlwaysAsk,
+    String? fileToolApprovalAutoReadOnly,
+    String? fileToolApprovalAutoAll,
     String? webSearchAccessLabel,
     String? todoListAccessLabel,
     String? agentModeAccessLabel,
@@ -342,6 +367,15 @@ class ConfiguredAgentsStrings {
     agentContextLabel: agentContextLabel ?? this.agentContextLabel,
     fileMemoryAccessLabel: fileMemoryAccessLabel ?? this.fileMemoryAccessLabel,
     fileAccessLabel: fileAccessLabel ?? this.fileAccessLabel,
+    fileWriteToolsLabel: fileWriteToolsLabel ?? this.fileWriteToolsLabel,
+    fileToolApprovalLabel:
+        fileToolApprovalLabel ?? this.fileToolApprovalLabel,
+    fileToolApprovalAlwaysAsk:
+        fileToolApprovalAlwaysAsk ?? this.fileToolApprovalAlwaysAsk,
+    fileToolApprovalAutoReadOnly:
+        fileToolApprovalAutoReadOnly ?? this.fileToolApprovalAutoReadOnly,
+    fileToolApprovalAutoAll:
+        fileToolApprovalAutoAll ?? this.fileToolApprovalAutoAll,
     webSearchAccessLabel: webSearchAccessLabel ?? this.webSearchAccessLabel,
     todoListAccessLabel: todoListAccessLabel ?? this.todoListAccessLabel,
     agentModeAccessLabel: agentModeAccessLabel ?? this.agentModeAccessLabel,

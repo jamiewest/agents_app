@@ -1,6 +1,7 @@
 import 'package:agents_app/data/local_model_presets.dart';
 import 'package:agents_app/data/thinking_settings.dart';
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:agents_llama/agents_llama.dart' show supportedChatFormatNames;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -38,7 +39,46 @@ void main() {
           greaterThanOrEqualTo(4096),
         );
         expect(model.capabilities.minMemoryMb, greaterThanOrEqualTo(4096));
+
+        // Vision requires a projector, and any explicit format must be a
+        // name the runtime can resolve.
+        if (preset.supportsVision) {
+          expect(preset.mmprojUrl, isNotNull, reason: preset.name);
+        }
+        final format = preset.chatFormat;
+        if (format != null) {
+          expect(supportedChatFormatNames, contains(format));
+        }
       }
+    });
+
+    test('multi-artifact presets keep model, mmproj, and MTP paired', () {
+      String repoOf(String url) => url.split('/resolve/').first.toLowerCase();
+
+      final gemma = localModelPresets.singleWhere(
+        (p) => p.name == 'Gemma 4 E4B (Mac)',
+      );
+      final config = gemma.toModelConfig(id: 'm', sourceId: 's');
+      // All three artifacts must come from the same (E4B) repo: E2B's
+      // mmproj projects to a different embedding width and its drafter
+      // reads a different hidden state — mixing repos breaks at load.
+      expect(repoOf(gemma.mmprojUrl!), repoOf(gemma.url));
+      expect(repoOf(gemma.draftModelUrl!), repoOf(gemma.url));
+      expect(gemma.url.toLowerCase(), contains('e4b'));
+      expect(gemma.draftModelUrl!.toLowerCase(), contains('e4b'));
+      expect(config.settings[chatFormatSetting], 'gemma');
+      expect(config.capabilities.supportsVision, isTrue);
+
+      final lfm = localModelPresets.singleWhere(
+        (p) => p.name == 'LFM2.5 VL 1.6B (Mac)',
+      );
+      final lfmConfig = lfm.toModelConfig(id: 'm', sourceId: 's');
+      expect(repoOf(lfm.mmprojUrl!), repoOf(lfm.url));
+      // LFM2.5 must pin the plain-JSON tool dialect, never fall back to
+      // the tagged LFM2 style.
+      expect(lfmConfig.settings[chatFormatSetting], 'lfm2.5-vl');
+      expect(lfm.draftModelUrl, isNull);
+      expect(lfmConfig.capabilities.supportsVision, isTrue);
     });
 
     test('thinking capability is set only where advertised', () {

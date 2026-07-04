@@ -5,6 +5,8 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../data/local_model_store.dart';
+
 /// Mutable view-model for the configured-agents UI.
 ///
 /// Loads sources, models, and agents from a [ConfiguredAgentsManager], exposes
@@ -63,8 +65,13 @@ class ConfiguredAgentsController extends ChangeNotifier {
       _run(() => manager.saveModel(model));
 
   /// Deletes the model [id], optionally cascading, then reloads.
-  Future<String?> deleteModel(String id, {bool cascade = false}) =>
-      _run(() => manager.deleteModel(id, cascade: cascade));
+  ///
+  /// Also removes any browser-persisted local GGUF files for the model so a
+  /// deleted local model does not leave gigabytes stranded in storage.
+  Future<String?> deleteModel(String id, {bool cascade = false}) => _run(() async {
+    await manager.deleteModel(id, cascade: cascade);
+    await deleteLocalModelFiles(id);
+  });
 
   /// Saves [agent] then reloads.
   Future<String?> saveAgent(SavedAgentConfig agent) =>

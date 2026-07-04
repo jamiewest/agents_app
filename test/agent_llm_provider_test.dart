@@ -166,6 +166,91 @@ void main() {
       expect(provider.history.single.text, 'hello');
     });
 
+    group('tool approvals', () {
+      test('surfaces a pending approval yielded by the stream', () async {
+        final agent = _FakeAgent(
+          updates: [_approvalUpdate('r1', 'file_access_write', {'path': 'a'})],
+        );
+        final provider = AgentLlmProvider(agent: agent);
+
+        await provider.sendMessageStream('write it').toList();
+
+        final pending = provider.pendingToolApproval;
+        expect(pending, isNotNull);
+        expect(pending!.toolName, 'file_access_write');
+        expect(pending.arguments, {'path': 'a'});
+      });
+
+      test('allow once responds approved and continues the bubble', () async {
+        final agent = _FakeAgent(
+          runs: [
+            [_approvalUpdate('r1', 'Search', null)],
+            [_textUpdate('found it')],
+          ],
+        );
+        final provider = AgentLlmProvider(agent: agent);
+        await provider.sendMessageStream('go').toList();
+
+        await provider
+            .sendToolApprovalStream(ToolApprovalDecision.allowOnce)
+            .toList();
+
+        final response =
+            agent.capturedMessages.single.contents.single
+                as ai.ToolApprovalResponseContent;
+        expect(response.requestId, 'r1');
+        expect(response.approved, isTrue);
+        expect(provider.pendingToolApproval, isNull);
+        expect(provider.history, hasLength(2));
+        expect(provider.history.last.origin, MessageOrigin.llm);
+        expect(provider.history.last.text, 'found it');
+      });
+
+      test('always allow wraps the response for a standing rule', () async {
+        final agent = _FakeAgent(
+          runs: [
+            [_approvalUpdate('r1', 'Search', null)],
+            [_textUpdate('done')],
+          ],
+        );
+        final provider = AgentLlmProvider(agent: agent);
+        await provider.sendMessageStream('go').toList();
+
+        await provider
+            .sendToolApprovalStream(ToolApprovalDecision.alwaysAllow)
+            .toList();
+
+        final content =
+            agent.capturedMessages.single.contents.single
+                as AlwaysApproveToolApprovalResponseContent;
+        expect(content.alwaysApproveTool, isTrue);
+        expect(content.alwaysApproveToolWithArguments, isFalse);
+        expect(content.innerResponse.approved, isTrue);
+      });
+
+      test('deny responds unapproved with a reason', () async {
+        final agent = _FakeAgent(
+          runs: [
+            [_approvalUpdate('r1', 'Search', null)],
+            [_textUpdate('understood')],
+          ],
+        );
+        final provider = AgentLlmProvider(agent: agent);
+        await provider.sendMessageStream('go').toList();
+
+        await provider
+            .sendToolApprovalStream(ToolApprovalDecision.deny)
+            .toList();
+
+        final response =
+            agent.capturedMessages.single.contents.single
+                as ai.ToolApprovalResponseContent;
+        expect(response.approved, isFalse);
+        expect(response.reason, isNotEmpty);
+        expect(provider.pendingToolApproval, isNull);
+      });
+    });
+
     test('uses the provided session and run options', () async {
       final session = _FakeSession();
       final options = AgentRunOptions();
@@ -187,11 +272,46 @@ void main() {
 AgentResponseUpdate _textUpdate(String text) =>
     AgentResponseUpdate(role: ai.ChatRole.assistant, content: text);
 
+AgentResponseUpdate _approvalUpdate(
+  String requestId,
+  String toolName,
+  Map<String, Object?>? arguments,
+) => AgentResponseUpdate(
+  role: ai.ChatRole.assistant,
+  contents: [
+    ai.ToolApprovalRequestContent(
+      requestId: requestId,
+      toolCall: _FunctionToolCall(
+        callId: 'call-$requestId',
+        name: toolName,
+        arguments: arguments,
+      ),
+    ),
+  ],
+);
+
+class _FunctionToolCall extends ai.ToolCallContent
+    implements ai.FunctionCallContent {
+  _FunctionToolCall({required super.callId, required this.name, this.arguments});
+
+  @override
+  final String name;
+
+  @override
+  final Map<String, Object?>? arguments;
+
+  @override
+  Exception? exception;
+}
+
 class _FakeAgent extends AIAgent {
-  _FakeAgent({List<AgentResponseUpdate>? updates, this.error})
+  _FakeAgent({List<AgentResponseUpdate>? updates, this.runs, this.error})
     : updates = updates ?? const [];
 
   final List<AgentResponseUpdate> updates;
+
+  /// When set, each run consumes the next update list instead of [updates].
+  final List<List<AgentResponseUpdate>>? runs;
   final Object? error;
   List<ai.ChatMessage> capturedMessages = [];
   AgentSession? capturedSession;
@@ -233,7 +353,11 @@ class _FakeAgent extends AIAgent {
     if (error != null) {
       throw error;
     }
-    for (final update in updates) {
+    final runs = this.runs;
+    final effectiveUpdates = runs != null && runs.isNotEmpty
+        ? runs.removeAt(0)
+        : updates;
+    for (final update in effectiveUpdates) {
       yield update;
     }
   }

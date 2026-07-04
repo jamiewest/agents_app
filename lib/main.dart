@@ -205,6 +205,40 @@ ai.ChatClient _createLocalLlamaClient(
   final runtime = llama.createLlamaRuntime();
   llama.LlamaSession? loaded;
 
+  // Format chosen from the GGUF's own metadata during load. The embedded
+  // chat template is what the model was actually trained on, so it beats
+  // the file-name guess baked into the spec; an explicit chat.format
+  // setting still beats both.
+  llama.ChatFormat? ggufFormat;
+  final explicitFormat =
+      (model.settings[chatFormatSetting]?.trim().isNotEmpty ?? false) ||
+      (model.settings[legacyLlamaFormatSetting]?.trim().isNotEmpty ?? false);
+
+  Future<void> resolveFormatFromGguf(String modelSource) async {
+    if (explicitFormat || ggufFormat != null) return;
+    final metadata = await sniffGgufMetadata(modelSource);
+    if (metadata == null) return;
+    final detected = chatFormatFromGgufMetadata(metadata);
+    final resolved = detected == null
+        ? null
+        : llama.resolveChatFormat(detected);
+    if (resolved == null) {
+      developer.log(
+        'GGUF metadata gave no usable chat format for $modelSource '
+        '(architecture: ${metadata.architecture}, name: ${metadata.name}); '
+        'keeping the name-based guess.',
+        name: 'local_llama',
+      );
+      return;
+    }
+    ggufFormat = resolved;
+    developer.log(
+      'Chat format "$detected" resolved from GGUF metadata for '
+      '${metadata.name ?? modelSource}.',
+      name: 'local_llama',
+    );
+  }
+
   Future<llama.LlamaSession> sessionProvider() async {
     final current = loaded;
     if (current != null) return current;
@@ -219,6 +253,7 @@ ai.ChatClient _createLocalLlamaClient(
             message: 'Loading selected local model...',
           ),
         );
+        await resolveFormatFromGguf(selectedLocalPath);
         loaded = await runtime.loadModel(
           spec,
           localPath: selectedLocalPath,
@@ -235,6 +270,7 @@ ai.ChatClient _createLocalLlamaClient(
                 : 'Loading local model from browser cache...',
           ),
         );
+        await resolveFormatFromGguf(location.modelUrl.toString());
         loaded = await runtime.loadModel(
           spec,
           onProgress: (progress) {
@@ -257,6 +293,7 @@ ai.ChatClient _createLocalLlamaClient(
             message: 'Loading local model...',
           ),
         );
+        await resolveFormatFromGguf(paths.modelPath);
         loaded = await runtime.loadModel(
           spec,
           localPath: paths.modelPath,
@@ -266,9 +303,14 @@ ai.ChatClient _createLocalLlamaClient(
       }
       _localLlamaProgress.update(
         model.id,
-        const _LocalLlamaStatus(
+        _LocalLlamaStatus(
           phase: _LocalLlamaPhase.ready,
-          message: 'Local model ready.',
+          message: runtime.supportsMultiThreading
+              ? 'Local model ready.'
+              : 'Local model ready (single-threaded: this page is not '
+                    'cross-origin isolated, so larger models may take '
+                    'minutes per reply — reload once so the isolation '
+                    'service worker can enable multithreading).',
           progress: 1,
         ),
       );
@@ -289,10 +331,11 @@ ai.ChatClient _createLocalLlamaClient(
   return llama.createLlamaChatClient(
     spec: spec,
     sessionProvider: sessionProvider,
+    formatResolver: () => ggufFormat,
     inspector: services.getService<llama.PromptInspector>(),
     // Evaluated per request, so the chat toggle applies mid-conversation.
     isThinkingEnabled: () =>
-        (thinking?.enabledFor(model.id) ?? false) || spec.enableThinking,
+        thinking?.enabledFor(model.id) ?? spec.enableThinking,
   );
 }
 
@@ -421,7 +464,7 @@ llama.ModelSpec _localLlamaSpec({
     modelUrl: modelUrl,
     mmprojUrl: optionalUrl('llama.mmprojUrl'),
     draftUrl: optionalUrl('llama.draftModelUrl'),
-    contextSize: intSetting('llama.contextSize', 4096),
+    contextSize: intSetting('llama.contextSize', 8192),
     gpuLayers: intSetting('llama.gpuLayers', 999),
     draftGpuLayers: intSetting('llama.draftGpuLayers', 999),
     maxDraftTokens: intSetting('llama.maxDraftTokens', 8),
@@ -756,20 +799,23 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Maps the durable transcript to displayable UI messages.
   ///
   /// Tool-call-only turns carry no text and are skipped; the model still
-  /// sees them through the chat history provider.
+  /// sees them through the chat history provider. Loop-synthesized
+  /// wait-for-background-agents feedback is model plumbing, not user input,
+  /// so it is hidden as well.
   Future<List<ChatMessage>> _loadDisplayHistory({String? sessionId}) async {
     final entries = await _transcripts!.load(_conversationId);
     return [
       for (final entry in entries)
         if (sessionId == null || entry.sessionId == sessionId)
-          if (entry.message.text.trim().isNotEmpty)
-            entry.message.role == ai.ChatRole.user
-                ? ChatMessage.user(entry.message.text, const [])
-                : ChatMessage(
-                    origin: MessageOrigin.llm,
-                    text: entry.message.text,
-                    attachments: const [],
-                  ),
+          if (entry.message.authorName != loopFeedbackAuthorName)
+            if (entry.message.text.trim().isNotEmpty)
+              entry.message.role == ai.ChatRole.user
+                  ? ChatMessage.user(entry.message.text, const [])
+                  : ChatMessage(
+                      origin: MessageOrigin.llm,
+                      text: entry.message.text,
+                      attachments: const [],
+                    ),
     ];
   }
 

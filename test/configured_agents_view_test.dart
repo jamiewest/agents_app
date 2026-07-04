@@ -2,8 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:agents_flutter/agents_flutter.dart';
+import 'dart:io';
+
+import 'package:agents_app/data/local_model_store_io.dart';
 import 'package:agents_app/ui/views/configured_agents/configured_agents.dart';
+import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -41,6 +44,20 @@ Future<ModelSourceConfig> _saveLocalSource(ConfiguredAgentsManager manager) {
   return manager.saveSource(source).then((_) => source);
 }
 
+/// Taps Save on a file-mode model and settles through the "saving" dialog.
+///
+/// The dialog waits on real file I/O (the picked-file copy), which only
+/// completes while the real event loop turns — hence the [WidgetTester.runAsync]
+/// window between pumps.
+Future<void> _saveFileModel(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+  await tester.pump();
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 50)),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> _tapAccessSwitch(WidgetTester tester, String label) async {
   final tile = find.ancestor(
     of: find.text(label),
@@ -53,6 +70,19 @@ Future<void> _tapAccessSwitch(WidgetTester tester, String label) async {
 }
 
 void main() {
+  // Root the local model store in a temp directory: saving a file-mode model
+  // copies the picked file, and the real store would call path_provider,
+  // whose platform channel never answers in widget tests.
+  late Directory storeRoot;
+  setUp(() {
+    storeRoot = Directory.systemTemp.createTempSync('configured_agents_test');
+    debugLocalModelStoreRoot = storeRoot;
+  });
+  tearDown(() {
+    debugLocalModelStoreRoot = null;
+    storeRoot.deleteSync(recursive: true);
+  });
+
   testWidgets('creates a source through the editor', (tester) async {
     final manager = _buildManager();
     await tester.pumpWidget(_host(manager));
@@ -231,8 +261,7 @@ void main() {
     await tester.enterText(fields.at(2), 'Gemma file');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-    await tester.pumpAndSettle();
+    await _saveFileModel(tester);
 
     final model = (await manager.sources.listModels()).single;
     expect(model.displayName, 'Gemma file');
@@ -286,8 +315,7 @@ void main() {
 
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-    await tester.pumpAndSettle();
+    await _saveFileModel(tester);
 
     final model = (await manager.sources.listModels()).single;
     expect(model.settings['llama.modelSource'], 'file');
@@ -347,8 +375,7 @@ void main() {
 
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-    await tester.pumpAndSettle();
+    await _saveFileModel(tester);
 
     final model = (await manager.sources.listModels()).single;
     expect(model.settings['llama.modelFileName'], 'main.gguf');

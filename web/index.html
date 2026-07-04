@@ -7,6 +7,35 @@
     <meta name="description" content="agents_app" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>agents_app</title>
+    <script>
+      // Make the page cross-origin isolated so wasm multithreading
+      // (SharedArrayBuffer) works for local llama inference. The service
+      // worker adds the COOP/COEP headers the dev server doesn't send; the
+      // page must reload once for the worker to take control. The
+      // sessionStorage guard prevents a reload loop when isolation cannot
+      // be achieved (e.g. insecure non-localhost origins).
+      if ('serviceWorker' in navigator && !window.crossOriginIsolated) {
+        navigator.serviceWorker
+          .register('coi-serviceworker.js')
+          .then(() => {
+            const reloadedKey = 'coiServiceWorkerReloaded';
+            if (
+              !navigator.serviceWorker.controller &&
+              !sessionStorage.getItem(reloadedKey)
+            ) {
+              sessionStorage.setItem(reloadedKey, '1');
+              window.location.reload();
+            }
+          })
+          .catch((error) => {
+            console.warn(
+              'Cross-origin isolation service worker failed; local llama ' +
+                'will run single-threaded.',
+              error,
+            );
+          });
+      }
+    </script>
     <script type="module">
       import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
       globalThis.Wllama = Wllama;
