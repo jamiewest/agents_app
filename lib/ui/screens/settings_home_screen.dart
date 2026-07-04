@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/embedding_settings.dart';
 import '../../data/theme_settings.dart';
 import '../app_theme.dart';
+import '../widgets/app_sliver_header.dart';
 import '../widgets/page_body.dart';
 
 /// The Settings destination: entry points into configuration surfaces.
@@ -24,7 +25,7 @@ class SettingsHomeScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     body: CustomScrollView(
       slivers: [
-        SliverAppBar.medium(title: const Text('Settings')),
+        const AppSliverHeader(title: 'Settings'),
         SliverToBoxAdapter(
           child: PageBody(
             padding: EdgeInsets.zero,

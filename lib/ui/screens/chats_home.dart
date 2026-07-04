@@ -16,6 +16,7 @@ import '../../domain/channel.dart';
 import '../../domain/conversation.dart';
 import '../../main.dart' show ChatScreen;
 import '../app_theme.dart';
+import '../widgets/app_sliver_header.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/draggable_separator.dart';
 import '../widgets/empty_state.dart';
@@ -365,8 +366,8 @@ class _ChatsListViewState extends State<ChatsListView> {
       context,
       (channels, conversations) => CustomScrollView(
         slivers: [
-          SliverAppBar.medium(
-            title: const Text('Chats'),
+          AppSliverHeader(
+            title: 'Chats',
             actions: [
               IconButton(
                 tooltip: 'New channel',

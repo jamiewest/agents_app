@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/agent_task_store.dart';
 import '../../data/task_scheduler_service.dart';
 import '../../domain/agent_task.dart';
+import '../widgets/app_sliver_header.dart';
 import '../widgets/empty_state.dart';
 
 /// The Tasks destination: scheduled and background agent work.
@@ -82,8 +83,8 @@ class _TasksScreenState extends State<TasksScreen> {
         final tasks = snapshot.data;
         return CustomScrollView(
           slivers: [
-            SliverAppBar.medium(
-              title: const Text('Tasks'),
+            AppSliverHeader(
+              title: 'Tasks',
               actions: [
                 IconButton(
                   tooltip: 'New task',

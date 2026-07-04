@@ -21,7 +21,10 @@ class ManageAgentsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final manager = services.getRequiredService<ConfiguredAgentsManager>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Manage agents')),
+      appBar: AppBar(
+        title: const Text('Manage agents'),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      ),
       body: Column(
         children: [
           const _WebSecurityNotice(),

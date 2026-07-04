@@ -133,12 +133,13 @@ ThemeData buildAppTheme({
 
   return ThemeData(
     colorScheme: scheme,
-    scaffoldBackgroundColor: brightness == Brightness.dark
-        ? const Color(0xFF0F0F12)
-        : const Color(0xFFF5F5F7),
+    // Match the chat screen's background (LlmChatViewStyle uses
+    // scheme.surface) across every screen and their app bars, so the app
+    // reads as one seamless surface.
+    scaffoldBackgroundColor: scheme.surface,
     textTheme: textTheme,
     appBarTheme: AppBarTheme(
-      backgroundColor: scheme.surfaceContainerLow,
+      backgroundColor: scheme.surface,
       scrolledUnderElevation: 0,
       centerTitle: false,
     ),
