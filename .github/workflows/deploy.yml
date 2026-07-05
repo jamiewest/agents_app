@@ -39,8 +39,13 @@ jobs:
         run: flutter test
         working-directory: packages/agents_app
 
+      # --pwa-strategy=none: the app registers its own service worker
+      # (web/coi-serviceworker.js) for cross-origin isolation, and Flutter's
+      # PWA service worker would fight it for the same scope — the two
+      # replace each other forever and flutter_bootstrap never finishes
+      # loading the app.
       - name: Build agents_app for GitHub Pages
-        run: flutter build web --base-href /agents/
+        run: flutter build web --base-href /agents/ --pwa-strategy=none
         working-directory: packages/agents_app
 
       - name: Upload Pages artifact
