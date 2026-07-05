@@ -7,6 +7,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/app_reset.dart';
 import '../../data/embedding_settings.dart';
 import '../../data/theme_settings.dart';
 import '../app_theme.dart';
@@ -84,6 +85,24 @@ class SettingsHomeScreen extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _pickEmbeddingModel(context),
                 ),
+                const Divider(),
+                ListTile(
+                  leading: Icon(
+                    Icons.restart_alt,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
+                    'Reset app data',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Erase all agents, API keys, conversations, and '
+                    'downloaded models, then start fresh',
+                  ),
+                  onTap: () => _confirmReset(context),
+                ),
               ],
             ),
           ),
@@ -91,6 +110,48 @@ class SettingsHomeScreen extends StatelessWidget {
       ],
     ),
   );
+
+  Future<void> _confirmReset(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset app data?'),
+        content: const Text(
+          'This permanently erases all model sources, API keys, models, '
+          'saved agents, conversations, channels, tasks, agent memory, and '
+          'downloaded local models.\n\n'
+          'The app closes when the reset finishes; launch it again to '
+          'start fresh.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Erase everything'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await resetAppData(services);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Reset failed: $error')));
+      return;
+    }
+    restartApp();
+  }
 
   Future<void> _pickEmbeddingModel(BuildContext context) async {
     final manager = services.getRequiredService<ConfiguredAgentsManager>();

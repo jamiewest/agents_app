@@ -24,6 +24,9 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
+	<key>NSContactsUsageDescription</key>
+	<string>macOS contact autofill may look up your contact card to suggest
+		completions in text fields.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Agents App uses the camera to capture photos to attach to chat messages.</string>
 	<key>NSLocalNetworkUsageDescription</key>
