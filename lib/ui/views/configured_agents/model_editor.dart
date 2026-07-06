@@ -659,7 +659,7 @@ class _ModelEditorState extends State<ModelEditor> {
                 style: style,
                 keyboardType: TextInputType.url,
                 hintText:
-                    'https://huggingface.co/org/repo/resolve/main/model-00001-of-00002.gguf',
+                    'https://huggingface.co/org/repo/resolve/main/model.gguf',
                 validator: (value) {
                   final text = value?.trim() ?? '';
                   final uri = Uri.tryParse(text);
