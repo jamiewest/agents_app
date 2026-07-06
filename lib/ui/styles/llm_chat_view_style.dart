@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/material.dart' show Theme;
+import 'package:flutter/material.dart' show Theme, ThemeData;
 import 'package:flutter/widgets.dart';
 
 import '../strings/strings.dart';
@@ -237,19 +237,47 @@ class LlmChatViewStyle {
   ///
   /// Defaults derive from the theme's [ColorScheme], so the chat follows
   /// the app's light/dark mode without per-widget styling.
+  ///
+  /// Resolution allocates the whole style bundle and every message view
+  /// calls this on each rebuild — including every streamed-token tick —
+  /// so the last result is memoized and reused while the theme and both
+  /// style inputs are the same instances.
   factory LlmChatViewStyle.resolveFor(
     BuildContext context,
     LlmChatViewStyle? style, {
     LlmChatViewStyle? defaultStyle,
   }) {
+    final theme = Theme.of(context);
+    final cached = _resolveForCache;
+    if (cached != null &&
+        identical(cached.theme, theme) &&
+        identical(cached.style, style) &&
+        identical(cached.defaultStyle, defaultStyle)) {
+      return cached.result;
+    }
     final textStyles = ToolkitTextStyles.fromTheme(context);
-    return LlmChatViewStyle.resolve(
+    final result = LlmChatViewStyle.resolve(
       style,
       defaultStyle:
           defaultStyle ?? LlmChatViewStyle.fromTheme(context, textStyles),
       textStyles: textStyles,
     );
+    _resolveForCache = (
+      theme: theme,
+      style: style,
+      defaultStyle: defaultStyle,
+      result: result,
+    );
+    return result;
   }
+
+  static ({
+    ThemeData theme,
+    LlmChatViewStyle? style,
+    LlmChatViewStyle? defaultStyle,
+    LlmChatViewStyle result,
+  })?
+  _resolveForCache;
 
   /// Builds the whole chat style bundle from [context]'s [Theme].
   factory LlmChatViewStyle.fromTheme(

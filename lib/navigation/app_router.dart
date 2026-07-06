@@ -14,6 +14,7 @@ import '../ui/screens/chats_home.dart'
 import '../ui/screens/manage_agents_screen.dart';
 import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/hosting_screen.dart';
+import '../ui/screens/logging_screen.dart';
 import '../ui/screens/network_pairing_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../data/task_scheduler_service.dart';
@@ -151,6 +152,11 @@ GoRouter createAppRouter({
                   path: 'hosting',
                   builder: (context, state) =>
                       HostingScreen(services: services),
+                ),
+                GoRoute(
+                  path: 'logging',
+                  builder: (context, state) =>
+                      LoggingScreen(services: services),
                 ),
               ],
             ),

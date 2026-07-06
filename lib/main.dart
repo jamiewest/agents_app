@@ -50,8 +50,11 @@ const _seedModel = String.fromEnvironment(
 // This is how we build and run the application, dont stray.
 // <start>
 final _builder = Host.createApplicationBuilder()
-  ..logging.setMinimumLevel(LogLevel.trace)
   ..services.addFlutter((flutter) {
+    // Captures every Logger event into an in-app store with runtime level
+    // controls (Settings > Logs & diagnostics). Replaces the old blanket
+    // trace minimum level, which logged every streamed update.
+    flutter.useAppLogging();
     flutter.services.addDownloadService();
     flutter.services.addRecordStore();
     flutter.services.tryAddSingleton<ThemeSettings>(
@@ -77,6 +80,9 @@ final _builder = Host.createApplicationBuilder()
     );
     flutter.useFlutterHarnessAgent();
     flutter.useConfiguredAgents(
+      // One summary log record per agent run (request in, response out) in
+      // the Agents.Traffic category — never one record per streamed update.
+      logAgentTraffic: true,
       chatClientFactory: (sp) => LoggingConfiguredChatClientFactory(
         log: sp.getRequiredService<PromptLog>(),
         customClientResolver: ({required source, required model, httpClient}) =>

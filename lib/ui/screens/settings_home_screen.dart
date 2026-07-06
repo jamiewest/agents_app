@@ -76,6 +76,15 @@ class SettingsHomeScreen extends StatelessWidget {
                   onTap: () => context.go('/settings/hosting'),
                 ),
                 ListTile(
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  title: const Text('Logs & diagnostics'),
+                  subtitle: const Text(
+                    'Live app logs, prompts sent to models, and log levels',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/settings/logging'),
+                ),
+                ListTile(
                   leading: const Icon(Icons.psychology_outlined),
                   title: const Text('Memory embedding model'),
                   subtitle: const Text(
