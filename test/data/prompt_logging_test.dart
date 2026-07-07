@@ -1,58 +1,151 @@
 import 'dart:typed_data';
 
-import 'package:extensions/system.dart' show CancellationToken;
 import 'package:agents_app/data/prompt_log.dart';
 import 'package:agents_app/data/prompt_logging.dart';
+import 'package:agents_flutter/agents_flutter.dart';
 import 'package:agents_llama/agents_llama.dart' show PromptSnapshot;
 import 'package:extensions/ai.dart' as ai;
+import 'package:extensions/system.dart' show CancellationToken;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/chat_test_harness.dart' show EchoChatClient;
 
 void main() {
-  group('LoggingChatClient', () {
-    test('records one entry per streaming request with title and body', () async {
-      final log = PromptLog();
-      final client = LoggingChatClient(
-        EchoChatClient(),
-        log: log,
-        title: 'anthropic · claude-x',
-      );
+  group('LoggingConfiguredChatClientFactory usage tracking', () {
+    const llamaSource = ModelSourceConfig(
+      id: 'source-1',
+      providerType: ProviderType.localLlama,
+      displayName: 'Local',
+    );
+    const model = ModelConfig(
+      id: 'model-1',
+      sourceId: 'source-1',
+      modelId: 'fake-model',
+    );
+    AgentScope scope({bool isPrivate = false}) => AgentScope(
+      conversationId: 'conv-1',
+      sessionIdResolver: () => 'session-1',
+      isPrivate: isPrivate,
+    );
 
+    LoggingConfiguredChatClientFactory factory(UsageRecordSink sink) =>
+        LoggingConfiguredChatClientFactory(
+          log: PromptLog(),
+          usageSink: sink,
+          customClientResolver:
+              ({required source, required model, httpClient}) =>
+                  _UsageEmittingChatClient(),
+        );
+
+    test('wraps local llama clients and records attributed usage', () async {
+      final sink = _RecordingSink();
+      final client = factory(
+        sink,
+      ).createChatClient(source: llamaSource, model: model, scope: scope());
+
+      expect(client, isA<UsageTrackingChatClient>());
       await client
           .getStreamingResponse(
-            messages: <ai.ChatMessage>[
-              ai.ChatMessage.fromText(ai.ChatRole.user, 'hi'),
-            ],
-            options: ai.ChatOptions()..instructions = 'You are helpful.',
+            messages: [ai.ChatMessage.fromText(ai.ChatRole.user, 'hi')],
           )
           .drain<void>();
 
-      expect(log.entries, hasLength(1));
-      final entry = log.entries.single;
-      expect(entry.title, 'anthropic · claude-x');
-      expect(entry.body, contains('You are helpful.'));
-      expect(entry.body, contains('[user]'));
-      expect(entry.body, contains('hi'));
+      final record = sink.records.single;
+      expect(record.modelId, 'fake-model');
+      expect(record.sourceId, 'source-1');
+      expect(record.provider, 'localLlama');
+      expect(record.conversationId, 'conv-1');
+      expect(record.sessionId, 'session-1');
+      expect(record.inputTokenCount, 12);
+      expect(record.outputTokenCount, 6);
     });
 
-    test('records one entry per getResponse request (no double-logging)',
-        () async {
-      final log = PromptLog();
-      final client = LoggingChatClient(
-        EchoChatClient(),
-        log: log,
-        title: 'openAiCompatible · gpt',
+    test('private scopes keep badges but skip the ledger', () async {
+      final sink = _RecordingSink();
+      final client = factory(sink).createChatClient(
+        source: llamaSource,
+        model: model,
+        scope: scope(isPrivate: true),
       );
 
-      await client.getResponse(
-        messages: <ai.ChatMessage>[
-          ai.ChatMessage.fromText(ai.ChatRole.user, 'hello'),
-        ],
-      );
+      final updates = await client
+          .getStreamingResponse(
+            messages: [ai.ChatMessage.fromText(ai.ChatRole.user, 'hi')],
+          )
+          .toList();
 
-      expect(log.entries, hasLength(1));
+      expect(sink.records, isEmpty);
+      expect(
+        updates.any((u) => u.contents.any((c) => c is ai.UsageContent)),
+        isTrue,
+      );
     });
+
+    test('leaves clients unwrapped without a usage sink', () {
+      final noSink = LoggingConfiguredChatClientFactory(
+        log: PromptLog(),
+        customClientResolver: ({required source, required model, httpClient}) =>
+            _UsageEmittingChatClient(),
+      );
+
+      final client = noSink.createChatClient(
+        source: llamaSource,
+        model: model,
+        scope: scope(),
+      );
+
+      expect(client, isNot(isA<UsageTrackingChatClient>()));
+    });
+  });
+
+  group('LoggingChatClient', () {
+    test(
+      'records one entry per streaming request with title and body',
+      () async {
+        final log = PromptLog();
+        final client = LoggingChatClient(
+          EchoChatClient(),
+          log: log,
+          title: 'anthropic · claude-x',
+        );
+
+        await client
+            .getStreamingResponse(
+              messages: <ai.ChatMessage>[
+                ai.ChatMessage.fromText(ai.ChatRole.user, 'hi'),
+              ],
+              options: ai.ChatOptions()..instructions = 'You are helpful.',
+            )
+            .drain<void>();
+
+        expect(log.entries, hasLength(1));
+        final entry = log.entries.single;
+        expect(entry.title, 'anthropic · claude-x');
+        expect(entry.body, contains('You are helpful.'));
+        expect(entry.body, contains('[user]'));
+        expect(entry.body, contains('hi'));
+      },
+    );
+
+    test(
+      'records one entry per getResponse request (no double-logging)',
+      () async {
+        final log = PromptLog();
+        final client = LoggingChatClient(
+          EchoChatClient(),
+          log: log,
+          title: 'openAiCompatible · gpt',
+        );
+
+        await client.getResponse(
+          messages: <ai.ChatMessage>[
+            ai.ChatMessage.fromText(ai.ChatRole.user, 'hello'),
+          ],
+        );
+
+        expect(log.entries, hasLength(1));
+      },
+    );
   });
 
   group('renderRequest', () {
@@ -91,8 +184,9 @@ void main() {
           ai.AIFunctionFactory.create(
             name: 'getWeather',
             description: 'weather',
-            callback: (arguments, {CancellationToken? cancellationToken}) async =>
-                'sunny',
+            callback:
+                (arguments, {CancellationToken? cancellationToken}) async =>
+                    'sunny',
           ),
         ];
 
@@ -138,4 +232,43 @@ void main() {
       expect(inspector.latest?.text, contains('hi'));
     });
   });
+}
+
+final class _RecordingSink implements UsageRecordSink {
+  final List<ChatUsageRecord> records = [];
+
+  @override
+  void record(ChatUsageRecord record) => records.add(record);
+}
+
+/// A fake provider client whose final streaming update reports usage, the
+/// way cloud clients and the llama runtime do.
+final class _UsageEmittingChatClient implements ai.ChatClient {
+  @override
+  Future<ai.ChatResponse> getResponse({
+    required Iterable<ai.ChatMessage> messages,
+    ai.ChatOptions? options,
+    CancellationToken? cancellationToken,
+  }) async => ai.ChatResponse.fromMessage(
+    ai.ChatMessage.fromText(ai.ChatRole.assistant, 'hi'),
+  )..usage = ai.UsageDetails(inputTokenCount: 12, outputTokenCount: 6);
+
+  @override
+  Stream<ai.ChatResponseUpdate> getStreamingResponse({
+    required Iterable<ai.ChatMessage> messages,
+    ai.ChatOptions? options,
+    CancellationToken? cancellationToken,
+  }) => Stream.fromIterable([
+    ai.ChatResponseUpdate(
+      role: ai.ChatRole.assistant,
+      contents: [ai.TextContent('hi')],
+      usage: ai.UsageDetails(inputTokenCount: 12, outputTokenCount: 6),
+    ),
+  ]);
+
+  @override
+  T? getService<T>({Object? key}) => null;
+
+  @override
+  void dispose() {}
 }

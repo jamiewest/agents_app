@@ -7,6 +7,8 @@
 
 import 'dart:convert';
 
+import 'package:extensions/ai.dart' as ai show UsageDetails;
+
 import 'attachments.dart';
 import 'message_origin.dart';
 
@@ -85,6 +87,13 @@ class ChatMessage {
 
   /// Any attachments associated with the message.
   final Iterable<Attachment> attachments;
+
+  /// Token usage of the model turn that produced this message, when known.
+  ///
+  /// Covers the whole turn — tool-calling sub-requests included — and is
+  /// populated only for LLM messages. Not serialized by [toJson]; durable
+  /// usage lives in the transcript and the usage ledger.
+  ai.UsageDetails? usage;
 
   /// Appends additional text to the existing message content.
   ///

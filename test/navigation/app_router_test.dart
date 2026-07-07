@@ -152,7 +152,9 @@ void main() {
       expect(tester.getSize(find.byType(NavigationRail)).width, lessThan(260));
     });
 
-    testWidgets('shell shows a bottom bar on compact layouts', (tester) async {
+    testWidgets('shell shows a hamburger-opened drawer on compact layouts', (
+      tester,
+    ) async {
       final services = _buildServices();
       await _seedUsableAgent(services);
       tester.view.physicalSize = const Size(400, 800);
@@ -162,8 +164,23 @@ void main() {
       await tester.pumpWidget(_app(services));
       await tester.pumpAndSettle();
 
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
       expect(find.byType(NavigationRail), findsNothing);
+
+      // The page header's hamburger opens the drawer, which lists the
+      // top-level destinations above the conversations panel.
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Drawer), findsOneWidget);
+      expect(find.text('Tasks'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('AGENT TEAMS'), findsOneWidget);
+
+      // Picking a destination closes the drawer and switches branch.
+      await tester.tap(find.text('Tasks'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Drawer), findsNothing);
+      expect(find.textContaining('No tasks yet'), findsOneWidget);
     });
 
     testWidgets('switching branches preserves the shell', (tester) async {

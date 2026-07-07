@@ -26,15 +26,18 @@ import 'data/prompt_logging.dart';
 import 'data/task_scheduler_service.dart';
 import 'data/theme_settings.dart';
 import 'data/thinking_settings.dart';
+import 'data/usage_store.dart';
 import 'domain/conversation.dart';
 import 'navigation/app_bootstrap.dart';
 import 'navigation/app_router.dart';
 import 'ui/app_theme.dart';
 import 'ui/providers/providers.dart';
+import 'ui/screens/chats_home.dart' show SidebarToggleButton;
 import 'ui/views/configured_agents/configured_agents.dart';
 import 'ui/views/llm_chat_view/llm_chat_view.dart';
 import 'ui/widgets/conversation_actions.dart';
 import 'ui/widgets/prompt_inspector_panel.dart';
+import 'ui/widgets/usage_stats_sheet.dart';
 
 // Optional seed values so the demo can start with a working Anthropic agent.
 // Supply them as compile-time defines, e.g.
@@ -63,6 +66,10 @@ final _builder = Host.createApplicationBuilder()
     // Unified log of every prompt sent to any model (local or cloud), so the
     // in-app inspector shows exactly what each model received.
     flutter.services.tryAddSingleton<PromptLog>((sp) => PromptLog());
+    // Durable ledger of every model call's token usage, per conversation.
+    flutter.services.tryAddSingleton<UsageStore>(
+      (sp) => UsageStore(sp.getRequiredService<RecordStore>()),
+    );
     // The local llama render seam writes its exact wire-format prompt through
     // a PromptInspector; the bridging subclass mirrors those into the shared
     // PromptLog alongside cloud requests.
@@ -85,6 +92,7 @@ final _builder = Host.createApplicationBuilder()
       logAgentTraffic: true,
       chatClientFactory: (sp) => LoggingConfiguredChatClientFactory(
         log: sp.getRequiredService<PromptLog>(),
+        usageSink: sp.getRequiredService<UsageStore>(),
         customClientResolver: ({required source, required model, httpClient}) =>
             _createLocalLlamaClient(sp, source: source, model: model),
       ),
@@ -701,6 +709,7 @@ class _ChatScreenState extends State<ChatScreen> {
   ConversationStore? _conversations;
   ConversationSessionStore? _sessions;
   ChatTranscriptStore? _transcripts;
+  UsageStore? _usage;
   Conversation? _existingConversation;
   ModelConfig? _model;
   List<ConversationSession> _sessionList = const [];
@@ -725,6 +734,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _conversations = ConversationStore(records);
     _sessions = ConversationSessionStore(records);
     _transcripts = ChatTranscriptStore(records);
+    _usage = UsageStore(records);
     _providerFuture = _createProvider(
       widget.services.getRequiredService<ConfiguredAgentFactory>(),
     );
@@ -810,19 +820,34 @@ class _ChatScreenState extends State<ChatScreen> {
   /// so it is hidden as well.
   Future<List<ChatMessage>> _loadDisplayHistory({String? sessionId}) async {
     final entries = await _transcripts!.load(_conversationId);
-    return [
-      for (final entry in entries)
-        if (sessionId == null || entry.sessionId == sessionId)
-          if (entry.message.authorName != loopFeedbackAuthorName)
-            if (entry.message.text.trim().isNotEmpty)
-              entry.message.role == ai.ChatRole.user
-                  ? ChatMessage.user(entry.message.text, const [])
-                  : ChatMessage(
-                      origin: MessageOrigin.llm,
-                      text: entry.message.text,
-                      attachments: const [],
-                    ),
-    ];
+    final messages = <ChatMessage>[];
+    // Usage from entries that are not displayed (tool-call-only assistant
+    // messages) rolls forward onto the turn's final visible bubble, so
+    // restored badges match what the live stream showed.
+    ai.UsageDetails? pendingUsage;
+
+    for (final entry in entries) {
+      if (sessionId != null && entry.sessionId != sessionId) continue;
+      if (entry.message.authorName == loopFeedbackAuthorName) continue;
+      for (final content
+          in entry.message.contents.whereType<ai.UsageContent>()) {
+        (pendingUsage ??= ai.UsageDetails()).add(content.details);
+      }
+      if (entry.message.text.trim().isEmpty) continue;
+      if (entry.message.role == ai.ChatRole.user) {
+        messages.add(ChatMessage.user(entry.message.text, const []));
+      } else {
+        messages.add(
+          ChatMessage(
+            origin: MessageOrigin.llm,
+            text: entry.message.text,
+            attachments: const [],
+          )..usage = pendingUsage,
+        );
+        pendingUsage = null;
+      }
+    }
+    return messages;
   }
 
   /// Persists conversation metadata and the serialized agent session.
@@ -1118,6 +1143,7 @@ class _ChatScreenState extends State<ChatScreen> {
       conversations: _conversations!,
       sessions: _sessions!,
       transcripts: _transcripts!,
+      usage: _usage,
     );
     if (!deleted) return;
     _deleted = true;
@@ -1201,6 +1227,9 @@ class _ChatScreenState extends State<ChatScreen> {
         // reads as one continuous surface rather than a banded app bar.
         backgroundColor: Theme.of(context).colorScheme.surface,
         automaticallyImplyLeading: !widget.embedded,
+        // Embedded panes have no route to pop; the leading slot instead
+        // toggles the conversations sidebar open/closed.
+        leading: widget.embedded ? const SidebarToggleButton() : null,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1232,6 +1261,23 @@ class _ChatScreenState extends State<ChatScreen> {
               );
             },
           ),
+          if (!widget.isPrivate)
+            Builder(
+              builder: (context) {
+                final usage = _usage;
+                if (usage == null) return const SizedBox.shrink();
+                return IconButton(
+                  tooltip: 'Token usage per model',
+                  icon: const Icon(Icons.data_usage_rounded),
+                  onPressed: () => showUsageStats(
+                    context,
+                    usage: usage,
+                    conversationId: _conversationId,
+                    currentSessionId: _sessionId,
+                  ),
+                );
+              },
+            ),
           if (!widget.isPrivate && _sessionList.length > 1)
             PopupMenuButton<String?>(
               tooltip: 'View a session',

@@ -16,7 +16,7 @@ import '../../domain/channel.dart';
 import '../../domain/conversation.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/empty_state.dart';
-import 'chats_home.dart' show ChatsScope;
+import 'chats_home.dart' show ChatsScope, SidebarToggleButton;
 
 /// One channel workspace: its conversations, shared files, and member
 /// agents.
@@ -167,7 +167,10 @@ class _ChannelScreenState extends State<ChannelScreen> {
     final channel = _channel;
     if (channel == null) {
       return Scaffold(
-        appBar: AppBar(automaticallyImplyLeading: !embedded),
+        appBar: AppBar(
+          automaticallyImplyLeading: !embedded,
+          leading: embedded ? const SidebarToggleButton() : null,
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -176,6 +179,7 @@ class _ChannelScreenState extends State<ChannelScreen> {
       child: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: !embedded,
+          leading: embedded ? const SidebarToggleButton() : null,
           title: Text(channel.name),
           actions: [
             IconButton(

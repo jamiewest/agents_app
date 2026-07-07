@@ -74,7 +74,14 @@ class AgentLlmProvider extends LlmProvider
     ai.ChatMessage message,
   ) async* {
     try {
-      yield* _runMessage(message).smoothed().map((chunk) {
+      yield* _runMessage(
+        message,
+        // Each model call of the turn (tool-loop sub-calls included)
+        // contributes one UsageContent; summing them makes the bubble's
+        // badge cover the whole turn.
+        onUsage: (details) =>
+            (llmMessage.usage ??= ai.UsageDetails()).add(details),
+      ).smoothed().map((chunk) {
         llmMessage.append(chunk);
         return chunk;
       });
@@ -154,7 +161,10 @@ class AgentLlmProvider extends LlmProvider
     notifyListeners();
   }
 
-  Stream<String> _runMessage(ai.ChatMessage message) async* {
+  Stream<String> _runMessage(
+    ai.ChatMessage message, {
+    void Function(ai.UsageDetails details)? onUsage,
+  }) async* {
     _pendingApprovalContent = null;
     await for (final update in agent.runStreaming(
       session,
@@ -177,6 +187,8 @@ class AgentLlmProvider extends LlmProvider
           // The tool-approval middleware ends the run after yielding the
           // request; hold it so the chat view can ask the user.
           _pendingApprovalContent = content;
+        } else if (content is ai.UsageContent) {
+          onUsage?.call(content.details);
         }
       }
       final text = buffer.toString();

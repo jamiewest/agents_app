@@ -71,6 +71,36 @@ class StatusColors extends ThemeExtension<StatusColors> {
   }
 }
 
+/// The app's back-navigation glyph: a chevron inside a soft tonal circle.
+///
+/// Installed app-wide through [ThemeData.actionIconTheme] so every implied
+/// [BackButton] picks it up. The contained-chevron look keeps back buttons
+/// visually distinct from the hamburger menu button that compact layouts
+/// show in the same leading position.
+class AppBackIcon extends StatelessWidget {
+  /// Creates an [AppBackIcon].
+  const AppBackIcon({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.arrow_back_ios_new_rounded,
+        size: 16,
+        color: scheme.onSurface,
+      ),
+    );
+  }
+}
+
 /// Shared corner radii so cards, fields, and inline containers stay on one
 /// geometric scale (Material 3 expressive: large for cards, medium for
 /// nested elements).
@@ -142,6 +172,12 @@ ThemeData buildAppTheme({
       backgroundColor: scheme.surface,
       scrolledUnderElevation: 0,
       centerTitle: false,
+    ),
+    // Restyled back affordance (see [AppBackIcon]): compact layouts put a
+    // hamburger menu button in the same leading slot on root pages, so back
+    // buttons need their own distinct look.
+    actionIconTheme: ActionIconThemeData(
+      backButtonIconBuilder: (context) => const AppBackIcon(),
     ),
     // Canonical card surface: a translucent layered surface with a soft
     // outline on the [AppShape.card] radius.

@@ -4,11 +4,15 @@
 
 import 'package:flutter/material.dart';
 
+import '../../navigation/app_shell.dart';
+
 /// A single-row page header sliver for the top-level destinations.
 ///
 /// Unlike [SliverAppBar.medium], the title and any [actions] share one row.
 /// The background matches the scaffold body so the header runs seamlessly into
 /// the page content, with no elevation tint when content scrolls under it.
+/// On compact widths, where the shell navigates through a drawer instead of
+/// a rail, a leading hamburger button opens that drawer.
 class AppSliverHeader extends StatelessWidget {
   /// Creates a header showing [title] with optional trailing [actions].
   const AppSliverHeader({required this.title, this.actions, super.key});
@@ -20,12 +24,22 @@ class AppSliverHeader extends StatelessWidget {
   final List<Widget>? actions;
 
   @override
-  Widget build(BuildContext context) => SliverAppBar(
-    pinned: true,
-    title: Text(title),
-    actions: actions,
-    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-    scrolledUnderElevation: 0,
-    elevation: 0,
-  );
+  Widget build(BuildContext context) {
+    final openDrawer = AppShellScope.openDrawerOf(context);
+    return SliverAppBar(
+      pinned: true,
+      leading: openDrawer == null
+          ? null
+          : IconButton(
+              tooltip: 'Menu',
+              icon: const Icon(Icons.menu),
+              onPressed: openDrawer,
+            ),
+      title: Text(title),
+      actions: actions,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      scrolledUnderElevation: 0,
+      elevation: 0,
+    );
+  }
 }

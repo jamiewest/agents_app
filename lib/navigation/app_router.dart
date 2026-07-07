@@ -50,7 +50,7 @@ GoRouter createAppRouter({
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
-          AppShell(shell: navigationShell),
+          AppShell(services: services, shell: navigationShell),
       branches: [
         // The Chats branch is itself a stateful shell: its builder renders
         // the persistent conversations/channels sidebar, and its single

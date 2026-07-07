@@ -1,13 +1,14 @@
 import 'dart:convert';
 
 import 'package:agents_flutter/agents_flutter.dart';
-import 'package:agents_llama/agents_llama.dart' show PromptInspector,
-    PromptSnapshot;
+import 'package:agents_llama/agents_llama.dart'
+    show PromptInspector, PromptSnapshot;
 import 'package:extensions/ai.dart';
 import 'package:extensions/system.dart';
 import 'package:http/http.dart' as http;
 
 import 'prompt_log.dart';
+import 'usage_store.dart';
 
 /// A [ConfiguredChatClientFactory] that captures every prompt it produces.
 ///
@@ -16,10 +17,17 @@ import 'prompt_log.dart';
 /// Local llama clients already capture their exact wire-format prompt through
 /// the shared [PromptInspector], so they are returned unwrapped to avoid
 /// logging the same turn twice.
+///
+/// When a [usageSink] is supplied, every client — local llama included — is
+/// additionally wrapped in a [UsageTrackingChatClient] so each model call's
+/// token usage lands in the durable ledger and on the response messages.
+/// Private conversations report to a [DiscardingUsageRecordSink] instead:
+/// per-message usage still reaches the UI, but nothing is persisted.
 class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
   /// Creates a factory that records prompts into [log].
   LoggingConfiguredChatClientFactory({
     required this.log,
+    this.usageSink,
     super.isWeb,
     super.customClientResolver,
   });
@@ -27,24 +35,43 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
   /// The unified prompt log every produced client writes to.
   final PromptLog log;
 
+  /// The ledger receiving one usage record per model call, when tracking is
+  /// enabled.
+  final UsageRecordSink? usageSink;
+
   @override
   ChatClient createChatClient({
     required ModelSourceConfig source,
     required ModelConfig model,
     String? apiKey,
     http.Client? httpClient,
+    AgentScope? scope,
   }) {
     final inner = super.createChatClient(
       source: source,
       model: model,
       apiKey: apiKey,
       httpClient: httpClient,
+      scope: scope,
     );
-    if (source.providerType == ProviderType.localLlama) return inner;
-    return LoggingChatClient(
-      inner,
-      log: log,
-      title: '${source.providerType.name} · ${model.modelId}',
+    final logged = source.providerType == ProviderType.localLlama
+        ? inner
+        : LoggingChatClient(
+            inner,
+            log: log,
+            title: '${source.providerType.name} · ${model.modelId}',
+          );
+    final sink = usageSink;
+    if (sink == null) return logged;
+    return UsageTrackingChatClient(
+      logged,
+      sink: scope?.isPrivate ?? false
+          ? const DiscardingUsageRecordSink()
+          : sink,
+      modelId: model.modelId,
+      sourceId: source.id,
+      provider: source.providerType.name,
+      scope: scope,
     );
   }
 }
@@ -138,7 +165,9 @@ String renderRequest(Iterable<ChatMessage> messages, ChatOptions? options) {
   final tools = options?.tools ?? const <AITool>[];
   if (tools.isNotEmpty) {
     final names = tools
-        .map((t) => t is AIFunctionDeclaration ? t.name : t.runtimeType.toString())
+        .map(
+          (t) => t is AIFunctionDeclaration ? t.name : t.runtimeType.toString(),
+        )
         .join(', ');
     buf
       ..writeln('[tools] $names')

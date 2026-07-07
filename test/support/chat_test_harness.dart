@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:agents/agents.dart' show InMemoryAgentFileStore;
+import 'package:agents_app/data/usage_store.dart';
 import 'package:agents_app/domain/conversation.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
@@ -44,6 +45,9 @@ ServiceProvider buildTestServices(
 }) {
   final services = ServiceCollection()
     ..addRecordStore(recordStore: (_) => records)
+    ..tryAddSingleton<UsageStore>(
+      (sp) => UsageStore(sp.getRequiredService<RecordStore>()),
+    )
     ..addConfiguredAgents(
       keyValueStore: (_) => InMemoryKeyValueStore(),
       secretStore: (_) => InMemorySecretStore(),

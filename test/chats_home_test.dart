@@ -19,60 +19,57 @@ import 'support/chat_test_harness.dart';
 /// builder is [ChatsHome] (the persistent sidebar) and whose single branch is
 /// the detail navigator ([ChatsRootPane] plus the open chat/channel). Kept in
 /// step with `createAppRouter` so navigation and pop semantics match the app.
-GoRouter _buildRouter(ServiceProvider services, {String initial = '/chats'}) =>
-    GoRouter(
-      initialLocation: initial,
-      routes: [
-        StatefulShellRoute.indexedStack(
-          builder: (context, state, navigationShell) =>
-              ChatsHome(services: services, navigationShell: navigationShell),
-          branches: [
-            StatefulShellBranch(
+GoRouter _buildRouter(
+  ServiceProvider services, {
+  String initial = '/chats',
+}) => GoRouter(
+  initialLocation: initial,
+  routes: [
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          ChatsHome(services: services, navigationShell: navigationShell),
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/chats',
+              builder: (context, state) => ChatsRootPane(services: services),
               routes: [
                 GoRoute(
-                  path: '/chats',
-                  builder: (context, state) =>
-                      ChatsRootPane(services: services),
-                  routes: [
-                    GoRoute(
-                      path: 'c/:conversationId',
-                      builder: (context, state) => ChatDetailPane(
-                        services: services,
-                        conversationId:
-                            state.pathParameters['conversationId'],
-                      ),
-                    ),
-                    GoRoute(
-                      path: 'new/:agentId',
-                      builder: (context, state) => ChatDetailPane(
-                        services: services,
-                        newChatAgentId: state.pathParameters['agentId'],
-                        privateChat:
-                            state.uri.queryParameters['private'] == '1',
-                        channelId: state.uri.queryParameters['channel'],
-                      ),
-                    ),
-                    GoRoute(
-                      path: 'channel/:channelId',
-                      builder: (context, state) => Scaffold(
-                        body: Text(
-                          'channel:${state.pathParameters['channelId']}',
-                        ),
-                      ),
-                    ),
-                  ],
+                  path: 'c/:conversationId',
+                  builder: (context, state) => ChatDetailPane(
+                    services: services,
+                    conversationId: state.pathParameters['conversationId'],
+                  ),
+                ),
+                GoRoute(
+                  path: 'new/:agentId',
+                  builder: (context, state) => ChatDetailPane(
+                    services: services,
+                    newChatAgentId: state.pathParameters['agentId'],
+                    privateChat: state.uri.queryParameters['private'] == '1',
+                    channelId: state.uri.queryParameters['channel'],
+                  ),
+                ),
+                GoRoute(
+                  path: 'channel/:channelId',
+                  builder: (context, state) => Scaffold(
+                    body: Text('channel:${state.pathParameters['channelId']}'),
+                  ),
                 ),
               ],
             ),
           ],
         ),
-        GoRoute(
-          path: '/settings/agents',
-          builder: (context, state) =>
-              const Scaffold(body: Text('settings:agents')),
-        ),
       ],
-    );
+    ),
+    GoRoute(
+      path: '/settings/agents',
+      builder: (context, state) =>
+          const Scaffold(body: Text('settings:agents')),
+    ),
+  ],
+);
 
 Widget _host(GoRouter router) => MaterialApp.router(routerConfig: router);
 
@@ -391,6 +388,43 @@ void main() {
         find.text('Select a conversation or start a new chat.'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('detail-pane button collapses and reopens the sidebar', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final records = InMemoryRecordStore();
+      final services = buildTestServices(records);
+      await seedTestAgent(services);
+      await ConversationStore(records).save(
+        testConversation(
+          id: 'open-one',
+          title: 'Open conversation',
+          updatedAt: DateTime.utc(2026, 6, 30, 9),
+        ),
+      );
+
+      await tester.pumpWidget(
+        _host(_buildRouter(services, initial: '/chats/c/open-one')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('AGENT TEAMS'), findsOneWidget);
+
+      // The open chat's app bar hides the sidebar; the icon flips to the
+      // outlined "show" affordance.
+      await tester.tap(find.byTooltip('Hide conversations'));
+      await tester.pumpAndSettle();
+      expect(find.text('AGENT TEAMS'), findsNothing);
+      expect(find.byIcon(Icons.view_sidebar_outlined), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Show conversations'));
+      await tester.pumpAndSettle();
+      expect(find.text('AGENT TEAMS'), findsOneWidget);
+      expect(find.byIcon(Icons.view_sidebar_rounded), findsOneWidget);
     });
 
     testWidgets('renames and deletes a channel; conversations are kept', (

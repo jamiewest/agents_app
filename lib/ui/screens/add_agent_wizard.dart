@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/local_model_presets.dart';
+import '../app_theme.dart';
 import '../strings/configured_agents_strings.dart';
 import '../widgets/page_body.dart';
 import '../styles/configured_agents_style.dart';
@@ -98,7 +99,7 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
         title: Text('Add agent — ${_stepTitles[_step]}'),
         leading: IconButton(
           tooltip: _step == 0 ? 'Cancel' : 'Back',
-          icon: const Icon(Icons.arrow_back),
+          icon: const AppBackIcon(),
           onPressed: _back,
         ),
       ),

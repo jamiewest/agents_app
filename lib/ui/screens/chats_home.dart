@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/channel_store.dart';
 import '../../data/chat_transcript_store.dart';
 import '../../data/conversation_store.dart';
+import '../../data/usage_store.dart';
 import '../../domain/channel.dart';
 import '../../domain/conversation.dart';
 import '../../main.dart' show ChatScreen;
@@ -26,21 +27,68 @@ const double twoPaneBreakpoint = 1000;
 
 /// Shares the chats layout mode down to the panes built by the inner
 /// navigator, so the branch root and the open chat agree with [ChatsHome]
-/// on whether the persistent sidebar is showing.
+/// on whether the persistent sidebar is showing, and can toggle it.
 class ChatsScope extends InheritedWidget {
   /// Creates a [ChatsScope].
-  const ChatsScope({required this.twoPane, required super.child, super.key});
+  const ChatsScope({
+    required this.twoPane,
+    required this.sidebarCollapsed,
+    required this.onToggleSidebar,
+    required super.child,
+    super.key,
+  });
 
-  /// Whether the sidebar and detail pane are shown side by side.
+  /// Whether the layout is wide enough for the sidebar and detail pane to
+  /// be shown side by side.
   final bool twoPane;
+
+  /// Whether the sidebar is currently collapsed out of the two-pane layout.
+  final bool sidebarCollapsed;
+
+  /// Toggles the sidebar open/closed, or null when the layout has no
+  /// sidebar (compact widths).
+  final VoidCallback? onToggleSidebar;
+
+  /// The nearest [ChatsScope], or null outside the chats branch.
+  static ChatsScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ChatsScope>();
 
   /// Whether the nearest [ChatsHome] is in its two-pane (wide) layout.
   static bool twoPaneOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<ChatsScope>()?.twoPane ??
-      false;
+      maybeOf(context)?.twoPane ?? false;
 
   @override
-  bool updateShouldNotify(ChatsScope oldWidget) => twoPane != oldWidget.twoPane;
+  bool updateShouldNotify(ChatsScope oldWidget) =>
+      twoPane != oldWidget.twoPane ||
+      sidebarCollapsed != oldWidget.sidebarCollapsed ||
+      onToggleSidebar != oldWidget.onToggleSidebar;
+}
+
+/// The detail-pane button that opens/closes the two-pane conversations
+/// sidebar.
+///
+/// Uses the sidebar glyph: filled while the sidebar is open, outlined while
+/// it is collapsed. Renders nothing when the layout has no sidebar to
+/// toggle (compact widths), so it can sit unconditionally in embedded app
+/// bars.
+class SidebarToggleButton extends StatelessWidget {
+  /// Creates a [SidebarToggleButton].
+  const SidebarToggleButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = ChatsScope.maybeOf(context);
+    final onToggle = scope?.onToggleSidebar;
+    if (scope == null || onToggle == null) return const SizedBox.shrink();
+    final collapsed = scope.sidebarCollapsed;
+    return IconButton(
+      tooltip: collapsed ? 'Show conversations' : 'Hide conversations',
+      icon: Icon(
+        collapsed ? Icons.view_sidebar_outlined : Icons.view_sidebar_rounded,
+      ),
+      onPressed: onToggle,
+    );
+  }
 }
 
 /// The Chats destination shell: a persistent conversations/channels sidebar
@@ -70,6 +118,10 @@ class ChatsHome extends StatefulWidget {
 
 class _ChatsHomeState extends State<ChatsHome> {
   double _sidebarWidth = 300;
+  bool _sidebarCollapsed = false;
+
+  void _toggleSidebar() =>
+      setState(() => _sidebarCollapsed = !_sidebarCollapsed);
 
   /// The conversation the detail navigator currently shows, parsed from the
   /// live location so the sidebar can highlight it and route deletions.
@@ -90,26 +142,30 @@ class _ChatsHomeState extends State<ChatsHome> {
       final selectedId = _selectedConversationId(context);
       return ChatsScope(
         twoPane: twoPane,
+        sidebarCollapsed: _sidebarCollapsed,
+        onToggleSidebar: twoPane ? _toggleSidebar : null,
         child: twoPane
             ? Row(
                 children: [
-                  SizedBox(
-                    width: _sidebarWidth,
-                    child: ChatsListView(
-                      services: widget.services,
-                      presentation: ChatsListPresentation.sidebar,
-                      selectedConversationId: selectedId,
+                  if (!_sidebarCollapsed) ...[
+                    SizedBox(
+                      width: _sidebarWidth,
+                      child: ChatsListView(
+                        services: widget.services,
+                        presentation: ChatsListPresentation.sidebar,
+                        selectedConversationId: selectedId,
+                      ),
                     ),
-                  ),
-                  DraggableSeparator(
-                    onDragUpdate: (deltaX) => setState(() {
-                      // The floor keeps the brand + actions on one line.
-                      _sidebarWidth = (_sidebarWidth + deltaX).clamp(
-                        248.0,
-                        480.0,
-                      );
-                    }),
-                  ),
+                    DraggableSeparator(
+                      onDragUpdate: (deltaX) => setState(() {
+                        // The floor keeps the brand + actions on one line.
+                        _sidebarWidth = (_sidebarWidth + deltaX).clamp(
+                          248.0,
+                          480.0,
+                        );
+                      }),
+                    ),
+                  ],
                   Expanded(child: widget.navigationShell),
                 ],
               )
@@ -132,22 +188,31 @@ class ChatsRootPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (ChatsScope.twoPaneOf(context)) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.forum_outlined,
-              size: 56,
-              color: Theme.of(context).colorScheme.outline,
+      return Stack(
+        children: [
+          const Positioned(
+            top: AppSpacing.sm,
+            left: AppSpacing.sm,
+            child: SafeArea(child: SidebarToggleButton()),
+          ),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.forum_outlined,
+                  size: 56,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Select a conversation or start a new chat.',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ],
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'Select a conversation or start a new chat.',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
     return ChatsListView(
@@ -164,6 +229,10 @@ enum ChatsListPresentation {
 
   /// A branded side panel with a header and New Conversation button.
   sidebar,
+
+  /// The sidebar layout hosted inside the compact-width navigation drawer;
+  /// navigating from it closes the drawer.
+  drawer,
 }
 
 /// The conversations and channels list, shown either as a full page or as
@@ -198,6 +267,7 @@ class _ChatsListViewState extends State<ChatsListView> {
   late final ConversationStore _conversations;
   late final ConversationSessionStore _sessions;
   late final ChatTranscriptStore _transcripts;
+  late final UsageStore _usage;
   late final ChannelStore _channels;
   late final ConfiguredAgentsManager _manager;
   late final Stream<List<Conversation>> _conversationStream;
@@ -214,6 +284,7 @@ class _ChatsListViewState extends State<ChatsListView> {
     _conversations = ConversationStore(records);
     _sessions = ConversationSessionStore(records);
     _transcripts = ChatTranscriptStore(records);
+    _usage = UsageStore(records);
     _channels = ChannelStore(records);
     _manager = widget.services.getRequiredService<ConfiguredAgentsManager>();
     // Broadcast: the adaptive shell can briefly mount two copies of a body
@@ -248,6 +319,7 @@ class _ChatsListViewState extends State<ChatsListView> {
   }
 
   Future<void> _startNewChat() async {
+    _closeDrawerIfHostedInOne();
     await _loadAgents();
     if (!mounted) return;
     final agents = _agentsById.values.toList();
@@ -302,6 +374,7 @@ class _ChatsListViewState extends State<ChatsListView> {
   }
 
   Future<void> _createChannel() async {
+    _closeDrawerIfHostedInOne();
     var name = '';
     final submitted = await showDialog<String>(
       context: context,
@@ -352,8 +425,16 @@ class _ChatsListViewState extends State<ChatsListView> {
   @override
   Widget build(BuildContext context) => switch (widget.presentation) {
     ChatsListPresentation.page => _buildPage(context),
-    ChatsListPresentation.sidebar => _buildSidebar(context),
+    ChatsListPresentation.sidebar ||
+    ChatsListPresentation.drawer => _buildSidebar(context),
   };
+
+  /// Closes the enclosing shell drawer when hosted in one, so navigating
+  /// (or opening a sheet/dialog) doesn't leave the drawer open behind it.
+  void _closeDrawerIfHostedInOne() {
+    if (widget.presentation != ChatsListPresentation.drawer) return;
+    Scaffold.maybeOf(context)?.closeDrawer();
+  }
 
   /// The compact-width Chats page: app bar, list, and a new-chat FAB.
   Widget _buildPage(BuildContext context) => Scaffold(
@@ -493,6 +574,7 @@ class _ChatsListViewState extends State<ChatsListView> {
       conversations: _conversations,
       sessions: _sessions,
       transcripts: _transcripts,
+      usage: _usage,
     );
     if (deleted &&
         mounted &&
@@ -547,7 +629,10 @@ class _ChatsListViewState extends State<ChatsListView> {
     title: channel.name,
     subtitle: channel.description.isEmpty ? null : channel.description,
     selected: false,
-    onTap: () => context.go('/chats/channel/${channel.id}'),
+    onTap: () {
+      _closeDrawerIfHostedInOne();
+      context.go('/chats/channel/${channel.id}');
+    },
     menuTooltip: 'Channel actions',
     onRename: () => unawaited(_renameChannel(channel)),
     onDelete: () => unawaited(_deleteChannel(channel)),
@@ -556,10 +641,13 @@ class _ChatsListViewState extends State<ChatsListView> {
   Widget _conversationTile(BuildContext context, Conversation conversation) {
     final agent = _agentsById[conversation.primaryAgentId];
     final selected = conversation.id == widget.selectedConversationId;
-    final title = conversation.title.trim().isEmpty
-        ? (agent?.name ?? 'Untitled conversation')
-        : conversation.title;
-    final preview = conversation.lastMessagePreview?.trim();
+    final agentName = agent?.name;
+    final conversationTitle = conversation.title.trim();
+    final title = conversationTitle.isEmpty
+        ? (agentName ?? 'Untitled conversation')
+        : (agentName == null || agentName == conversationTitle
+              ? conversationTitle
+              : '$agentName • $conversationTitle');
     final isGroup = conversation.kind == ConversationKind.group;
     return _EntryTile(
       leading: CircleAvatar(
@@ -567,16 +655,16 @@ class _ChatsListViewState extends State<ChatsListView> {
         child: isGroup
             ? const Icon(Icons.group_outlined, size: 16)
             : Text(
-                _initialFor(agent?.name ?? title),
+                _initialFor(agentName ?? title),
                 style: Theme.of(context).textTheme.labelMedium,
               ),
       ),
       title: title,
-      subtitle: preview == null || preview.isEmpty
-          ? agent?.name
-          : '${agent?.name ?? ''} • $preview',
       selected: selected,
-      onTap: () => context.go('/chats/c/${conversation.id}'),
+      onTap: () {
+        _closeDrawerIfHostedInOne();
+        context.go('/chats/c/${conversation.id}');
+      },
       menuTooltip: 'Conversation actions',
       onRename: () => unawaited(_renameConversation(conversation)),
       onDelete: () => unawaited(_deleteConversation(conversation)),
@@ -658,7 +746,10 @@ class _ChatDetailPaneState extends State<ChatDetailPane> {
         final agent = snapshot.data;
         if (agent == null) {
           return Scaffold(
-            appBar: AppBar(),
+            appBar: AppBar(
+              automaticallyImplyLeading: !embedded,
+              leading: embedded ? const SidebarToggleButton() : null,
+            ),
             body: const Center(
               child: Text('This conversation\'s agent no longer exists.'),
             ),

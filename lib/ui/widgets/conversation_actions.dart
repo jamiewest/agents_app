@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/chat_transcript_store.dart';
 import '../../data/conversation_store.dart';
+import '../../data/usage_store.dart';
 import '../../domain/conversation.dart';
 
 /// Prompts for a new title and returns it trimmed, or `null` on cancel.
@@ -54,7 +55,8 @@ Future<String?> showRenameDialog(
 }
 
 /// Confirms with the user, then deletes the conversation and everything
-/// hanging off it: transcript entries, session state, then the record.
+/// hanging off it: transcript entries, session state, the usage ledger,
+/// then the record.
 ///
 /// Returns whether the conversation was deleted.
 Future<bool> confirmAndDeleteConversation(
@@ -64,6 +66,7 @@ Future<bool> confirmAndDeleteConversation(
   required ConversationStore conversations,
   required ConversationSessionStore sessions,
   required ChatTranscriptStore transcripts,
+  UsageStore? usage,
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
@@ -86,6 +89,7 @@ Future<bool> confirmAndDeleteConversation(
 
   await transcripts.deleteFor(conversationId);
   await sessions.deleteFor(conversationId);
+  await usage?.deleteFor(conversationId);
   await conversations.delete(conversationId);
   return true;
 }
