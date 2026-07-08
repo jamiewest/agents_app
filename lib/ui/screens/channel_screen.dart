@@ -9,6 +9,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../data/channel_store.dart';
 import '../../data/conversation_store.dart';
@@ -16,7 +17,7 @@ import '../../domain/channel.dart';
 import '../../domain/conversation.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/empty_state.dart';
-import 'chats_home.dart' show ChatsScope, SidebarToggleButton;
+import 'chats_home.dart' show detailPaneLeading;
 
 /// One channel workspace: its conversations, shared files, and member
 /// agents.
@@ -38,7 +39,12 @@ class ChannelScreen extends StatefulWidget {
   State<ChannelScreen> createState() => _ChannelScreenState();
 }
 
-class _ChannelScreenState extends State<ChannelScreen> {
+class _ChannelScreenState extends State<ChannelScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController = TabController(
+    length: 3,
+    vsync: this,
+  );
   late final RecordStore _records;
   late final ChannelStore _channels;
   late final ConversationStore _conversations;
@@ -59,6 +65,12 @@ class _ChannelScreenState extends State<ChannelScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     final channel = await _channels.get(widget.channelId);
     final agents = await _manager.agents.listAgents();
@@ -74,10 +86,11 @@ class _ChannelScreenState extends State<ChannelScreen> {
     if (channel == null) return;
     final members = [for (final id in channel.agentIds) ?_agentsById[id]];
     if (members.isEmpty) {
+      // Put the user in front of the member checkboxes instead of naming
+      // the tab and making them find it.
+      _tabController.animateTo(2);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add an agent to the channel first (Agents tab).'),
-        ),
+        const SnackBar(content: Text('Add an agent to the channel first.')),
       );
       return;
     }
@@ -120,27 +133,15 @@ class _ChannelScreenState extends State<ChannelScreen> {
   Future<void> _deleteChannel() async {
     final channel = _channel;
     if (channel == null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete channel?'),
-        content: Text(
+    final confirmed = await showDeleteConfirmation(
+      context,
+      title: 'Delete channel?',
+      message:
           'Delete "${channel.name}"? Its conversations are kept and stay '
           'available in Chats.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete channel',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await _channels.delete(channel.id);
     if (mounted) context.go('/chats');
   }
@@ -163,67 +164,66 @@ class _ChannelScreenState extends State<ChannelScreen> {
     // In the two-pane layout the persistent sidebar already provides
     // navigation, so the channel pane drops its redundant back button
     // (matching the embedded chat).
-    final embedded = ChatsScope.twoPaneOf(context);
+    final leading = detailPaneLeading(context);
     final channel = _channel;
     if (channel == null) {
       return Scaffold(
         appBar: AppBar(
-          automaticallyImplyLeading: !embedded,
-          leading: embedded ? const SidebarToggleButton() : null,
+          leadingWidth: leading.leadingWidth,
+          leading: leading.leading,
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: !embedded,
-          leading: embedded ? const SidebarToggleButton() : null,
-          title: Text(channel.name),
-          actions: [
-            IconButton(
-              tooltip: 'New channel chat',
-              icon: const Icon(Icons.add_comment_outlined),
-              onPressed: _startChannelChat,
-            ),
-            PopupMenuButton<void Function()>(
-              tooltip: 'Channel actions',
-              onSelected: (action) => action(),
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: () => unawaited(_renameChannel()),
-                  child: const Text('Rename channel'),
-                ),
-                PopupMenuItem(
-                  value: () => unawaited(_deleteChannel()),
-                  child: const Text('Delete channel'),
-                ),
-              ],
-            ),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Conversations'),
-              Tab(text: 'Files'),
-              Tab(text: 'Agents'),
+    return Scaffold(
+      appBar: AppBar(
+        leadingWidth: leading.leadingWidth,
+        leading: leading.leading,
+        title: Text(channel.name),
+        actions: [
+          IconButton(
+            tooltip: 'New channel chat',
+            icon: const Icon(Symbols.add_comment),
+            onPressed: _startChannelChat,
+          ),
+          PopupMenuButton<void Function()>(
+            tooltip: 'Channel actions',
+            onSelected: (action) => action(),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: () => unawaited(_renameChannel()),
+                child: const Text('Rename channel'),
+              ),
+              PopupMenuItem(
+                value: () => unawaited(_deleteChannel()),
+                child: const Text('Delete channel'),
+              ),
             ],
           ),
-        ),
-        body: TabBarView(
-          children: [
-            _ConversationsTab(
-              conversations: _conversations.watchForChannel(channel.id),
-              agentsById: _agentsById,
-            ),
-            _FilesTab(records: _records, channelId: channel.id),
-            _AgentsTab(
-              agents: _agentsById.values.toList(),
-              memberIds: channel.agentIds.toSet(),
-              onChanged: _toggleMember,
-            ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Conversations'),
+            Tab(text: 'Files'),
+            Tab(text: 'Agents'),
           ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _ConversationsTab(
+            conversations: _conversations.watchForChannel(channel.id),
+            agentsById: _agentsById,
+          ),
+          _FilesTab(records: _records, channelId: channel.id),
+          _AgentsTab(
+            agents: _agentsById.values.toList(),
+            memberIds: channel.agentIds.toSet(),
+            onChanged: _toggleMember,
+          ),
+        ],
       ),
     );
   }
@@ -248,7 +248,7 @@ class _ConversationsTab extends StatelessWidget {
       }
       if (items.isEmpty) {
         return const EmptyState(
-          icon: Icons.tag,
+          icon: Symbols.tag,
           title: 'No channel conversations yet',
           message: 'Start one with a member agent using the button above.',
         );
@@ -261,7 +261,7 @@ class _ConversationsTab extends StatelessWidget {
               agentsById[conversation.coordinatorAgentId ??
                   conversation.primaryAgentId];
           return ListTile(
-            leading: const Icon(Icons.tag),
+            leading: const Icon(Symbols.tag),
             title: Text(
               conversation.title.trim().isEmpty
                   ? (agent?.name ?? 'Conversation')
@@ -334,7 +334,7 @@ class _FilesTabState extends State<_FilesTab> {
       padding: const EdgeInsets.all(12),
       child: OutlinedButton.icon(
         onPressed: _upload,
-        icon: const Icon(Icons.upload_file_outlined),
+        icon: const Icon(Symbols.upload_file),
         label: const Text('Upload text file'),
       ),
     );
@@ -373,7 +373,7 @@ class _FilesTabState extends State<_FilesTab> {
   }
 
   Widget _fileTile(BuildContext context, String file) => ListTile(
-    leading: const Icon(Icons.description_outlined),
+    leading: const Icon(Symbols.description),
     title: Text(file),
     onTap: () async {
       final content = await _store.readFileAsync(file);

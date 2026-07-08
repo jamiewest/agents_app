@@ -26,11 +26,12 @@ void main() {
     keyValue = InMemoryKeyValueStore();
     secrets = InMemorySecretStore();
     records = InMemoryRecordStore();
-    services = (ServiceCollection()
-          ..addSingleton<KeyValueStore>((_) => keyValue)
-          ..addSingleton<SecretStore>((_) => secrets)
-          ..addSingleton<RecordStore>((_) => records))
-        .buildServiceProvider();
+    services =
+        (ServiceCollection()
+              ..addSingleton<KeyValueStore>((_) => keyValue)
+              ..addSingleton<SecretStore>((_) => secrets)
+              ..addSingleton<RecordStore>((_) => records))
+            .buildServiceProvider();
   });
 
   tearDown(() {
@@ -70,4 +71,40 @@ void main() {
     expect(await records.query('agent_tasks'), isEmpty);
     expect(modelFile.existsSync(), isFalse);
   });
+
+  test('resetAppData still wipes storage when secret deletes fail', () async {
+    // A sandboxed debug build can have an unusable platform keychain; the
+    // wipe must proceed past it rather than abort with an error.
+    const sourceId = 'src-1';
+    final throwingSecrets = _ThrowingSecretStore();
+    final failingServices =
+        (ServiceCollection()
+              ..addSingleton<KeyValueStore>((_) => keyValue)
+              ..addSingleton<SecretStore>((_) => throwingSecrets)
+              ..addSingleton<RecordStore>((_) => records))
+            .buildServiceProvider();
+    await keyValue.write(
+      '${ConfiguredAgentsKeys.sourcePrefix}$sourceId',
+      '{"id":"$sourceId"}',
+    );
+    await records.put('conversations', 'c1', {'title': 'hello'});
+
+    await resetAppData(failingServices);
+
+    expect(await keyValue.keys(), isEmpty);
+    expect(await records.query('conversations'), isEmpty);
+  });
+}
+
+class _ThrowingSecretStore extends SecretStore {
+  @override
+  Future<String?> read(String key) async => null;
+
+  @override
+  Future<void> write(String key, String value) async =>
+      throw StateError('keychain unavailable');
+
+  @override
+  Future<void> delete(String key) async =>
+      throw StateError('keychain unavailable');
 }

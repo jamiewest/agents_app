@@ -6,6 +6,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Adds agents hosted on another device: paste a pairing code, redeem it,
 /// pick which of the host's agents to add as teammates.
@@ -72,39 +73,60 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
     final manager = widget.services
         .getRequiredService<ConfiguredAgentsManager>();
     final sourceId = 'net-${result.hostId}';
-    await manager.saveSource(
-      ModelSourceConfig(
-        id: sourceId,
-        providerType: ProviderType.network,
-        displayName: result.deviceName,
-        endpoint: result.baseUrl,
-      ),
-      // The pairing bearer lives where API keys live: the secret store.
-      apiKey: result.credential,
-    );
+    var addedCount = 0;
+    try {
+      await manager.saveSource(
+        ModelSourceConfig(
+          id: sourceId,
+          providerType: ProviderType.network,
+          displayName: result.deviceName,
+          endpoint: result.baseUrl,
+        ),
+        // The pairing bearer lives where API keys live: the secret store.
+        apiKey: result.credential,
+      );
 
-    for (final agent in _agents) {
-      if (!_selected.contains(agent.path)) continue;
-      final slug = agent.path.split('/').last;
-      final modelId = '$sourceId-$slug';
-      await manager.saveModel(
-        ModelConfig(
-          id: modelId,
-          sourceId: sourceId,
-          modelId: agent.path,
-          displayName: '${agent.name} @ ${result.deviceName}',
-        ),
-      );
-      await manager.saveAgent(
-        SavedAgentConfig(
-          id: '$modelId-agent',
-          name: agent.name,
-          modelId: modelId,
-          description: agent.description,
-        ),
-      );
+      for (final agent in _agents) {
+        if (!_selected.contains(agent.path)) continue;
+        addedCount++;
+        final slug = agent.path.split('/').last;
+        final modelId = '$sourceId-$slug';
+        await manager.saveModel(
+          ModelConfig(
+            id: modelId,
+            sourceId: sourceId,
+            modelId: agent.path,
+            displayName: '${agent.name} @ ${result.deviceName}',
+          ),
+        );
+        await manager.saveAgent(
+          SavedAgentConfig(
+            id: '$modelId-agent',
+            name: agent.name,
+            modelId: modelId,
+            description: agent.description,
+          ),
+        );
+      }
+    } catch (error) {
+      // Surface storage failures (e.g. a rejected keychain write) instead
+      // of dropping them in this unawaited handler.
+      if (mounted) setState(() => _error = 'Could not save agents: $error');
+      return;
     }
-    if (mounted) context.go('/chats');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          addedCount == 1
+              ? 'Added 1 agent from ${result.deviceName} — start a chat '
+                    'from the Chats list.'
+              : 'Added $addedCount agents from ${result.deviceName} — '
+                    'start a chat from the Chats list.',
+        ),
+      ),
+    );
+    context.go('/chats');
   }
 
   @override
@@ -119,7 +141,9 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
             const Text(
               'On the hosting device, open Settings → Share agents and '
               'generate a pairing code. Paste it here. Codes are single-use '
-              'and expire after two minutes.',
+              'and expire after two minutes.\n\n'
+              'Agents you add join your agent list like any other agent: '
+              'chat with them from Chats, or manage them in Settings.',
             ),
             const SizedBox(height: 16),
             TextField(
@@ -138,7 +162,7 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
                       dimension: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.link),
+                  : const Icon(Symbols.link),
               label: const Text('Pair'),
             ),
             if (_error case final error?) ...[
@@ -172,8 +196,12 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: _selected.isEmpty ? null : _addSelected,
-                icon: const Icon(Icons.group_add_outlined),
-                label: Text('Add ${_selected.length} agent(s)'),
+                icon: const Icon(Symbols.group_add),
+                label: Text(switch (_selected.length) {
+                  0 => 'Add agents',
+                  1 => 'Add 1 agent',
+                  final count => 'Add $count agents',
+                }),
               ),
             ],
           ],

@@ -6,6 +6,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../data/app_reset.dart';
 import '../../data/embedding_settings.dart';
@@ -51,53 +52,53 @@ class SettingsHomeScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 const Divider(),
                 ListTile(
-                  leading: const Icon(Icons.smart_toy_outlined),
+                  leading: const Icon(Symbols.smart_toy),
                   title: const Text('Agents & providers'),
                   subtitle: const Text(
                     'Model sources, API keys, models, and saved agents',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(Symbols.chevron_right),
                   onTap: () => context.go('/settings/agents'),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.person_add_alt_outlined),
+                  leading: const Icon(Symbols.person_add),
                   title: const Text('Add agent'),
                   subtitle: const Text('Guided setup for a new agent'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(Symbols.chevron_right),
                   onTap: () => context.go('/settings/agents/add'),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.wifi_tethering),
+                  leading: const Icon(Symbols.wifi_tethering),
                   title: const Text('Share agents on the network'),
                   subtitle: const Text(
                     'Let paired devices use this device\'s agents (A2A)',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(Symbols.chevron_right),
                   onTap: () => context.go('/settings/hosting'),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.receipt_long_outlined),
+                  leading: const Icon(Symbols.receipt_long),
                   title: const Text('Logs & diagnostics'),
                   subtitle: const Text(
                     'Live app logs, prompts sent to models, and log levels',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(Symbols.chevron_right),
                   onTap: () => context.go('/settings/logging'),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.psychology_outlined),
+                  leading: const Icon(Symbols.psychology),
                   title: const Text('Memory embedding model'),
                   subtitle: const Text(
                     'How agent memory is searched. Defaults to keyword matching; '
                     'pick an OpenAI-compatible model for semantic recall.',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(Symbols.chevron_right),
                   onTap: () => _pickEmbeddingModel(context),
                 ),
                 const Divider(),
                 ListTile(
                   leading: Icon(
-                    Icons.restart_alt,
+                    Symbols.restart_alt,
                     color: Theme.of(context).colorScheme.error,
                   ),
                   title: Text(
@@ -187,7 +188,7 @@ class SettingsHomeScreen extends StatelessWidget {
             onPressed: () => Navigator.of(context).pop((null,)),
             child: Row(
               children: [
-                if (current == null) const Icon(Icons.check, size: 18),
+                if (current == null) const Icon(Symbols.check, size: 18),
                 if (current == null) const SizedBox(width: 8),
                 const Text('Keyword matching (no model)'),
               ],
@@ -198,7 +199,7 @@ class SettingsHomeScreen extends StatelessWidget {
               onPressed: () => Navigator.of(context).pop((model.id,)),
               child: Row(
                 children: [
-                  if (current == model.id) const Icon(Icons.check, size: 18),
+                  if (current == model.id) const Icon(Symbols.check, size: 18),
                   if (current == model.id) const SizedBox(width: 8),
                   Flexible(child: Text(model.label)),
                 ],
@@ -227,17 +228,17 @@ class _AppearanceSelector extends StatelessWidget {
           segments: const [
             ButtonSegment(
               value: ThemeMode.system,
-              icon: Icon(Icons.brightness_auto_outlined),
+              icon: Icon(Symbols.brightness_auto),
               label: Text('System'),
             ),
             ButtonSegment(
               value: ThemeMode.light,
-              icon: Icon(Icons.light_mode_outlined),
+              icon: Icon(Symbols.light_mode),
               label: Text('Light'),
             ),
             ButtonSegment(
               value: ThemeMode.dark,
-              icon: Icon(Icons.dark_mode_outlined),
+              icon: Icon(Symbols.dark_mode),
               label: Text('Dark'),
             ),
           ],
@@ -295,7 +296,7 @@ class _SeedSwatch extends StatelessWidget {
           ),
           child: selected
               ? Icon(
-                  Icons.check,
+                  Symbols.check,
                   size: 18,
                   color:
                       ThemeData.estimateBrightnessForColor(seed.color) ==

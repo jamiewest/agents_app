@@ -59,6 +59,10 @@ class AgentEditor extends StatefulWidget {
 
 class _AgentEditorState extends State<AgentEditor> {
   final _formKey = GlobalKey<FormState>();
+
+  /// Fixed for the editor's lifetime: repeated submits (e.g. after a
+  /// storage failure) must overwrite one record, not mint duplicates.
+  late final String _entityId = widget.initial?.id ?? newConfiguredAgentsId();
   late final TextEditingController _name;
   late final TextEditingController _description;
   late final TextEditingController _instructions;
@@ -122,7 +126,7 @@ class _AgentEditorState extends State<AgentEditor> {
     final instructions = _instructions.text.trim();
     widget.onSubmit(
       SavedAgentConfig(
-        id: widget.initial?.id ?? newConfiguredAgentsId(),
+        id: _entityId,
         name: _name.text.trim(),
         modelId: _modelId,
         description: description,
@@ -414,17 +418,14 @@ class _AgentEditorState extends State<AgentEditor> {
             for (final mode in FileToolApprovalMode.values)
               DropdownMenuItem(
                 value: mode,
-                child: Text(
-                  switch (mode) {
-                    FileToolApprovalMode.alwaysAsk =>
-                      strings.fileToolApprovalAlwaysAsk,
-                    FileToolApprovalMode.autoApproveReadOnly =>
-                      strings.fileToolApprovalAutoReadOnly,
-                    FileToolApprovalMode.autoApproveAll =>
-                      strings.fileToolApprovalAutoAll,
-                  },
-                  style: style.bodyTextStyle,
-                ),
+                child: Text(switch (mode) {
+                  FileToolApprovalMode.alwaysAsk =>
+                    strings.fileToolApprovalAlwaysAsk,
+                  FileToolApprovalMode.autoApproveReadOnly =>
+                    strings.fileToolApprovalAutoReadOnly,
+                  FileToolApprovalMode.autoApproveAll =>
+                    strings.fileToolApprovalAutoAll,
+                }, style: style.bodyTextStyle),
               ),
           ],
         ),

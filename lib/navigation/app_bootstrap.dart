@@ -54,6 +54,17 @@ class AppBootstrap {
       if (model.settings['llama.modelSource'] != 'file') continue;
       fileModelIds.add(model.id);
       for (final kind in LlamaArtifactKind.values) {
+        // Restore only artifacts the config still declares. A stored copy
+        // can outlive its setting — e.g. a draft model removed in the model
+        // editor — and registering it anyway silently re-enables the
+        // artifact (the registered selection beats the persisted settings
+        // when the session loads). Delete such orphans instead.
+        final declared =
+            model.settings[_artifactFileNameKey(kind)]?.trim() ?? '';
+        if (declared.isEmpty) {
+          await deleteLocalModelFiles(model.id, kindKey: kind.name);
+          continue;
+        }
         // A live selection made this session always wins.
         if (selectedLlamaModelFilePathFor(model.id, kind: kind) != null) {
           continue;
@@ -71,6 +82,14 @@ class AppBootstrap {
     // that skipped the normal delete path.
     await pruneLocalModelFiles(fileModelIds);
   }
+
+  /// The model-settings key holding the picked file name for [kind]; empty
+  /// or absent means the config no longer uses that artifact.
+  static String _artifactFileNameKey(LlamaArtifactKind kind) => switch (kind) {
+    LlamaArtifactKind.model => 'llama.modelFileName',
+    LlamaArtifactKind.mmproj => 'llama.mmprojFileName',
+    LlamaArtifactKind.draft => 'llama.draftModelFileName',
+  };
 
   /// Whether at least one saved agent can actually run: its model and
   /// source resolve, and a key is stored when the source needs one.

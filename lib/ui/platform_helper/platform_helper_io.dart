@@ -35,6 +35,16 @@ Future<void> deleteFile(XFile file) async {
 ///   A [bool] indicating whether the device can take a photo.
 bool canTakePhoto() => ImagePicker().supportsImageSource(ImageSource.camera);
 
+/// Checks if the device can scan a barcode with the camera.
+///
+/// Barcode scanning is backed by `mobile_scanner`, which supports iOS and
+/// macOS on this platform variant. Unlike [canTakePhoto], this does not depend
+/// on the model being multimodal — a scanned barcode is decoded to text.
+///
+/// Returns:
+///   A [bool] indicating whether the camera-based scanner is available.
+bool canScanBarcode() => Platform.isIOS || Platform.isMacOS;
+
 /// Opens a dialog to take a photo using the device's camera.
 ///
 /// This method displays a camera interface to the user, allowing them to

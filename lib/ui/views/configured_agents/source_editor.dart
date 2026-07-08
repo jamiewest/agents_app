@@ -23,11 +23,23 @@ class SourceEditor extends StatefulWidget {
     required this.onCancel,
     this.initial,
     this.hasStoredKey = false,
+    this.providerTypes = const [
+      ProviderType.openAiCompatible,
+      ProviderType.anthropic,
+      ProviderType.google,
+      ProviderType.localLlama,
+    ],
     super.key,
   });
 
   /// The source being edited, or `null` to create a new one.
   final ModelSourceConfig? initial;
+
+  /// The provider choices offered, in dropdown order.
+  ///
+  /// Narrow this when the caller already knows the kind of source being
+  /// created (e.g. the add-agent wizard's API path excludes local llama).
+  final List<ProviderType> providerTypes;
 
   /// Whether an API key is already stored for the source.
   final bool hasStoredKey;
@@ -51,6 +63,10 @@ class SourceEditor extends StatefulWidget {
 
 class _SourceEditorState extends State<SourceEditor> {
   final _formKey = GlobalKey<FormState>();
+
+  /// Fixed for the editor's lifetime: repeated submits (e.g. after a
+  /// storage failure) must overwrite one record, not mint duplicates.
+  late final String _entityId = widget.initial?.id ?? newConfiguredAgentsId();
   late final TextEditingController _displayName;
   late final TextEditingController _endpoint;
   late final TextEditingController _apiKey;
@@ -63,8 +79,24 @@ class _SourceEditorState extends State<SourceEditor> {
     _displayName = TextEditingController(text: initial?.displayName ?? '');
     _endpoint = TextEditingController(text: initial?.endpoint ?? '');
     _apiKey = TextEditingController();
-    _provider = initial?.providerType ?? ProviderType.openAiCompatible;
+    _provider = initial?.providerType ?? widget.providerTypes.first;
   }
+
+  /// Dropdown choices: the configured list, plus the edited source's
+  /// current provider if it is not in the list.
+  List<ProviderType> get _providerChoices => [
+    ...widget.providerTypes,
+    if (!widget.providerTypes.contains(_provider)) _provider,
+  ];
+
+  String _providerLabel(ProviderType type, ConfiguredAgentsStrings strings) =>
+      switch (type) {
+        ProviderType.openAiCompatible => strings.openAiCompatibleProvider,
+        ProviderType.anthropic => strings.anthropicProvider,
+        ProviderType.google => strings.googleProvider,
+        ProviderType.localLlama => 'Local llama',
+        ProviderType.network => 'Network (paired device)',
+      };
 
   @override
   void dispose() {
@@ -78,7 +110,7 @@ class _SourceEditorState extends State<SourceEditor> {
     if (!_formKey.currentState!.validate()) return;
     final endpoint = _endpoint.text.trim();
     final source = ModelSourceConfig(
-      id: widget.initial?.id ?? newConfiguredAgentsId(),
+      id: _entityId,
       providerType: _provider,
       displayName: _displayName.text.trim(),
       endpoint: _provider == ProviderType.localLlama || endpoint.isEmpty
@@ -111,22 +143,11 @@ class _SourceEditorState extends State<SourceEditor> {
                   initialValue: _provider,
                   decoration: const InputDecoration(isDense: true),
                   items: [
-                    DropdownMenuItem(
-                      value: ProviderType.openAiCompatible,
-                      child: Text(strings.openAiCompatibleProvider),
-                    ),
-                    DropdownMenuItem(
-                      value: ProviderType.anthropic,
-                      child: Text(strings.anthropicProvider),
-                    ),
-                    DropdownMenuItem(
-                      value: ProviderType.google,
-                      child: Text(strings.googleProvider),
-                    ),
-                    const DropdownMenuItem(
-                      value: ProviderType.localLlama,
-                      child: Text('Local llama'),
-                    ),
+                    for (final type in _providerChoices)
+                      DropdownMenuItem(
+                        value: type,
+                        child: Text(_providerLabel(type, strings)),
+                      ),
                   ],
                   onChanged: (value) =>
                       setState(() => _provider = value ?? _provider),

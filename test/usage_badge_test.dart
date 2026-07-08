@@ -54,6 +54,50 @@ void main() {
     expect(formatTokenCount(1234567), '1,234,567');
   });
 
+  test('formatTurnDuration scales with magnitude', () {
+    expect(formatTurnDuration(const Duration(milliseconds: 840)), '0.8s');
+    expect(
+      formatTurnDuration(const Duration(seconds: 9, milliseconds: 940)),
+      '9.9s',
+    );
+    expect(formatTurnDuration(const Duration(seconds: 12)), '12s');
+    expect(
+      formatTurnDuration(const Duration(minutes: 2, seconds: 5)),
+      '2m 05s',
+    );
+  });
+
+  group('liveTurnStatusText', () {
+    final startedAt = DateTime(2026, 7, 7, 12);
+    final now = startedAt.add(const Duration(seconds: 7));
+
+    test('shows Thinking with elapsed time before any text', () {
+      final message = ChatMessage.llm()..turnStartedAt = startedAt;
+      expect(liveTurnStatusText(message, now: now), 'Thinking… · 7s');
+    });
+
+    test('shows Writing plus tokens once text and usage arrive', () {
+      final message = ChatMessage.llm()
+        ..append('Partial answer')
+        ..turnStartedAt = startedAt
+        ..usage = ai.UsageDetails(inputTokenCount: 1234, outputTokenCount: 56);
+      expect(
+        liveTurnStatusText(message, now: now),
+        'Writing… · 7s · ▲ 1,234  ▼ 56',
+      );
+    });
+
+    test('shows the running tool over Thinking/Writing', () {
+      final message = ChatMessage.llm()
+        ..turnStartedAt = startedAt
+        ..toolActivity = 'search, fetch';
+      expect(
+        liveTurnStatusText(message, now: now),
+        'Running search, fetch… · 7s',
+      );
+    });
+  });
+
   testWidgets('LlmMessageView shows a badge for a message with usage', (
     tester,
   ) async {
@@ -66,6 +110,40 @@ void main() {
     await tester.pumpWidget(_host(LlmMessageView(message)));
 
     expect(find.text('▲ 1,234  ▼ 56'), findsOneWidget);
+  });
+
+  testWidgets('LlmMessageView appends the turn duration when known', (
+    tester,
+  ) async {
+    final message =
+        ChatMessage(
+            origin: MessageOrigin.llm,
+            text: 'The answer.',
+            attachments: const [],
+          )
+          ..usage = ai.UsageDetails(inputTokenCount: 1234, outputTokenCount: 56)
+          ..turnDuration = const Duration(seconds: 12);
+
+    await tester.pumpWidget(_host(LlmMessageView(message)));
+
+    expect(find.text('▲ 1,234  ▼ 56 · 12s'), findsOneWidget);
+  });
+
+  testWidgets('LlmMessageView shows the live status line while generating', (
+    tester,
+  ) async {
+    final message = ChatMessage.llm()
+      ..isGenerating = true
+      ..turnStartedAt = DateTime.now();
+
+    await tester.pumpWidget(_host(LlmMessageView(message)));
+
+    expect(find.byType(LiveTurnStatus), findsOneWidget);
+    expect(find.textContaining('Thinking…'), findsOneWidget);
+    expect(find.byType(UsageBadge), findsNothing);
+
+    // Unmount to cancel the status line's ticking timer.
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('LlmMessageView shows no badge without usage', (tester) async {

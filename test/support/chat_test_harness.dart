@@ -6,11 +6,22 @@ import 'dart:async';
 import 'package:agents/agents.dart' show InMemoryAgentFileStore;
 import 'package:agents_app/data/usage_store.dart';
 import 'package:agents_app/domain/conversation.dart';
+import 'package:agents_app/ui/views/action_button.dart';
+import 'package:agents_app/ui/views/chat_input/input_button.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// Finds the chat input's submit button.
+///
+/// With attachments enabled the chat input renders two [ActionButton]s
+/// (attach and submit), so tests must target the one inside [InputButton].
+Finder findSubmitButton() => find.descendant(
+  of: find.byType(InputButton),
+  matching: find.byType(ActionButton),
+);
 
 /// The seeded model source.
 const testSource = ModelSourceConfig(
@@ -153,10 +164,13 @@ final class EchoChatClient extends ai.ChatClient {
   void dispose() {}
 }
 
-/// Records the messages of the last request it received.
+/// Records the messages and options of the last request it received.
 final class CapturingChatClient extends ai.ChatClient {
   /// The messages sent with the most recent request.
   List<ai.ChatMessage> lastRequestMessages = const [];
+
+  /// The options sent with the most recent request.
+  ai.ChatOptions? lastRequestOptions;
 
   @override
   Future<ai.ChatResponse> getResponse({
@@ -165,6 +179,7 @@ final class CapturingChatClient extends ai.ChatClient {
     CancellationToken? cancellationToken,
   }) async {
     lastRequestMessages = messages.toList();
+    lastRequestOptions = options;
     return ai.ChatResponse(
       messages: <ai.ChatMessage>[
         ai.ChatMessage.fromText(ai.ChatRole.assistant, 'ok'),
@@ -179,6 +194,7 @@ final class CapturingChatClient extends ai.ChatClient {
     CancellationToken? cancellationToken,
   }) async* {
     lastRequestMessages = messages.toList();
+    lastRequestOptions = options;
     yield ai.ChatResponseUpdate.fromText(ai.ChatRole.assistant, 'ok');
   }
 

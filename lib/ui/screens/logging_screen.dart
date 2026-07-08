@@ -6,6 +6,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../data/prompt_log.dart';
 import '../widgets/prompt_inspector_panel.dart';
@@ -193,7 +194,7 @@ class _CaptureControls extends StatelessWidget {
     final overrides = settings.categoryLevels;
     final theme = Theme.of(context);
     return ExpansionTile(
-      leading: const Icon(Icons.tune),
+      leading: const Icon(Symbols.tune),
       title: const Text('Capture levels'),
       subtitle: Text(
         'Default ${_levelLabel(settings.minimumLevel)}'
@@ -277,7 +278,7 @@ class _OverrideRow extends StatelessWidget {
       ),
       IconButton(
         tooltip: 'Remove override',
-        icon: const Icon(Icons.close, size: 18),
+        icon: const Icon(Symbols.close, size: 18),
         onPressed: () => settings.setCategoryLevel(category, null),
       ),
     ],
@@ -306,7 +307,7 @@ class _AddOverrideButton extends StatelessWidget {
       ],
       child: IgnorePointer(
         child: TextButton.icon(
-          icon: const Icon(Icons.add, size: 18),
+          icon: const Icon(Symbols.add, size: 18),
           label: Text(
             candidates.isEmpty
                 ? 'Add category override (none seen yet)'
@@ -349,7 +350,7 @@ class _FilterBar extends StatelessWidget {
           child: TextField(
             decoration: const InputDecoration(
               hintText: 'Search logs',
-              prefixIcon: Icon(Icons.search, size: 20),
+              prefixIcon: Icon(Symbols.search, size: 20),
               isDense: true,
               border: OutlineInputBorder(),
             ),
@@ -389,7 +390,7 @@ class _FilterBar extends StatelessWidget {
         const SizedBox(width: 4),
         IconButton(
           tooltip: 'Clear log',
-          icon: const Icon(Icons.delete_outline_rounded),
+          icon: const Icon(Symbols.delete_rounded),
           onPressed: onClear,
         ),
       ],
@@ -461,7 +462,7 @@ class _RecordTile extends StatelessWidget {
         ),
         actions: [
           TextButton.icon(
-            icon: const Icon(Icons.copy_rounded, size: 18),
+            icon: const Icon(Symbols.content_copy_rounded, size: 18),
             label: const Text('Copy'),
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: record.message));

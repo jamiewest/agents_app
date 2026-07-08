@@ -30,6 +30,17 @@ Future<void> deleteFile(XFile file) async {}
 ///   A [bool] indicating whether the device can take a photo.
 bool canTakePhoto() => true;
 
+/// Checks if the device can scan a barcode with the camera.
+///
+/// On web, `mobile_scanner` uses the browser camera (via the Barcode Detection
+/// API where available), so scanning is offered and degrades gracefully when
+/// the browser lacks support. Unlike [canTakePhoto], this does not depend on
+/// the model being multimodal — a scanned barcode is decoded to text.
+///
+/// Returns:
+///   A [bool] indicating whether the camera-based scanner is available.
+bool canScanBarcode() => true;
+
 /// Opens a dialog to take a photo using the device's camera.
 ///
 /// This method displays a camera interface to the user, allowing them to

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:extensions/ai.dart' as ai;
 import 'package:extensions_flutter/extensions_flutter.dart';
 
 import '../domain/agent_task.dart';
@@ -15,6 +16,25 @@ import 'conversation_store.dart';
 
 /// Executes one due [AgentTask] and returns a short outcome summary.
 typedef AgentTaskRunner = Future<String> Function(AgentTask task);
+
+/// Builds the hidden prompt turn a task sends to its agent.
+///
+/// A task prompt is never shown as a message from the user. When [model] opts
+/// in via [taskPromptRoleSetting] it is sent as a system-role message — only
+/// safe for models whose chat template renders a standalone system turn (e.g.
+/// Gemma). Otherwise it is a user message tagged [taskPromptAuthorName], which
+/// every provider accepts and the chat view filters out of the transcript.
+ai.ChatMessage taskPromptMessage(String prompt, ModelConfig? model) {
+  final useSystemRole =
+      model?.settings[taskPromptRoleSetting]?.trim() == taskPromptRoleSystem;
+  return useSystemRole
+      ? ai.ChatMessage.fromText(ai.ChatRole.system, prompt)
+      : ai.ChatMessage(
+          role: ai.ChatRole.user,
+          contents: [ai.TextContent(prompt)],
+          authorName: taskPromptAuthorName,
+        );
+}
 
 /// Foreground scheduler for [AgentTask]s.
 ///
@@ -109,6 +129,13 @@ class TaskSchedulerService {
   /// Default runner: the task's agent executes the prompt inside the
   /// task's dedicated conversation, which is created on first run so the
   /// transcript is browsable from Chats.
+  ///
+  /// The prompt is never shown as a message from the user: it is delivered
+  /// either as a system-role turn (models whose chat template supports a
+  /// standalone system message, opted in via [taskPromptRoleSetting]) or as a
+  /// user message tagged [taskPromptAuthorName] that the chat view hides. When
+  /// the run finishes the conversation is marked unread so the chats list can
+  /// surface the new message.
   Future<String> _runWithAgent(AgentTask task) async {
     final manager = _services.getRequiredService<ConfiguredAgentsManager>();
     final factory = _services.getRequiredService<ConfiguredAgentFactory>();
@@ -144,8 +171,34 @@ class TaskSchedulerService {
         sessionIdResolver: () => 'task-run',
       ),
     );
+    final model = await manager.sources.getModel(agentConfig.modelId);
     final session = await agent.createSession();
-    final response = await agent.run(session, null, message: task.prompt);
+    final response = await agent.run(
+      session,
+      null,
+      messages: [taskPromptMessage(task.prompt, model)],
+    );
+
+    await _markConversationUnread(conversations, task, response.text);
     return response.text;
+  }
+
+  /// Flags the task conversation as unread and refreshes its list preview so
+  /// the completed run shows up in the chats list.
+  Future<void> _markConversationUnread(
+    ConversationStore conversations,
+    AgentTask task,
+    String responseText,
+  ) async {
+    final conversation = await conversations.get(task.taskConversationId);
+    if (conversation == null) return;
+    final preview = responseText.trim();
+    await conversations.save(
+      conversation.copyWith(
+        hasUnread: true,
+        updatedAt: _now(),
+        lastMessagePreview: preview.isEmpty ? null : preview,
+      ),
+    );
   }
 }

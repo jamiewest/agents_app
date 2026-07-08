@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// The app's one empty-state layout: icon, title, supporting message, and
 /// an optional primary action.
@@ -77,7 +78,7 @@ class EmptyState extends StatelessWidget {
                 const SizedBox(height: 20),
                 FilledButton.icon(
                   onPressed: onAction,
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Symbols.add),
                   label: Text(actionLabel!),
                 ),
               ],

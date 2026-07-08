@@ -12,16 +12,21 @@
 /// 2. The key/value store — sources, models, saved agents, theme, thinking,
 ///    and embedding settings.
 /// 3. Stored local model files (Application Support on native, OPFS on web).
-/// 4. The record store — conversations, transcripts, channels, tasks, agent
+/// 4. The inventory database (native only — the store is not registered on
+///    web).
+/// 5. The record store — conversations, transcripts, channels, tasks, agent
 ///    files, and memory.
 ///
 /// In-memory singletons still hold pre-reset state afterwards, so callers
 /// must follow up with [restartApp].
 library;
 
+import 'dart:developer' as developer;
+
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 
+import '../features/inventory/inventory_store.dart';
 import 'local_model_store.dart';
 
 export 'app_restart_stub.dart'
@@ -38,7 +43,20 @@ Future<void> resetAppData(ServiceProvider services) async {
   );
   for (final key in sourceKeys) {
     final sourceId = key.substring(ConfiguredAgentsKeys.sourcePrefix.length);
-    await secrets.delete(ConfiguredAgentsKeys.sourceApiKeyKey(sourceId));
+    // Best-effort: a platform keychain rejection (e.g. a sandboxed debug
+    // build without keychain entitlements) must not abort the wipe — the
+    // remaining surfaces still get cleared, and an orphaned secret is
+    // unreadable without its source record anyway.
+    try {
+      await secrets.delete(ConfiguredAgentsKeys.sourceApiKeyKey(sourceId));
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to delete the secret for source "$sourceId" during reset.',
+        name: 'agents_app.app_reset',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   for (final key in await keyValue.keys()) {
@@ -47,6 +65,9 @@ Future<void> resetAppData(ServiceProvider services) async {
 
   // An empty keep-set deletes every stored model artifact.
   await pruneLocalModelFiles(const {});
+
+  // The inventory lives in its own SQLite file outside the record store.
+  await services.getService<InventoryStore>()?.destroy();
 
   await services.getRequiredService<RecordStore>().clearAll();
 }

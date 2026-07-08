@@ -104,6 +104,19 @@ class DemoSeed {
         hoursAgo: 9,
       ),
     );
+    await conversations.save(
+      Conversation(
+        id: 'demo-c-rollout',
+        kind: ConversationKind.group,
+        title: 'Plan the beta rollout',
+        titleSource: ConversationTitleSource.firstMessage,
+        participantAgentIds: const ['a1', 'a2'],
+        coordinatorAgentId: 'a1',
+        createdAt: base,
+        updatedAt: base.add(const Duration(hours: 10)),
+        lastMessagePreview: 'Ship to 10% of users first.',
+      ),
+    );
 
     await _writeTranscript(records, conversationId: 'demo-c-storage');
   }

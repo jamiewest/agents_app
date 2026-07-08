@@ -6,12 +6,13 @@ import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart'
-    show Icons, MenuAnchor, MenuItemButton, MenuStyle;
+    show MenuAnchor, MenuItemButton, MenuStyle;
 import 'package:flutter/widgets.dart';
 import '../../dialogs/url_input_dialog.dart';
 import '../../strings/llm_chat_view_strings.dart';
 import '../../utility.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../chat_view_model/chat_view_model_client.dart';
 import '../../dialogs/adaptive_snack_bar/adaptive_snack_bar.dart';
@@ -19,6 +20,7 @@ import '../../platform_helper/platform_helper.dart';
 import '../../providers/interface/attachments.dart';
 import '../../styles/llm_chat_view_style.dart';
 import '../action_button.dart';
+import 'barcode_scanner_screen.dart';
 
 /// A widget that provides an action bar for attaching files or images.
 @immutable
@@ -27,12 +29,20 @@ class AttachmentActionBar extends StatefulWidget {
   ///
   /// The [onAttachments] parameter is required and is called when attachments
   /// are selected.
-  const AttachmentActionBar({required this.onAttachments, super.key});
+  const AttachmentActionBar({
+    required this.onAttachments,
+    this.onInsertText,
+    super.key,
+  });
 
   /// Callback function that is called when attachments are selected.
   ///
   /// The selected [Attachment]s are passed as an argument to this function.
   final Function(Iterable<Attachment> attachments) onAttachments;
+
+  /// Callback invoked with text to insert into the message input, such as a
+  /// value decoded by the barcode scanner. Null disables the scan option.
+  final void Function(String text)? onInsertText;
 
   @override
   State<AttachmentActionBar> createState() => _AttachmentActionBarState();
@@ -40,11 +50,13 @@ class AttachmentActionBar extends StatefulWidget {
 
 class _AttachmentActionBarState extends State<AttachmentActionBar> {
   late final bool _canCamera;
+  late final bool _canScan;
 
   @override
   void initState() {
     super.initState();
     _canCamera = canTakePhoto();
+    _canScan = canScanBarcode();
   }
 
   @override
@@ -52,8 +64,9 @@ class _AttachmentActionBarState extends State<AttachmentActionBar> {
     builder: (context, viewModel, child) {
       final chatStyle = LlmChatViewStyle.resolveFor(context, viewModel.style);
       final chatStrings = viewModel.strings;
+      final enableImages = viewModel.enableImageAttachments;
       final menuItems = [
-        if (_canCamera)
+        if (_canCamera && enableImages)
           MenuItemButton(
             leadingIcon: Icon(
               chatStyle.cameraButtonStyle!.icon!,
@@ -65,17 +78,30 @@ class _AttachmentActionBarState extends State<AttachmentActionBar> {
               style: chatStyle.cameraButtonStyle!.textStyle,
             ),
           ),
-        MenuItemButton(
-          leadingIcon: Icon(
-            chatStyle.galleryButtonStyle!.icon!,
-            color: chatStyle.galleryButtonStyle!.iconColor,
+        if (enableImages)
+          MenuItemButton(
+            leadingIcon: Icon(
+              chatStyle.galleryButtonStyle!.icon!,
+              color: chatStyle.galleryButtonStyle!.iconColor,
+            ),
+            onPressed: () => _onGallery(chatStrings),
+            child: Text(
+              chatStyle.galleryButtonStyle!.text!,
+              style: chatStyle.galleryButtonStyle!.textStyle,
+            ),
           ),
-          onPressed: () => _onGallery(chatStrings),
-          child: Text(
-            chatStyle.galleryButtonStyle!.text!,
-            style: chatStyle.galleryButtonStyle!.textStyle,
+        if (_canScan && widget.onInsertText != null)
+          MenuItemButton(
+            leadingIcon: Icon(
+              Symbols.qr_code_scanner,
+              color: chatStyle.attachFileButtonStyle!.iconColor,
+            ),
+            onPressed: _onScanBarcode,
+            child: Text(
+              chatStrings.scanBarcode,
+              style: chatStyle.attachFileButtonStyle!.textStyle,
+            ),
           ),
-        ),
         MenuItemButton(
           leadingIcon: Icon(
             chatStyle.attachFileButtonStyle!.icon!,
@@ -89,7 +115,7 @@ class _AttachmentActionBarState extends State<AttachmentActionBar> {
         ),
         MenuItemButton(
           leadingIcon: Icon(
-            Icons.link,
+            Symbols.link,
             color: chatStyle.urlButtonStyle!.iconColor,
           ),
           onPressed: () => _onUrl(chatStrings),
@@ -138,6 +164,14 @@ class _AttachmentActionBarState extends State<AttachmentActionBar> {
     // Calculate menu height based on actual number of items
     final double estimatedMenuHeight = (menuItems * itemHeight) + menuPadding;
     return Offset(0, -estimatedMenuHeight);
+  }
+
+  void _onScanBarcode() => unawaited(_scanBarcode());
+
+  Future<void> _scanBarcode() async {
+    final code = await scanBarcode(context);
+    if (code == null || code.isEmpty) return;
+    widget.onInsertText?.call(code);
   }
 
   void _onCamera(LlmChatViewStrings chatStrings) =>

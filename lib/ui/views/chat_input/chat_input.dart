@@ -176,7 +176,10 @@ class _ChatInputState extends State<ChatInput> {
                 if (_viewModel!.enableAttachments)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 14),
-                    child: AttachmentActionBar(onAttachments: onAttachments),
+                    child: AttachmentActionBar(
+                    onAttachments: onAttachments,
+                    onInsertText: onInsertText,
+                  ),
                   ),
                 Expanded(
                   child: TextOrAudioInput(
@@ -272,6 +275,25 @@ class _ChatInputState extends State<ChatInput> {
   void onAttachments(Iterable<Attachment> attachments) {
     assert(_viewModel!.enableAttachments);
     setState(() => _attachments.addAll(attachments));
+  }
+
+  /// Inserts [text] (such as a scanned barcode value) into the message field at
+  /// the cursor, keeping any text the user has already typed and leaving a
+  /// trailing space so they can keep writing.
+  void onInsertText(String text) {
+    final current = _textController.text;
+    final selection = _textController.selection;
+    final start = selection.isValid ? selection.start : current.length;
+    final end = selection.isValid ? selection.end : current.length;
+    final before = current.substring(0, start);
+    final after = current.substring(end);
+    final leadingSpace = before.isNotEmpty && !before.endsWith(' ') ? ' ' : '';
+    final insertion = '$leadingSpace$text ';
+    _textController.value = TextEditingValue(
+      text: '$before$insertion$after',
+      selection: TextSelection.collapsed(offset: before.length + insertion.length),
+    );
+    _focusNode.requestFocus();
   }
 
   void onRemoveAttachment(Attachment attachment) =>

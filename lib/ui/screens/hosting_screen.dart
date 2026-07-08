@@ -6,6 +6,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../features/network/a2a_host_service.dart'
@@ -145,7 +146,7 @@ class _HostingScreenState extends State<HostingScreen> {
                 onPressed: running || _selected.isNotEmpty
                     ? _toggleHosting
                     : null,
-                icon: Icon(running ? Icons.stop : Icons.wifi_tethering),
+                icon: Icon(running ? Symbols.stop : Symbols.wifi_tethering),
                 label: Text(
                   running
                       ? 'Stop sharing (port ${_host.port})'
@@ -156,7 +157,7 @@ class _HostingScreenState extends State<HostingScreen> {
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _generateOffer,
-                  icon: const Icon(Icons.qr_code_2),
+                  icon: const Icon(Symbols.qr_code_2),
                   label: const Text('Generate pairing code'),
                 ),
               ],

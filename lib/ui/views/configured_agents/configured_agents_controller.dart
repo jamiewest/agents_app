@@ -68,10 +68,11 @@ class ConfiguredAgentsController extends ChangeNotifier {
   ///
   /// Also removes any browser-persisted local GGUF files for the model so a
   /// deleted local model does not leave gigabytes stranded in storage.
-  Future<String?> deleteModel(String id, {bool cascade = false}) => _run(() async {
-    await manager.deleteModel(id, cascade: cascade);
-    await deleteLocalModelFiles(id);
-  });
+  Future<String?> deleteModel(String id, {bool cascade = false}) =>
+      _run(() async {
+        await manager.deleteModel(id, cascade: cascade);
+        await deleteLocalModelFiles(id);
+      });
 
   /// Saves [agent] then reloads.
   Future<String?> saveAgent(SavedAgentConfig agent) =>
@@ -81,15 +82,22 @@ class ConfiguredAgentsController extends ChangeNotifier {
   Future<String?> deleteAgent(String id, {bool cascade = false}) =>
       _run(() => manager.deleteAgent(id, cascade: cascade));
 
-  /// Runs [action], reloading on success. Returns `null` on success or the
-  /// [ConfiguredAgentException] message when the action was rejected.
+  /// Runs [action] and reloads. Returns `null` on success or an error
+  /// message when the action was rejected or failed.
+  ///
+  /// Reloading happens even on failure — a partially applied mutation
+  /// (e.g. a record removed before a platform storage call threw) must
+  /// still be reflected in the lists rather than leaving the UI stale.
   Future<String?> _run(Future<void> Function() action) async {
     try {
       await action();
-      await load();
       return null;
     } on ConfiguredAgentException catch (error) {
       return error.message;
+    } catch (error) {
+      return 'Something went wrong: $error';
+    } finally {
+      await load();
     }
   }
 }

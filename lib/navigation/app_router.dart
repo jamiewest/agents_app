@@ -32,13 +32,12 @@ GoRouter createAppRouter({
 }) => GoRouter(
   initialLocation: initialLocation,
   redirect: (context, state) async {
-    final atOnboarding = state.matchedLocation == '/onboarding';
-    // Setup routes stay reachable so onboarding can add the first agent.
-    final atSetup =
-        state.matchedLocation.startsWith('/settings/agents') ||
-        state.matchedLocation.startsWith('/settings/network');
+    // Onboarding hosts its own full-screen setup subroutes, so until the
+    // app is usable everything else redirects there — the shell (rail,
+    // drawer) never shows around an unconfigured app.
+    final atOnboarding = state.matchedLocation.startsWith('/onboarding');
     final usable = await bootstrap.hasUsableAgent();
-    if (!usable && !atOnboarding && !atSetup) return '/onboarding';
+    if (!usable && !atOnboarding) return '/onboarding';
     if (usable && atOnboarding) return '/chats';
     return null;
   },
@@ -47,6 +46,21 @@ GoRouter createAppRouter({
     GoRoute(
       path: '/onboarding',
       builder: (context, state) => OnboardingScreen(services: services),
+      routes: [
+        GoRoute(
+          path: 'add',
+          builder: (context, state) => AddAgentWizard(
+            services: services,
+            initialKind: agentSetupKindFromName(
+              state.uri.queryParameters['type'],
+            ),
+          ),
+        ),
+        GoRoute(
+          path: 'pair',
+          builder: (context, state) => NetworkPairingScreen(services: services),
+        ),
+      ],
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
@@ -138,8 +152,12 @@ GoRouter createAppRouter({
                   routes: [
                     GoRoute(
                       path: 'add',
-                      builder: (context, state) =>
-                          AddAgentWizard(services: services),
+                      builder: (context, state) => AddAgentWizard(
+                        services: services,
+                        initialKind: agentSetupKindFromName(
+                          state.uri.queryParameters['type'],
+                        ),
+                      ),
                     ),
                   ],
                 ),

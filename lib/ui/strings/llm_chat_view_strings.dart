@@ -23,6 +23,9 @@ class LlmChatViewStrings {
   /// Label for taking a photo.
   final String takePhoto;
 
+  /// Label for scanning a barcode.
+  final String scanBarcode;
+
   /// Text for the stop button.
   final String stop;
 
@@ -170,6 +173,7 @@ class LlmChatViewStrings {
     this.addAttachment = 'Add Attachment',
     this.attachFile = 'Attach File',
     this.takePhoto = 'Take Photo',
+    this.scanBarcode = 'Scan Barcode',
     this.attachImage = 'Attach Image',
     this.recordAudio = 'Record Audio',
     this.typeAMessage = 'Type a message...',
@@ -231,6 +235,7 @@ class LlmChatViewStrings {
     String? addAttachment,
     String? attachFile,
     String? takePhoto,
+    String? scanBarcode,
     String? stop,
     String? close,
     String? cancel,
@@ -286,6 +291,7 @@ class LlmChatViewStrings {
       addAttachment: addAttachment ?? this.addAttachment,
       attachFile: attachFile ?? this.attachFile,
       takePhoto: takePhoto ?? this.takePhoto,
+      scanBarcode: scanBarcode ?? this.scanBarcode,
       stop: stop ?? this.stop,
       close: close ?? this.close,
       cancel: cancel ?? this.cancel,

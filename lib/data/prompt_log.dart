@@ -52,11 +52,7 @@ class PromptLog extends ChangeNotifier {
   void add(PromptLogEntry entry) {
     _entries.add(entry);
     if (_entries.length > _maxEntries) _entries.removeAt(0);
-    developer.log(
-      entry.body,
-      name: 'prompt',
-      time: entry.capturedAt,
-    );
+    developer.log(entry.body, name: 'prompt', time: entry.capturedAt);
     notifyListeners();
   }
 

@@ -2,6 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+/// Author name tagging a task prompt that is sent to the agent as a hidden
+/// user message.
+///
+/// The prompt reaches the model as a normal user turn (so it generates a
+/// reply on every provider), but the chat view filters this author out of the
+/// displayed transcript so the run reads as unprompted agent work. Mirrors the
+/// loop-feedback author-name idiom used for background-agent plumbing.
+const String taskPromptAuthorName = 'scheduled-task-prompt';
+
 /// The lifecycle state of an [AgentTask].
 enum AgentTaskStatus {
   /// Waiting for its next run time.

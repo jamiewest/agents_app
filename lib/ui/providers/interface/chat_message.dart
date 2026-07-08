@@ -95,6 +95,30 @@ class ChatMessage {
   /// usage lives in the transcript and the usage ledger.
   ai.UsageDetails? usage;
 
+  /// Name(s) of the tools the model is currently running to produce this
+  /// message, or null when no tool is in flight.
+  ///
+  /// Transient streaming state set only while the turn is live; not
+  /// serialized by [toJson].
+  String? toolActivity;
+
+  /// Whether the provider is currently streaming this message's turn.
+  ///
+  /// Transient streaming state; not serialized by [toJson].
+  bool isGenerating = false;
+
+  /// Wall-clock start of the turn that produced this message, when known.
+  ///
+  /// Survives an approval pause: resuming the same bubble keeps the original
+  /// start so the elapsed timer covers the whole turn. Not serialized by
+  /// [toJson].
+  DateTime? turnStartedAt;
+
+  /// Total wall-clock duration of the turn, set once the turn completes.
+  ///
+  /// Not serialized by [toJson]; restored transcripts show token counts only.
+  Duration? turnDuration;
+
   /// Appends additional text to the existing message content.
   ///
   /// This is typically used for LLM messages that are streamed in parts.

@@ -24,6 +24,7 @@ class AgentLlmProvider extends LlmProvider
     required this.agent,
     this.session,
     this.optionsBuilder,
+    this.toolActivity,
     Iterable<ChatMessage>? history,
   }) : _history = List<ChatMessage>.from(history ?? const []);
 
@@ -36,11 +37,26 @@ class AgentLlmProvider extends LlmProvider
   /// Optional factory for per-run options.
   final AgentRunOptions Function()? optionsBuilder;
 
+  /// Live tool-activity label, when the app tracks it.
+  ///
+  /// Mirrored onto the streaming message while a turn is running so the chat
+  /// view can show which tool the model is invoking.
+  final ValueListenable<String?>? toolActivity;
+
   final List<ChatMessage> _history;
 
   bool _disposed = false;
 
+  int _activeRuns = 0;
+
   ai.ToolApprovalRequestContent? _pendingApprovalContent;
+
+  /// Whether a turn is streaming or paused awaiting tool approval.
+  ///
+  /// Lets an owner defer disruptive work — such as swapping the backing
+  /// [agent] after a settings change — until the current turn settles, so a
+  /// live response is not torn off mid-stream.
+  bool get isBusy => _activeRuns > 0 || _pendingApprovalContent != null;
 
   @override
   void dispose() {
@@ -73,6 +89,20 @@ class AgentLlmProvider extends LlmProvider
     ChatMessage llmMessage,
     ai.ChatMessage message,
   ) async* {
+    final activity = toolActivity;
+    void onToolActivity() {
+      llmMessage.toolActivity = activity!.value;
+      if (!_disposed) notifyListeners();
+    }
+
+    // Keep the original start across an approval pause so the status line's
+    // timer spans the whole turn rather than restarting on resume.
+    llmMessage
+      ..isGenerating = true
+      ..turnStartedAt ??= DateTime.now();
+    if (!_disposed) notifyListeners();
+
+    activity?.addListener(onToolActivity);
     try {
       yield* _runMessage(
         message,
@@ -86,6 +116,14 @@ class AgentLlmProvider extends LlmProvider
         return chunk;
       });
     } finally {
+      activity?.removeListener(onToolActivity);
+      final startedAt = llmMessage.turnStartedAt;
+      llmMessage
+        ..toolActivity = null
+        ..isGenerating = false
+        ..turnDuration = startedAt == null
+            ? null
+            : DateTime.now().difference(startedAt);
       // Notify after both success and streaming errors so listeners can
       // persist the transcript either way. The generator's finally can run
       // after disposal (e.g. navigating away mid-stream), so guard for that.
@@ -166,35 +204,40 @@ class AgentLlmProvider extends LlmProvider
     void Function(ai.UsageDetails details)? onUsage,
   }) async* {
     _pendingApprovalContent = null;
-    await for (final update in agent.runStreaming(
-      session,
-      optionsBuilder?.call(),
-      messages: [message],
-    )) {
-      // `update.text` only concatenates [ai.TextContent]; a thinking model
-      // (e.g. Gemma 4 with reasoning enabled) opens its turn with a
-      // [ai.TextReasoningContent] block that would otherwise stream as dead
-      // air. Surface reasoning too so the user sees liveness. This UI's
-      // [ChatMessage] has no separate reasoning channel yet, so reasoning and
-      // answer currently share one bubble.
-      final buffer = StringBuffer();
-      for (final content in update.contents) {
-        if (content is ai.TextReasoningContent) {
-          buffer.write(content.text);
-        } else if (content is ai.TextContent) {
-          buffer.write(content.text);
-        } else if (content is ai.ToolApprovalRequestContent) {
-          // The tool-approval middleware ends the run after yielding the
-          // request; hold it so the chat view can ask the user.
-          _pendingApprovalContent = content;
-        } else if (content is ai.UsageContent) {
-          onUsage?.call(content.details);
+    _activeRuns++;
+    try {
+      await for (final update in agent.runStreaming(
+        session,
+        optionsBuilder?.call(),
+        messages: [message],
+      )) {
+        // `update.text` only concatenates [ai.TextContent]; a thinking model
+        // (e.g. Gemma 4 with reasoning enabled) opens its turn with a
+        // [ai.TextReasoningContent] block that would otherwise stream as dead
+        // air. Surface reasoning too so the user sees liveness. This UI's
+        // [ChatMessage] has no separate reasoning channel yet, so reasoning
+        // and answer currently share one bubble.
+        final buffer = StringBuffer();
+        for (final content in update.contents) {
+          if (content is ai.TextReasoningContent) {
+            buffer.write(content.text);
+          } else if (content is ai.TextContent) {
+            buffer.write(content.text);
+          } else if (content is ai.ToolApprovalRequestContent) {
+            // The tool-approval middleware ends the run after yielding the
+            // request; hold it so the chat view can ask the user.
+            _pendingApprovalContent = content;
+          } else if (content is ai.UsageContent) {
+            onUsage?.call(content.details);
+          }
+        }
+        final text = buffer.toString();
+        if (text.isNotEmpty) {
+          yield text;
         }
       }
-      final text = buffer.toString();
-      if (text.isNotEmpty) {
-        yield text;
-      }
+    } finally {
+      _activeRuns--;
     }
   }
 

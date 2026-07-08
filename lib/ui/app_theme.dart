@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Seed colors offered to the user, mirroring Flutter's Material 3
 /// color-scheme sample.
@@ -93,7 +94,7 @@ class AppBackIcon extends StatelessWidget {
       ),
       alignment: Alignment.center,
       child: Icon(
-        Icons.arrow_back_ios_new_rounded,
+        Symbols.arrow_back_ios_new_rounded,
         size: 16,
         color: scheme.onSurface,
       ),

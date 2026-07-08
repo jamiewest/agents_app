@@ -9,6 +9,7 @@ import 'package:agents_app/ui/views/configured_agents/configured_agents.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 ConfiguredAgentsManager _buildManager() {
   final kv = InMemoryKeyValueStore();
@@ -369,7 +370,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('draft.gguf'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close));
+    await tester.tap(find.byIcon(Symbols.close));
     await tester.pumpAndSettle();
     expect(find.text('draft.gguf'), findsNothing);
 
@@ -452,7 +453,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.tap(find.byIcon(Symbols.edit));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('File'));
     await tester.pumpAndSettle();
@@ -506,7 +507,7 @@ void main() {
     await tester.pumpWidget(_host(manager));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.tap(find.byIcon(Symbols.delete).first);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, 'Delete'));
     await tester.pumpAndSettle();
@@ -682,7 +683,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.edit_outlined).first);
+    await tester.tap(find.byIcon(Symbols.edit).first);
     await tester.pumpAndSettle();
 
     // The list behind the dialog uses plain ListTiles, so SwitchListTile

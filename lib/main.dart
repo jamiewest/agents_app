@@ -16,26 +16,36 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:path/path.dart' as path;
+import 'package:sqflite/sqflite.dart' as sqflite;
 
 import 'data/chat_transcript_store.dart';
 import 'data/conversation_service.dart';
 import 'data/conversation_store.dart';
 import 'data/embedding_settings.dart';
+import 'data/local_llama_model_host.dart';
 import 'data/prompt_log.dart';
 import 'data/prompt_logging.dart';
 import 'data/task_scheduler_service.dart';
 import 'data/theme_settings.dart';
 import 'data/thinking_settings.dart';
+import 'data/tool_activity.dart';
 import 'data/usage_store.dart';
+import 'domain/agent_task.dart' show taskPromptAuthorName;
 import 'domain/conversation.dart';
+import 'features/inventory/inventory_store.dart';
+import 'features/inventory/inventory_tools.dart';
 import 'navigation/app_bootstrap.dart';
 import 'navigation/app_router.dart';
 import 'ui/app_theme.dart';
 import 'ui/providers/providers.dart';
-import 'ui/screens/chats_home.dart' show SidebarToggleButton;
+import 'ui/screens/chats_home.dart' show detailPaneLeading;
 import 'ui/views/configured_agents/configured_agents.dart';
 import 'ui/views/llm_chat_view/llm_chat_view.dart';
+import 'ui/widgets/chat_side_panel.dart';
 import 'ui/widgets/conversation_actions.dart';
+import 'ui/widgets/side_panel_host.dart';
 import 'ui/widgets/prompt_inspector_panel.dart';
 import 'ui/widgets/usage_stats_sheet.dart';
 
@@ -79,6 +89,27 @@ final _builder = Host.createApplicationBuilder()
     flutter.services.tryAddSingleton<ThinkingSettings>(
       (sp) => ThinkingSettings(sp.getRequiredService<KeyValueStore>()),
     );
+    // Live "which tool is the model running" signal, driven from inside the
+    // chat client pipeline and mirrored under the streaming chat bubble.
+    flutter.services.tryAddSingleton<ToolActivity>((sp) => ToolActivity());
+    // Holds the one resident local llama model: same-model agent switches
+    // reuse it, a different model evicts and reloads it, and it is never more
+    // than one model at a time.
+    flutter.services.tryAddSingleton<LocalLlamaModelHost>(
+      (sp) => LocalLlamaModelHost(),
+    );
+    // App-wide item inventory the agents manage through the inventory
+    // tools. sqflite has no web backend wired up here, so the store — and
+    // with it the tools — exists only on native builds.
+    if (!kIsWeb) {
+      flutter.services.tryAddSingleton<InventoryStore>(
+        (sp) => InventoryStore(
+          sqflite.databaseFactory,
+          resolvePath: () async =>
+              path.join(await sqflite.getDatabasesPath(), 'inventory.db'),
+        ),
+      );
+    }
     flutter.services.tryAddSingleton<EmbeddingSettings>(
       (sp) => EmbeddingSettings(
         keyValueStore: sp.getRequiredService<KeyValueStore>(),
@@ -93,10 +124,24 @@ final _builder = Host.createApplicationBuilder()
       chatClientFactory: (sp) => LoggingConfiguredChatClientFactory(
         log: sp.getRequiredService<PromptLog>(),
         usageSink: sp.getRequiredService<UsageStore>(),
+        toolActivity: sp.getRequiredService<ToolActivity>(),
         customClientResolver: ({required source, required model, httpClient}) =>
             _createLocalLlamaClient(sp, source: source, model: model),
       ),
       configureHarnessForScope: (sp) => (agent, options, scope) {
+        // The shared inventory is app-wide, not conversation-scoped, so
+        // every agent gets the tools — private chats included. The store
+        // is absent on web, where sqflite has no backend.
+        final inventory = sp.getService<InventoryStore>();
+        if (inventory != null) {
+          final chatOptions = options.chatOptions ?? ai.ChatOptions();
+          chatOptions.tools = [
+            ...?chatOptions.tools,
+            ...createInventoryTools(inventory),
+          ];
+          options.chatOptions = chatOptions;
+        }
+
         // Private conversations keep the default in-memory capabilities;
         // durable ones read and write conversation-scoped persistence, so
         // resumed chats need no replay step.
@@ -107,6 +152,9 @@ final _builder = Host.createApplicationBuilder()
           conversationId: scope.conversationId,
           sessionIdResolver: scope.sessionIdResolver,
           senderAgentId: agent.id,
+          // Old time lookups replay as expired markers so the model calls
+          // the tool again instead of parroting a past session's clock.
+          staleToolResultNames: const {currentTimeToolName},
         );
 
         // Agent-written files persist per conversation (or channel).
@@ -176,17 +224,39 @@ class _LocalLlamaStatus {
 
 final class _LocalLlamaProgressRegistry extends ChangeNotifier {
   final Map<String, _LocalLlamaStatus> _statuses = {};
+  final Map<String, Timer> _dismissTimers = {};
+
+  // How long the "ready" banner lingers before it clears itself, long enough
+  // to read the confirmation (and the web single-threaded warning) without
+  // leaving the banner up for the whole chat session.
+  static const _readyLinger = Duration(seconds: 6);
 
   _LocalLlamaStatus statusFor(String modelId) =>
       _statuses[modelId] ?? _LocalLlamaStatus.idle;
 
   void update(String modelId, _LocalLlamaStatus status) {
+    _dismissTimers.remove(modelId)?.cancel();
     _statuses[modelId] = status;
+    if (status.phase == _LocalLlamaPhase.ready) {
+      _dismissTimers[modelId] = Timer(_readyLinger, () {
+        _dismissTimers.remove(modelId);
+        _statuses[modelId] = _LocalLlamaStatus.idle;
+        notifyListeners();
+      });
+    }
     notifyListeners();
   }
 }
 
 final _localLlamaProgress = _LocalLlamaProgressRegistry();
+
+// Chat formats sniffed from a GGUF's own metadata, keyed by the same load key
+// the model host uses. The client that first loads a model records the result
+// here so a later same-model agent — which reuses the resident session and so
+// never re-runs the sniff — renders with the same format instead of falling
+// back to the file-name guess.
+final Map<String, llama.ChatFormat?> _resolvedLlamaFormats =
+    <String, llama.ChatFormat?>{};
 
 @immutable
 class _LocalLlamaModelLocation {
@@ -216,8 +286,21 @@ ai.ChatClient _createLocalLlamaClient(
     model: model,
     modelUrl: location.modelUrl,
   );
-  final runtime = llama.createLlamaRuntime();
-  llama.LlamaSession? loaded;
+  final host = services.getRequiredService<LocalLlamaModelHost>();
+
+  // Identifies the model, its artifacts, and its load parameters so the host
+  // reuses the resident session when another agent shares the same local model
+  // and reloads only when the model actually differs.
+  final loadKey = <Object?>[
+    model.id,
+    location.localPath ?? location.modelUrl.toString(),
+    location.mmprojLocalPath ?? '',
+    location.draftLocalPath ?? '',
+    spec.contextSize,
+    spec.gpuLayers,
+    spec.draftGpuLayers,
+    spec.maxDraftTokens,
+  ].join('|');
 
   // Format chosen from the GGUF's own metadata during load. The embedded
   // chat template is what the model was actually trained on, so it beats
@@ -246,6 +329,7 @@ ai.ChatClient _createLocalLlamaClient(
       return;
     }
     ggufFormat = resolved;
+    _resolvedLlamaFormats[loadKey] = resolved;
     developer.log(
       'Chat format "$detected" resolved from GGUF metadata for '
       '${metadata.name ?? modelSource}.',
@@ -253,99 +337,105 @@ ai.ChatClient _createLocalLlamaClient(
     );
   }
 
-  Future<llama.LlamaSession> sessionProvider() async {
-    final current = loaded;
-    if (current != null) return current;
-
-    try {
-      final selectedLocalPath = location.localPath;
-      if (selectedLocalPath != null) {
-        _localLlamaProgress.update(
-          model.id,
-          const _LocalLlamaStatus(
-            phase: _LocalLlamaPhase.loading,
-            message: 'Loading selected local model...',
-          ),
-        );
-        await resolveFormatFromGguf(selectedLocalPath);
-        loaded = await runtime.loadModel(
-          spec,
-          localPath: selectedLocalPath,
-          localMmprojPath: location.mmprojLocalPath,
-          localDraftPath: location.draftLocalPath,
-        );
-      } else if (kIsWeb) {
-        _localLlamaProgress.update(
-          model.id,
-          _LocalLlamaStatus(
-            phase: _LocalLlamaPhase.loading,
-            message: location.isSelectedFile
-                ? 'Loading selected local model...'
-                : 'Loading local model from browser cache...',
-          ),
-        );
-        await resolveFormatFromGguf(location.modelUrl.toString());
-        loaded = await runtime.loadModel(
-          spec,
-          onProgress: (progress) {
+  // The host reuses the resident session on a matching key (no reload) and
+  // otherwise disposes it before running this loader, so at most one local
+  // model is ever loaded. The loader runs only on a miss, so its progress,
+  // download, and format-sniff work is skipped when the model is reused.
+  Future<llama.LlamaSession> sessionProvider() =>
+      host.acquire(loadKey, (runtime) async {
+        try {
+          final llama.LlamaSession loaded;
+          final selectedLocalPath = location.localPath;
+          if (selectedLocalPath != null) {
+            _localLlamaProgress.update(
+              model.id,
+              const _LocalLlamaStatus(
+                phase: _LocalLlamaPhase.loading,
+                message: 'Loading selected local model...',
+              ),
+            );
+            await resolveFormatFromGguf(selectedLocalPath);
+            loaded = await runtime.loadModel(
+              spec,
+              localPath: selectedLocalPath,
+              localMmprojPath: location.mmprojLocalPath,
+              localDraftPath: location.draftLocalPath,
+            );
+          } else if (kIsWeb) {
             _localLlamaProgress.update(
               model.id,
               _LocalLlamaStatus(
-                phase: _LocalLlamaPhase.downloading,
-                message: 'Downloading local model to browser cache...',
-                progress: progress.clamp(0, 1).toDouble(),
+                phase: _LocalLlamaPhase.loading,
+                message: location.isSelectedFile
+                    ? 'Loading selected local model...'
+                    : 'Loading local model from browser cache...',
               ),
             );
-          },
-        );
-      } else {
-        final paths = await _downloadLocalModel(services, spec, model.id);
-        _localLlamaProgress.update(
-          model.id,
-          const _LocalLlamaStatus(
-            phase: _LocalLlamaPhase.loading,
-            message: 'Loading local model...',
-          ),
-        );
-        await resolveFormatFromGguf(paths.modelPath);
-        loaded = await runtime.loadModel(
-          spec,
-          localPath: paths.modelPath,
-          localMmprojPath: paths.mmprojPath,
-          localDraftPath: paths.draftPath,
-        );
-      }
-      _localLlamaProgress.update(
-        model.id,
-        _LocalLlamaStatus(
-          phase: _LocalLlamaPhase.ready,
-          message: runtime.supportsMultiThreading
-              ? 'Local model ready.'
-              : 'Local model ready (single-threaded: this page is not '
-                    'cross-origin isolated, so larger models may take '
-                    'minutes per reply — reload once so the isolation '
-                    'service worker can enable multithreading).',
-          progress: 1,
-        ),
-      );
-    } on Object catch (error) {
-      _localLlamaProgress.update(
-        model.id,
-        _LocalLlamaStatus(
-          phase: _LocalLlamaPhase.error,
-          message: 'Local model failed: $error',
-        ),
-      );
-      rethrow;
-    }
-    return loaded!;
-  }
+            await resolveFormatFromGguf(location.modelUrl.toString());
+            loaded = await runtime.loadModel(
+              spec,
+              onProgress: (progress) {
+                _localLlamaProgress.update(
+                  model.id,
+                  _LocalLlamaStatus(
+                    phase: _LocalLlamaPhase.downloading,
+                    message: 'Downloading local model to browser cache...',
+                    progress: progress.clamp(0, 1).toDouble(),
+                  ),
+                );
+              },
+            );
+          } else {
+            final paths = await _downloadLocalModel(services, spec, model.id);
+            _localLlamaProgress.update(
+              model.id,
+              const _LocalLlamaStatus(
+                phase: _LocalLlamaPhase.loading,
+                message: 'Loading local model...',
+              ),
+            );
+            await resolveFormatFromGguf(paths.modelPath);
+            loaded = await runtime.loadModel(
+              spec,
+              localPath: paths.modelPath,
+              localMmprojPath: paths.mmprojPath,
+              localDraftPath: paths.draftPath,
+            );
+          }
+          _localLlamaProgress.update(
+            model.id,
+            _LocalLlamaStatus(
+              phase: _LocalLlamaPhase.ready,
+              message: runtime.supportsMultiThreading
+                  ? 'Local model ready.'
+                  : 'Local model ready (single-threaded: this page is not '
+                        'cross-origin isolated, so larger models may take '
+                        'minutes per reply — reload once so the isolation '
+                        'service worker can enable multithreading).',
+              progress: 1,
+            ),
+          );
+          return loaded;
+        } on Object catch (error) {
+          _localLlamaProgress.update(
+            model.id,
+            _LocalLlamaStatus(
+              phase: _LocalLlamaPhase.error,
+              message: 'Local model failed: $error',
+            ),
+          );
+          rethrow;
+        }
+      });
 
   final thinking = services.getService<ThinkingSettings>();
   return llama.createLlamaChatClient(
     spec: spec,
     sessionProvider: sessionProvider,
-    formatResolver: () => ggufFormat,
+    // On a session cache hit this client's loader never runs, so read a format
+    // recorded by whichever client first loaded this model before falling back
+    // to the spec's file-name guess.
+    formatResolver: () => ggufFormat ?? _resolvedLlamaFormats[loadKey],
     inspector: services.getService<llama.PromptInspector>(),
     // Evaluated per request, so the chat toggle applies mid-conversation.
     isThinkingEnabled: () =>
@@ -481,7 +571,7 @@ llama.ModelSpec _localLlamaSpec({
     contextSize: intSetting('llama.contextSize', 8192),
     gpuLayers: intSetting('llama.gpuLayers', 999),
     draftGpuLayers: intSetting('llama.draftGpuLayers', 999),
-    maxDraftTokens: intSetting('llama.maxDraftTokens', 8),
+    maxDraftTokens: intSetting('llama.maxDraftTokens', 3),
     format: format,
   );
 }
@@ -712,6 +802,7 @@ class _ChatScreenState extends State<ChatScreen> {
   UsageStore? _usage;
   Conversation? _existingConversation;
   ModelConfig? _model;
+  bool _supportsImageAttachments = true;
   List<ConversationSession> _sessionList = const [];
   String? _viewSessionId;
   late String _conversationId;
@@ -724,6 +815,22 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _pendingPersistence = Future<void>.value();
   bool _isPopping = false;
   bool _deleted = false;
+  StreamSubscription<String>? _agentChangesSub;
+  Set<String> _relevantAgentIds = const {};
+  bool _agentReloadScheduled = false;
+  bool _agentReloadInProgress = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild the live agent when the configuration behind this chat (or one
+    // of its delegates/participants) is edited, so changes to model,
+    // instructions, or tool access apply without leaving the conversation.
+    _agentChangesSub = widget.services
+        .getRequiredService<ConfiguredAgentsManager>()
+        .agentChanges
+        .listen(_onAgentConfigChanged);
+  }
 
   @override
   void didChangeDependencies() {
@@ -756,6 +863,14 @@ class _ChatScreenState extends State<ChatScreen> {
     _titleSource = record?.titleSource ?? ConversationTitleSource.none;
     _createdAt = record?.createdAt;
 
+    // Opening a conversation clears its unread marker (set by a background
+    // task run). copyWith preserves updatedAt, so reading a chat never
+    // reorders the chats list.
+    if (record != null && record.hasUnread) {
+      _existingConversation = record.copyWith(hasUnread: false);
+      unawaited(conversations.save(_existingConversation!));
+    }
+
     // Group conversations run through the coordinator with the other
     // participants attached as background agents.
     final extraDelegations = <AgentDelegationConfig>[
@@ -764,11 +879,20 @@ class _ChatScreenState extends State<ChatScreen> {
           if (participantId != widget.agent.id)
             AgentDelegationConfig(agentId: participantId),
     ];
+    _relevantAgentIds = _computeRelevantAgentIds(widget.agent, record);
 
-    _model = await widget.services
+    final modelSources = widget.services
         .getRequiredService<ConfiguredAgentsManager>()
-        .sources
-        .getModel(widget.agent.modelId);
+        .sources;
+    _model = await modelSources.getModel(widget.agent.modelId);
+    final modelSource = _model == null
+        ? null
+        : await modelSources.getSource(_model!.sourceId);
+    // Cloud providers are multimodal; a local model can only look at images
+    // when its configuration advertises vision (a projector is bundled).
+    _supportsImageAttachments =
+        modelSource?.providerType != ProviderType.localLlama ||
+        _model!.capabilities.supportsVision;
 
     final sessionList = widget.isPrivate
         ? const <ConversationSession>[]
@@ -801,6 +925,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final provider = AgentLlmProvider(
       agent: agent,
       session: session,
+      toolActivity: widget.services.getService<ToolActivity>(),
       history: displayHistory,
     );
     // Attach after restore so persistence reflects ongoing turns only.
@@ -810,6 +935,164 @@ class _ChatScreenState extends State<ChatScreen> {
     _provider = provider;
     _refreshTitle();
     return provider;
+  }
+
+  /// The set of configured-agent ids whose edits should refresh this chat:
+  /// the agent itself, its saved delegates, and (for group conversations)
+  /// the other participants.
+  Set<String> _computeRelevantAgentIds(
+    SavedAgentConfig agent,
+    Conversation? record,
+  ) => {
+    agent.id,
+    for (final delegation in agent.delegations) delegation.agentId,
+    if (record != null && record.kind == ConversationKind.group)
+      ...record.participantAgentIds,
+  };
+
+  void _onAgentConfigChanged(String agentId) {
+    if (!mounted || !_relevantAgentIds.contains(agentId)) return;
+    _scheduleAgentReload();
+  }
+
+  /// Rebuilds the live agent, deferring until any in-flight turn settles so a
+  /// streaming response is not torn off mid-reply.
+  void _scheduleAgentReload() {
+    if (_agentReloadScheduled) return;
+    final provider = _provider;
+    if (provider == null) return;
+    _agentReloadScheduled = true;
+    // A reload is already running; its finally clause re-triggers once the
+    // freshly swapped provider is in place, so don't touch the old one.
+    if (_agentReloadInProgress) return;
+    if (!provider.isBusy) {
+      unawaited(_reloadAgent());
+      return;
+    }
+    void onSettled() {
+      if (provider.isBusy) return;
+      provider.removeListener(onSettled);
+      unawaited(_reloadAgent());
+    }
+
+    provider.addListener(onSettled);
+  }
+
+  /// Rebuilds the agent from its current saved configuration, carrying the
+  /// running session and display history onto the new instance so the
+  /// conversation continues unbroken.
+  Future<void> _reloadAgent() async {
+    _agentReloadScheduled = false;
+    // Guard against a second change arriving mid-rebuild and racing a
+    // concurrent reload onto the same session (double-dispose, leaked
+    // provider). Re-run once the in-flight reload finishes.
+    if (_agentReloadInProgress) {
+      _agentReloadScheduled = true;
+      return;
+    }
+    final old = _provider;
+    if (old == null || !mounted) return;
+    _agentReloadInProgress = true;
+
+    try {
+      await _pendingPersistence;
+      final manager = widget.services
+          .getRequiredService<ConfiguredAgentsManager>();
+      final factory = widget.services
+          .getRequiredService<ConfiguredAgentFactory>();
+      final config = await manager.agents.getAgent(widget.agent.id);
+      // The agent was deleted out from under the chat; leave the current
+      // instance in place rather than tearing the conversation down.
+      if (config == null || !mounted) return;
+
+      final record = _existingConversation;
+      _relevantAgentIds = _computeRelevantAgentIds(config, record);
+
+      final modelSources = manager.sources;
+      _model = await modelSources.getModel(config.modelId);
+      final modelSource = _model == null
+          ? null
+          : await modelSources.getSource(_model!.sourceId);
+      _supportsImageAttachments =
+          modelSource?.providerType != ProviderType.localLlama ||
+          _model!.capabilities.supportsVision;
+
+      final extraDelegations = <AgentDelegationConfig>[
+        if (record != null && record.kind == ConversationKind.group)
+          for (final participantId in record.participantAgentIds)
+            if (participantId != config.id)
+              AgentDelegationConfig(agentId: participantId),
+      ];
+
+      final agent = await factory.createAgent(
+        config,
+        scope: AgentScope(
+          conversationId: _conversationId,
+          sessionIdResolver: () => _sessionId,
+          isPrivate: widget.isPrivate,
+          channelId: record?.channelId ?? widget.channelId,
+        ),
+        extraDelegations: extraDelegations,
+      );
+
+      // Reuse the live session state so the rebuilt agent resumes with the
+      // full in-memory context, not just what has been persisted. The saved
+      // session was produced by an agent with a different provider/tool set;
+      // if deserializing it onto the rebuilt agent fails (e.g. a context
+      // provider was disabled), start a fresh session rather than aborting
+      // the swap — for persisted chats the history provider restores context
+      // anyway, so the tool change still lands.
+      final serialized = old.session == null
+          ? null
+          : await _serializeSession(old.agent, old.session!);
+      AgentSession session;
+      try {
+        session = serialized != null
+            ? await agent.deserializeSession(serialized)
+            : await agent.createSession();
+      } catch (e, s) {
+        developer.log(
+          'Could not carry the session across an agent reload; '
+          'starting a fresh one.',
+          name: 'agents_app.chat_sessions',
+          error: e,
+          stackTrace: s,
+        );
+        session = await agent.createSession();
+      }
+
+      if (!mounted) return;
+      final provider = AgentLlmProvider(
+        agent: agent,
+        session: session,
+        toolActivity: widget.services.getService<ToolActivity>(),
+        history: old.history,
+      );
+      provider.addListener(() {
+        _pendingPersistence = _persistMetadata(provider);
+      });
+
+      _provider = provider;
+      setState(() {
+        _providerFuture = Future<AgentLlmProvider>.value(provider);
+      });
+      old.dispose();
+    } catch (e, s) {
+      developer.log(
+        'Failed to reload agent after a configuration change.',
+        name: 'agents_app.chat_sessions',
+        error: e,
+        stackTrace: s,
+      );
+    } finally {
+      _agentReloadInProgress = false;
+      // A change that arrived mid-rebuild left a request queued; honor it now
+      // against the freshly swapped provider.
+      if (_agentReloadScheduled && mounted) {
+        _agentReloadScheduled = false;
+        _scheduleAgentReload();
+      }
+    }
   }
 
   /// Maps the durable transcript to displayable UI messages.
@@ -829,13 +1112,23 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final entry in entries) {
       if (sessionId != null && entry.sessionId != sessionId) continue;
       if (entry.message.authorName == loopFeedbackAuthorName) continue;
+      // A scheduled-task prompt reaches the model but is never shown: either
+      // tagged with the task author name (hidden user message) or sent as a
+      // system turn, which would otherwise render as an LLM bubble below.
+      if (entry.message.authorName == taskPromptAuthorName) continue;
+      if (entry.message.role == ai.ChatRole.system) continue;
       for (final content
           in entry.message.contents.whereType<ai.UsageContent>()) {
         (pendingUsage ??= ai.UsageDetails()).add(content.details);
       }
       if (entry.message.text.trim().isEmpty) continue;
       if (entry.message.role == ai.ChatRole.user) {
-        messages.add(ChatMessage.user(entry.message.text, const []));
+        messages.add(
+          ChatMessage.user(
+            entry.message.text,
+            _displayAttachmentsFor(entry.message),
+          ),
+        );
       } else {
         messages.add(
           ChatMessage(
@@ -849,6 +1142,27 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     return messages;
   }
+
+  /// Rebuilds display attachments from a transcript message's file and link
+  /// contents, so attachment chips survive a restart. The transcript stores
+  /// attachments as agent-native content ([ai.DataContent]/[ai.UriContent]);
+  /// text-file inlining happens below persistence, so the original bytes are
+  /// still here.
+  List<Attachment> _displayAttachmentsFor(ai.ChatMessage message) => [
+    for (final content in message.contents)
+      if (content case ai.DataContent(data: final bytes?))
+        FileAttachment.fileOrImage(
+          name: content.name ?? 'attachment',
+          mimeType: content.mediaType ?? 'application/octet-stream',
+          bytes: bytes,
+        )
+      else if (content case ai.UriContent(:final uri, :final mediaType))
+        LinkAttachment(
+          name: uri.pathSegments.isNotEmpty ? uri.pathSegments.last : '$uri',
+          url: uri,
+          mimeType: mediaType,
+        ),
+  ];
 
   /// Persists conversation metadata and the serialized agent session.
   ///
@@ -887,6 +1201,8 @@ class _ChatScreenState extends State<ChatScreen> {
           createdAt: _createdAt!,
           updatedAt: now,
           lastMessagePreview: preview,
+          // This only runs from the open ChatScreen on an active turn, so the
+          // conversation is being viewed: never carry an unread marker here.
         ),
       );
       _conversationExists = true;
@@ -1008,7 +1324,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Add to a new group chat — this conversation stays as is.',
+                'Start a group chat with… (this conversation stays as is)',
               ),
             ),
             for (final candidate in candidates)
@@ -1029,24 +1345,10 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (added == null || !mounted) return;
 
-    // Any participant can coordinate; the current agent is the default.
-    final coordinator = await showDialog<SavedAgentConfig>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Who coordinates the group?'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop(widget.agent),
-            child: Text('${widget.agent.name} (recommended)'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop(added),
-            child: Text(added.name),
-          ),
-        ],
-      ),
-    );
-    if (coordinator == null || !mounted) return;
+    // Any participant could coordinate, but asking the user to pick one
+    // exposes an internal concept; the current agent is always a sound
+    // default, so use it without a dialog.
+    final coordinator = widget.agent;
 
     final original =
         existing ??
@@ -1209,135 +1511,162 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    unawaited(_agentChangesSub?.cancel());
     unawaited(_finishStateChangesBeforePop());
     _provider?.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => PopScope<void>(
-    canPop: widget.embedded,
-    onPopInvokedWithResult: (didPop, result) {
-      if (didPop) return;
-      unawaited(_handlePop());
-    },
-    child: Scaffold(
-      appBar: AppBar(
-        // Match the LlmChatView body (scheme.surface) so the chat window
-        // reads as one continuous surface rather than a banded app bar.
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        automaticallyImplyLeading: !widget.embedded,
-        // Embedded panes have no route to pop; the leading slot instead
-        // toggles the conversations sidebar open/closed.
-        leading: widget.embedded ? const SidebarToggleButton() : null,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.isPrivate) ...[
-              Tooltip(
-                message: 'Private chat — nothing is saved',
-                child: Icon(
-                  Icons.visibility_off_outlined,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+  Widget build(BuildContext context) {
+    final leading = detailPaneLeading(context);
+    return PopScope<void>(
+      canPop: widget.embedded,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        unawaited(_handlePop());
+      },
+      child: _buildChatScaffold(context, leading),
+    );
+  }
+
+  Widget _buildChatScaffold(
+    BuildContext context,
+    ({Widget? leading, double? leadingWidth}) leading,
+  ) => Scaffold(
+    appBar: AppBar(
+      // Match the LlmChatView body (scheme.surface) so the chat window
+      // reads as one continuous surface rather than a banded app bar.
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      leadingWidth: leading.leadingWidth,
+      leading: leading.leading,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.isPrivate) ...[
+            Tooltip(
+              message: 'Private chat — nothing is saved',
+              child: Icon(
+                Symbols.visibility_off,
+                size: 18,
+                color: Theme.of(context).colorScheme.outline,
               ),
-              const SizedBox(width: 8),
-            ],
-            Flexible(
-              child: Text(_appBarTitle, overflow: TextOverflow.ellipsis),
             ),
+            const SizedBox(width: 8),
           ],
+          Flexible(child: Text(_appBarTitle, overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+      actions: [
+        Builder(
+          builder: (context) {
+            final log = widget.services.getService<PromptLog>();
+            if (log == null) return const SizedBox.shrink();
+            return IconButton(
+              tooltip: 'Inspect prompts sent to models',
+              icon: const Icon(Symbols.data_object_rounded),
+              onPressed: () => showPromptInspector(context, log),
+            );
+          },
         ),
-        actions: [
+        if (!widget.isPrivate)
           Builder(
             builder: (context) {
-              final log = widget.services.getService<PromptLog>();
-              if (log == null) return const SizedBox.shrink();
+              final usage = _usage;
+              if (usage == null) return const SizedBox.shrink();
               return IconButton(
-                tooltip: 'Inspect prompts sent to models',
-                icon: const Icon(Icons.data_object_rounded),
-                onPressed: () => showPromptInspector(context, log),
+                tooltip: 'Token usage per model',
+                icon: const Icon(Symbols.data_usage_rounded),
+                onPressed: () => showUsageStats(
+                  context,
+                  usage: usage,
+                  conversationId: _conversationId,
+                  currentSessionId: _sessionId,
+                ),
               );
             },
           ),
-          if (!widget.isPrivate)
-            Builder(
-              builder: (context) {
-                final usage = _usage;
-                if (usage == null) return const SizedBox.shrink();
-                return IconButton(
-                  tooltip: 'Token usage per model',
-                  icon: const Icon(Icons.data_usage_rounded),
-                  onPressed: () => showUsageStats(
-                    context,
-                    usage: usage,
-                    conversationId: _conversationId,
-                    currentSessionId: _sessionId,
-                  ),
-                );
-              },
+        if (!widget.isPrivate && _sessionList.length > 1)
+          PopupMenuButton<String?>(
+            tooltip: 'View a session',
+            icon: Icon(
+              Symbols.history,
+              color: _viewSessionId == null
+                  ? null
+                  : Theme.of(context).colorScheme.primary,
             ),
-          if (!widget.isPrivate && _sessionList.length > 1)
-            PopupMenuButton<String?>(
-              tooltip: 'View a session',
-              icon: Icon(
-                Icons.history,
-                color: _viewSessionId == null
-                    ? null
-                    : Theme.of(context).colorScheme.primary,
+            onSelected: _viewSession,
+            itemBuilder: (context) => [
+              CheckedPopupMenuItem(
+                value: null,
+                checked: _viewSessionId == null,
+                child: const Text('All sessions (stitched)'),
               ),
-              onSelected: _viewSession,
-              itemBuilder: (context) => [
+              for (final session in _sessionList)
                 CheckedPopupMenuItem(
-                  value: null,
-                  checked: _viewSessionId == null,
-                  child: const Text('All sessions (stitched)'),
-                ),
-                for (final session in _sessionList)
-                  CheckedPopupMenuItem(
-                    value: session.id,
-                    checked: _viewSessionId == session.id,
-                    child: Text(
-                      '${formatConversationDate(session.startedAt)}'
-                      '${session.id == _sessionId ? ' • current' : ''}',
-                    ),
+                  value: session.id,
+                  checked: _viewSessionId == session.id,
+                  child: Text(
+                    '${formatConversationDate(session.startedAt)}'
+                    '${session.id == _sessionId ? ' • current' : ''}',
                   ),
-              ],
-            ),
-          if (_model case final model? when model.capabilities.supportsThinking)
-            _ThinkingToggle(services: widget.services, modelConfigId: model.id),
-          if (!widget.isPrivate)
-            PopupMenuButton<void Function()>(
-              tooltip: 'Conversation actions',
-              onSelected: (action) => action(),
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  enabled: _provider != null,
-                  value: () => unawaited(_startNewSession()),
-                  child: const Text('New session'),
                 ),
-                PopupMenuItem(
-                  enabled: _provider != null,
-                  value: () => unawaited(_addAgentToChat()),
-                  child: const Text('Add agent to chat'),
-                ),
-                PopupMenuItem(
-                  enabled: _provider != null,
-                  value: () => unawaited(_renameConversation()),
-                  child: const Text('Rename'),
-                ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  enabled: _provider != null,
-                  value: () => unawaited(_deleteConversation()),
-                  child: const Text('Delete conversation'),
-                ),
-              ],
-            ),
-        ],
-      ),
-      body: FutureBuilder<AgentLlmProvider>(
+            ],
+          ),
+        if (_model case final model? when model.capabilities.supportsThinking)
+          _ThinkingToggle(services: widget.services, modelConfigId: model.id),
+        if (!widget.isPrivate)
+          PopupMenuButton<void Function()>(
+            tooltip: 'Conversation actions',
+            onSelected: (action) => action(),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                enabled: _provider != null,
+                value: () => unawaited(_startNewSession()),
+                child: const Text('New session'),
+              ),
+              PopupMenuItem(
+                enabled: _provider != null,
+                value: () => unawaited(_addAgentToChat()),
+                child: const Text('Start group chat…'),
+              ),
+              PopupMenuItem(
+                enabled: _provider != null,
+                value: () => unawaited(_renameConversation()),
+                child: const Text('Rename'),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                enabled: _provider != null,
+                value: () => unawaited(_deleteConversation()),
+                child: const Text('Delete conversation'),
+              ),
+            ],
+          ),
+        Builder(
+          builder: (context) {
+            final panel = SidePanelScope.maybeOf(context);
+            if (panel == null) return const SizedBox.shrink();
+            return IconButton(
+              tooltip: panel.isOpen ? 'Hide panel' : 'Show panel',
+              icon: Icon(
+                panel.isOpen
+                    ? Symbols.right_panel_close
+                    : Symbols.right_panel_open,
+              ),
+              onPressed: () => panel.toggle(
+                (context) => ChatSidePanel(onClose: panel.close),
+              ),
+            );
+          },
+        ),
+      ],
+    ),
+    body: _buildChatBody(context),
+  );
+
+  Widget _buildChatBody(BuildContext context) =>
+      FutureBuilder<AgentLlmProvider>(
         future: _providerFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -1363,16 +1692,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   onMessageSubmitted: (prompt, {required attachments}) =>
                       _persistSubmittedPrompt(provider, prompt, attachments),
                   welcomeMessage: 'Ask ${widget.agent.name} anything.',
-                  enableAttachments: false,
+                  enableAttachments: true,
+                  enableImageAttachments: _supportsImageAttachments,
                   enableVoiceNotes: false,
                 ),
               ),
             ],
           );
         },
-      ),
-    ),
-  );
+      );
 }
 
 /// Friendly failure state when an agent cannot start, with recovery
@@ -1394,11 +1722,7 @@ class _AgentStartError extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.error_outline,
-                size: 48,
-                color: theme.colorScheme.error,
-              ),
+              Icon(Symbols.error, size: 48, color: theme.colorScheme.error),
               const SizedBox(height: 16),
               Text(
                 'Could not start this agent',
@@ -1421,12 +1745,12 @@ class _AgentStartError extends StatelessWidget {
                 children: [
                   FilledButton.icon(
                     onPressed: onRetry,
-                    icon: const Icon(Icons.refresh),
+                    icon: const Icon(Symbols.refresh),
                     label: const Text('Retry'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => context.go('/settings/agents'),
-                    icon: const Icon(Icons.settings_outlined),
+                    icon: const Icon(Symbols.settings),
                     label: const Text('Check configuration'),
                   ),
                 ],
@@ -1463,7 +1787,7 @@ class _ThinkingToggleState extends State<_ThinkingToggle> {
     return IconButton(
       tooltip: enabled ? 'Thinking on' : 'Thinking off',
       icon: Icon(
-        Icons.psychology_outlined,
+        Symbols.psychology,
         color: enabled ? Theme.of(context).colorScheme.primary : null,
       ),
       onPressed: () async {
@@ -1518,8 +1842,8 @@ class _LocalLlamaProgressBanner extends StatelessWidget {
                   ] else
                     Icon(
                       status.phase == _LocalLlamaPhase.error
-                          ? Icons.error_outline
-                          : Icons.check_circle_outline,
+                          ? Symbols.error
+                          : Symbols.check_circle,
                       size: 18,
                       color: status.phase == _LocalLlamaPhase.error
                           ? colorScheme.onErrorContainer

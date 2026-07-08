@@ -336,43 +336,45 @@ class A2AHostService {
       // The caller key rides a zone value because the transport resolves
       // sessions deep inside `handle` (and, for streaming, after this
       // method has already returned its response).
-      _runPool.withResource(() => runZoned(() async {
-        final result = await hosted._transport.handle(body);
-        if (result is Function) {
-          // Streaming: the transport returns a generator of JSON-RPC
-          // events; relay them as server-sent events.
-          final stream = (result as dynamic)() as Stream<Object?>;
-          final controller = StreamController<List<int>>();
-          unawaited(() async {
-            try {
-              await for (final event in stream) {
-                final json = jsonEncode((event as dynamic).toJson());
-                controller.add(utf8.encode('data: $json\n\n'));
+      _runPool.withResource(
+        () => runZoned(() async {
+          final result = await hosted._transport.handle(body);
+          if (result is Function) {
+            // Streaming: the transport returns a generator of JSON-RPC
+            // events; relay them as server-sent events.
+            final stream = (result as dynamic)() as Stream<Object?>;
+            final controller = StreamController<List<int>>();
+            unawaited(() async {
+              try {
+                await for (final event in stream) {
+                  final json = jsonEncode((event as dynamic).toJson());
+                  controller.add(utf8.encode('data: $json\n\n'));
+                }
+              } catch (e, s) {
+                developer.log(
+                  'A2A streaming response failed.',
+                  name: 'agents_app.a2a_host',
+                  error: e,
+                  stackTrace: s,
+                );
+              } finally {
+                await controller.close();
               }
-            } catch (e, s) {
-              developer.log(
-                'A2A streaming response failed.',
-                name: 'agents_app.a2a_host',
-                error: e,
-                stackTrace: s,
-              );
-            } finally {
-              await controller.close();
-            }
-          }());
+            }());
+            return shelf.Response.ok(
+              controller.stream,
+              headers: const {
+                'content-type': 'text/event-stream',
+                'cache-control': 'no-cache',
+              },
+            );
+          }
           return shelf.Response.ok(
-            controller.stream,
-            headers: const {
-              'content-type': 'text/event-stream',
-              'cache-control': 'no-cache',
-            },
+            jsonEncode((result as dynamic).toJson()),
+            headers: const {'content-type': 'application/json'},
           );
-        }
-        return shelf.Response.ok(
-          jsonEncode((result as dynamic).toJson()),
-          headers: const {'content-type': 'application/json'},
-        );
-      }, zoneValues: {_CallerIsolationKeyProvider.zoneKey: callerKey}));
+        }, zoneValues: {_CallerIsolationKeyProvider.zoneKey: callerKey}),
+      );
 }
 
 /// Resolves the session isolation key from the zone value stamped by

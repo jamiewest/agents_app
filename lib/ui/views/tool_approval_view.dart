@@ -5,6 +5,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../providers/interface/tool_approval.dart';
 import '../strings/llm_chat_view_strings.dart';
@@ -53,7 +54,7 @@ class ToolApprovalView extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.build_outlined, size: 18, color: scheme.primary),
+              Icon(Symbols.build, size: 18, color: scheme.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

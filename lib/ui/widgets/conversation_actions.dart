@@ -54,6 +54,41 @@ Future<String?> showRenameDialog(
   );
 }
 
+/// Confirms a destructive action; the confirm button is error-styled and
+/// carries a specific verb label (e.g. `Delete channel`, never `OK`).
+///
+/// Returns whether the user confirmed.
+Future<bool> showDeleteConfirmation(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String confirmLabel,
+}) async {
+  final scheme = Theme.of(context).colorScheme;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: scheme.error,
+            foregroundColor: scheme.onError,
+          ),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(confirmLabel),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
 /// Confirms with the user, then deletes the conversation and everything
 /// hanging off it: transcript entries, session state, the usage ledger,
 /// then the record.
@@ -68,24 +103,13 @@ Future<bool> confirmAndDeleteConversation(
   required ChatTranscriptStore transcripts,
   UsageStore? usage,
 }) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Delete conversation?'),
-      content: Text('Delete "$title"? This cannot be undone.'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Delete'),
-        ),
-      ],
-    ),
+  final confirmed = await showDeleteConfirmation(
+    context,
+    title: 'Delete conversation?',
+    message: 'Delete "$title"? This cannot be undone.',
+    confirmLabel: 'Delete conversation',
   );
-  if (confirmed != true) return false;
+  if (!confirmed) return false;
 
   await transcripts.deleteFor(conversationId);
   await sessions.deleteFor(conversationId);

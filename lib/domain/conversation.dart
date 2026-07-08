@@ -48,6 +48,7 @@ class Conversation {
     this.channelId,
     this.isPrivate = false,
     this.lastMessagePreview,
+    this.hasUnread = false,
   });
 
   /// Stable conversation id.
@@ -83,6 +84,12 @@ class Conversation {
   /// A short preview of the most recent message, for list views.
   final String? lastMessagePreview;
 
+  /// Whether the conversation has activity the user has not seen yet.
+  ///
+  /// Set when a background task run leaves a new message, and cleared when
+  /// the conversation is opened. Surfaced as an unread dot in the chats list.
+  final bool hasUnread;
+
   /// The primary agent of a direct conversation.
   String get primaryAgentId => participantAgentIds.first;
 
@@ -92,6 +99,7 @@ class Conversation {
     ConversationTitleSource? titleSource,
     DateTime? updatedAt,
     String? lastMessagePreview,
+    bool? hasUnread,
   }) => Conversation(
     id: id,
     kind: kind,
@@ -104,6 +112,7 @@ class Conversation {
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
+    hasUnread: hasUnread ?? this.hasUnread,
   );
 
   /// Serializes to a [RecordStore]-compatible map.
@@ -122,6 +131,7 @@ class Conversation {
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
     if (lastMessagePreview != null) 'lastMessagePreview': lastMessagePreview,
+    if (hasUnread) 'hasUnread': true,
   };
 
   /// Reconstructs a [Conversation] from a stored record.
@@ -142,6 +152,7 @@ class Conversation {
         createdAt: DateTime.parse(record['createdAt']! as String),
         updatedAt: DateTime.parse(record['updatedAt']! as String),
         lastMessagePreview: record['lastMessagePreview'] as String?,
+        hasUnread: record['hasUnread'] as bool? ?? false,
       );
 }
 

@@ -96,6 +96,7 @@ class LlmChatView extends StatefulWidget {
     this.errorMessage = 'ERROR',
     this.enableAttachments = true,
     this.enableVoiceNotes = true,
+    this.enableImageAttachments = true,
     this.autofocus,
     LlmChatViewStrings? strings,
     super.key,
@@ -110,6 +111,7 @@ class LlmChatView extends StatefulWidget {
          welcomeMessage: welcomeMessage,
          enableAttachments: enableAttachments,
          enableVoiceNotes: enableVoiceNotes,
+         enableImageAttachments: enableImageAttachments,
          strings: strings ?? LlmChatViewStrings.defaults,
        );
 
@@ -130,6 +132,14 @@ class LlmChatView extends StatefulWidget {
   /// When set to false, the voice recording button and related functionality
   /// will be disabled.
   final bool enableVoiceNotes;
+
+  /// Whether to offer image attachments (camera and gallery) in the chat
+  /// input.
+  ///
+  /// Set to false for models that cannot accept image input; file and link
+  /// attachments remain available. Has no effect when [enableAttachments]
+  /// is false.
+  final bool enableImageAttachments;
 
   /// The view model containing the chat state and configuration.
   ///

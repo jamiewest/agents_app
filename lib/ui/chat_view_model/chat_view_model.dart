@@ -37,6 +37,7 @@ class ChatViewModel {
     required this.speechToText,
     required this.enableAttachments,
     required this.enableVoiceNotes,
+    this.enableImageAttachments = true,
     this.strings = const LlmChatViewStrings(),
   });
 
@@ -98,6 +99,14 @@ class ChatViewModel {
   /// will be disabled.
   final bool enableVoiceNotes;
 
+  /// Whether image attachments (camera and gallery) are enabled in the chat
+  /// input.
+  ///
+  /// When set to false, only file and link attachments are offered — used
+  /// when the underlying model cannot accept image input. Has no effect when
+  /// [enableAttachments] is false.
+  final bool enableImageAttachments;
+
   /// The strings used throughout the chat interface.
   ///
   /// This provides access to all the text strings used in the chat interface,
@@ -120,6 +129,7 @@ class ChatViewModel {
           other.speechToText == speechToText &&
           other.enableAttachments == enableAttachments &&
           other.enableVoiceNotes == enableVoiceNotes &&
+          other.enableImageAttachments == enableImageAttachments &&
           other.strings == strings);
 
   // the following is best practices when overriding operator ==
@@ -135,6 +145,7 @@ class ChatViewModel {
     speechToText,
     enableAttachments,
     enableVoiceNotes,
+    enableImageAttachments,
     strings,
   );
 }

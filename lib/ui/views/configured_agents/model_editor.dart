@@ -9,6 +9,7 @@ import 'package:agents_llama/agents_llama.dart' as llama;
 import 'package:file_selector/file_selector.dart' as file_selector;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../../data/local_model_store.dart';
 import '../../strings/configured_agents_strings.dart';
@@ -144,6 +145,10 @@ class ModelEditor extends StatefulWidget {
 
 class _ModelEditorState extends State<ModelEditor> {
   final _formKey = GlobalKey<FormState>();
+
+  /// Fixed for the editor's lifetime: repeated submits (e.g. after a
+  /// storage failure) must overwrite one record, not mint duplicates.
+  late final String _entityId = widget.initial?.id ?? newConfiguredAgentsId();
   late final TextEditingController _modelId;
   late final TextEditingController _displayName;
   late final TextEditingController _llamaModelUrl;
@@ -174,6 +179,10 @@ class _ModelEditorState extends State<ModelEditor> {
 
   /// Selected reasoning-tags setting value; empty means auto-detect.
   late String _reasoningTags;
+
+  /// Selected task-prompt role setting value; empty means the default hidden
+  /// user message.
+  late String _taskPromptRole;
 
   /// What name-based (or GGUF) detection currently suggests, for the
   /// "Auto" helper text.
@@ -221,6 +230,9 @@ class _ModelEditorState extends State<ModelEditor> {
       settings[reasoningTagsSetting]!,
       _ => '',
     };
+    _taskPromptRole = settings[taskPromptRoleSetting] == taskPromptRoleSystem
+        ? taskPromptRoleSystem
+        : '';
     _llamaModelSource =
         settings['llama.modelSource'] == 'file' ||
             settings.containsKey('llama.modelPath')
@@ -327,7 +339,7 @@ class _ModelEditorState extends State<ModelEditor> {
     if (!_formKey.currentState!.validate()) return;
     final displayName = _displayName.text.trim();
     final isLocal = _selectedSource.providerType == ProviderType.localLlama;
-    final id = widget.initial?.id ?? newConfiguredAgentsId();
+    final id = _entityId;
     final settings = switch (_selectedSource.providerType) {
       ProviderType.localLlama => _localLlamaSettings(id),
       ProviderType.openAiCompatible => _openAiCompatibleSettings(),
@@ -407,6 +419,7 @@ class _ModelEditorState extends State<ModelEditor> {
     put(toolsModeSetting, _toolsMode);
     put(toolsParallelSetting, _toolsParallel ? '' : 'false');
     put(reasoningTagsSetting, _reasoningTags);
+    put(taskPromptRoleSetting, _taskPromptRole);
     return settings;
   }
 
@@ -424,6 +437,8 @@ class _ModelEditorState extends State<ModelEditor> {
         chatFormatSetting: _chatFormat,
         legacyLlamaFormatSetting: _chatFormat,
       },
+      if (_taskPromptRole == taskPromptRoleSystem)
+        taskPromptRoleSetting: _taskPromptRole,
     };
 
     switch (_llamaModelSource) {
@@ -558,6 +573,23 @@ class _ModelEditorState extends State<ModelEditor> {
       onChanged: (value) => setState(() => _chatFormat = value),
     );
   }
+
+  /// How a scheduled task delivers its prompt to this model.
+  ///
+  /// Defaults to a hidden user message (works on every provider); the system
+  /// role is for models whose chat template renders a standalone system turn,
+  /// such as Gemma.
+  Widget _taskPromptRoleDropdown(ConfiguredAgentsStyle style) =>
+      _labeledDropdown<String>(
+        label: 'Task prompt',
+        style: style,
+        value: _taskPromptRole,
+        items: const [
+          ('', 'Hidden user message (default)'),
+          (taskPromptRoleSystem, 'System role'),
+        ],
+        onChanged: (value) => setState(() => _taskPromptRole = value),
+      );
 
   /// A labeled dropdown following the source-selector layout above.
   Widget _labeledDropdown<T>({
@@ -725,6 +757,7 @@ class _ModelEditorState extends State<ModelEditor> {
                   : null,
             ),
             _formatDropdown(style),
+            _taskPromptRoleDropdown(style),
           ] else ...[
             ConfiguredAgentsFormField(
               label: strings.modelIdLabel,
@@ -760,6 +793,7 @@ class _ModelEditorState extends State<ModelEditor> {
                 ],
                 onChanged: (value) => setState(() => _reasoningTags = value),
               ),
+              _taskPromptRoleDropdown(style),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
@@ -855,7 +889,7 @@ class _LlamaModelFileField extends StatelessWidget {
                     onClear!();
                     field.didChange(null);
                   },
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(Symbols.close),
                   tooltip: 'Clear selection',
                 ),
               OutlinedButton.icon(
@@ -863,7 +897,7 @@ class _LlamaModelFileField extends StatelessWidget {
                   final selectedPath = await onChoose();
                   if (selectedPath != null) field.didChange(selectedPath);
                 },
-                icon: const Icon(Icons.folder_open),
+                icon: const Icon(Symbols.folder_open),
                 label: const Text('Choose file'),
               ),
             ],

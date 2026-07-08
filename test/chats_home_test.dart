@@ -6,11 +6,11 @@ import 'package:agents_app/domain/conversation.dart';
 import 'package:agents_app/main.dart' show ChatScreen;
 import 'package:agents_app/ui/screens/chats_home.dart'
     show ChatDetailPane, ChatsHome, ChatsRootPane;
-import 'package:agents_app/ui/views/action_button.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:go_router/go_router.dart';
 
 import 'support/chat_test_harness.dart';
@@ -64,9 +64,9 @@ GoRouter _buildRouter(
       ],
     ),
     GoRoute(
-      path: '/settings/agents',
+      path: '/settings/agents/add',
       builder: (context, state) =>
-          const Scaffold(body: Text('settings:agents')),
+          const Scaffold(body: Text('settings:agents:add')),
     ),
   ],
 );
@@ -123,7 +123,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'Remember this chat');
         await tester.pump();
-        await tester.tap(find.byType(ActionButton));
+        await tester.tap(findSubmitButton());
         await tester.pump();
 
         await tester.pageBack();
@@ -157,7 +157,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Save before answering');
       await tester.pump();
-      await tester.tap(find.byType(ActionButton));
+      await tester.tap(findSubmitButton());
       await tester.pump();
 
       await tester.pageBack();
@@ -191,7 +191,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Saved on submit');
       await tester.pump();
-      await tester.tap(find.byType(ActionButton));
+      await tester.tap(findSubmitButton());
       await tester.pump();
 
       final conversations = await ConversationStore(
@@ -222,7 +222,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Do not delete me');
       await tester.pump();
-      await tester.tap(find.byType(ActionButton));
+      await tester.tap(findSubmitButton());
       await tester.pageBack();
       await tester.pumpAndSettle();
 
@@ -318,7 +318,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Cascade me');
       await tester.pump();
-      await tester.tap(find.byType(ActionButton));
+      await tester.tap(findSubmitButton());
       await tester.pump();
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 200)),
@@ -338,7 +338,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Delete conversation'),
+      );
       await tester.pumpAndSettle();
 
       expect(await store.get(conversationId), isNull);
@@ -379,7 +381,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Delete conversation'),
+      );
       await tester.pumpAndSettle();
 
       expect(await store.get('open-one'), isNull);
@@ -415,17 +419,62 @@ void main() {
       expect(find.text('AGENT TEAMS'), findsOneWidget);
 
       // The open chat's app bar hides the sidebar; the icon flips to the
-      // outlined "show" affordance.
+      // unfilled "show" affordance.
       await tester.tap(find.byTooltip('Hide conversations'));
       await tester.pumpAndSettle();
       expect(find.text('AGENT TEAMS'), findsNothing);
-      expect(find.byIcon(Icons.view_sidebar_outlined), findsOneWidget);
+      expect(tester.widget<Icon>(find.byIcon(Symbols.view_sidebar)).fill, 0);
 
       await tester.tap(find.byTooltip('Show conversations'));
       await tester.pumpAndSettle();
       expect(find.text('AGENT TEAMS'), findsOneWidget);
-      expect(find.byIcon(Icons.view_sidebar_rounded), findsOneWidget);
+      expect(tester.widget<Icon>(find.byIcon(Symbols.view_sidebar)).fill, 1);
     });
+
+    testWidgets(
+      'medium single-pane chat pairs back with the conversations drawer',
+      (tester) async {
+        // The default 800x600 surface is the medium layout: too narrow for
+        // the persistent sidebar, too wide for the compact shell drawer.
+        final records = InMemoryRecordStore();
+        final services = buildTestServices(records);
+        await seedTestAgent(services);
+        final store = ConversationStore(records);
+        await store.save(
+          testConversation(
+            id: 'open-one',
+            title: 'Open conversation',
+            updatedAt: DateTime.utc(2026, 6, 30, 9),
+          ),
+        );
+        await store.save(
+          testConversation(
+            id: 'other-one',
+            title: 'Other conversation',
+            updatedAt: DateTime.utc(2026, 6, 30, 8),
+          ),
+        );
+
+        await tester.pumpWidget(
+          _host(_buildRouter(services, initial: '/chats/c/open-one')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(ChatScreen), findsOneWidget);
+        expect(find.text('AGENT TEAMS'), findsNothing);
+        expect(find.byTooltip('Back'), findsOneWidget);
+
+        await tester.tap(find.byTooltip('Show conversations'));
+        await tester.pumpAndSettle();
+        expect(find.text('AGENT TEAMS'), findsOneWidget);
+
+        // Navigating from the drawer closes it and switches the open chat.
+        await tester.tap(find.textContaining('Other conversation'));
+        await tester.pumpAndSettle();
+        expect(find.text('AGENT TEAMS'), findsNothing);
+        expect(find.byType(ChatScreen), findsOneWidget);
+        expect(find.byTooltip('Show conversations'), findsOneWidget);
+      },
+    );
 
     testWidgets('renames and deletes a channel; conversations are kept', (
       tester,
@@ -469,7 +518,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete channel'));
       await tester.pumpAndSettle();
 
       expect(await channels.get('channel-1'), isNull);

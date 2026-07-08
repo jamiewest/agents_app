@@ -8,6 +8,7 @@ import 'package:extensions/system.dart';
 import 'package:http/http.dart' as http;
 
 import 'prompt_log.dart';
+import 'tool_activity.dart';
 import 'usage_store.dart';
 
 /// A [ConfiguredChatClientFactory] that captures every prompt it produces.
@@ -28,6 +29,7 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
   LoggingConfiguredChatClientFactory({
     required this.log,
     this.usageSink,
+    this.toolActivity,
     super.isWeb,
     super.customClientResolver,
   });
@@ -38,6 +40,10 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
   /// The ledger receiving one usage record per model call, when tracking is
   /// enabled.
   final UsageRecordSink? usageSink;
+
+  /// Receives the running tools' names during a turn, when supplied, so the
+  /// chat UI can show live tool activity.
+  final ToolActivity? toolActivity;
 
   @override
   ChatClient createChatClient({
@@ -62,17 +68,21 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
             title: '${source.providerType.name} · ${model.modelId}',
           );
     final sink = usageSink;
-    if (sink == null) return logged;
-    return UsageTrackingChatClient(
-      logged,
-      sink: scope?.isPrivate ?? false
-          ? const DiscardingUsageRecordSink()
-          : sink,
-      modelId: model.modelId,
-      sourceId: source.id,
-      provider: source.providerType.name,
-      scope: scope,
-    );
+    final tracked = sink == null
+        ? logged
+        : UsageTrackingChatClient(
+            logged,
+            sink: scope?.isPrivate ?? false
+                ? const DiscardingUsageRecordSink()
+                : sink,
+            modelId: model.modelId,
+            sourceId: source.id,
+            provider: source.providerType.name,
+            scope: scope,
+          );
+    final activity = toolActivity;
+    if (activity == null) return tracked;
+    return ToolActivityTrackingChatClient(tracked, activity: activity);
   }
 }
 

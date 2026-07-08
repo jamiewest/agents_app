@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:extensions/ai.dart' show UsageDetails;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -106,11 +108,20 @@ class LlmMessageView extends StatelessWidget {
                                 ),
                         ),
                       ),
-                      if (message.usage != null)
+                      if (message.isGenerating)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 40, top: 4),
+                          child: LiveTurnStatus(
+                            message: message,
+                            baseStyle: llmStyle.markdownStyle?.p,
+                          ),
+                        )
+                      else if (message.usage != null)
                         Padding(
                           padding: const EdgeInsets.only(left: 40, top: 4),
                           child: UsageBadge(
                             usage: message.usage!,
+                            duration: message.turnDuration,
                             baseStyle: llmStyle.markdownStyle?.p,
                           ),
                         ),
@@ -127,17 +138,100 @@ class LlmMessageView extends StatelessWidget {
   );
 }
 
-/// A muted one-line token summary rendered under a completed LLM bubble.
+/// A live status line rendered under a streaming LLM bubble, in the same
+/// spot the token counts occupy once the turn completes.
 ///
-/// Shows prompt and completion tokens, plus cached/reasoning counts when the
-/// provider reported them: `▲ 1,234  ▼ 356 · 800 cached`.
+/// Mirrors the status line of terminal chat agents: a status message
+/// (`Thinking`, `Writing`, or the running tool's name), a ticking elapsed
+/// timer, and the turn's token counts so far —
+/// `Running search… · 7s · ▲ 1,234  ▼ 56`.
+class LiveTurnStatus extends StatefulWidget {
+  /// Creates a [LiveTurnStatus] for the streaming [message].
+  const LiveTurnStatus({required this.message, this.baseStyle, super.key});
+
+  /// The message whose turn is in flight.
+  final ChatMessage message;
+
+  /// The bubble's body text style the badge derives its muted style from.
+  final TextStyle? baseStyle;
+
+  @override
+  State<LiveTurnStatus> createState() => _LiveTurnStatusState();
+}
+
+class _LiveTurnStatusState extends State<LiveTurnStatus> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message = widget.message;
+    final baseStyle = widget.baseStyle;
+    final color = (baseStyle?.color ?? const Color(0xFF888888)).withValues(
+      alpha: 0.75,
+    );
+    return Text(
+      liveTurnStatusText(message, now: DateTime.now()),
+      style: (baseStyle ?? const TextStyle()).copyWith(
+        fontSize: 13,
+        fontStyle: FontStyle.italic,
+        color: color,
+      ),
+    );
+  }
+}
+
+/// Formats the [LiveTurnStatus] line for [message] at wall-clock time [now].
+String liveTurnStatusText(ChatMessage message, {required DateTime now}) {
+  final toolActivity = message.toolActivity;
+  final status = toolActivity != null
+      ? 'Running $toolActivity'
+      : (message.text?.isNotEmpty ?? false)
+      ? 'Writing'
+      : 'Thinking';
+  final startedAt = message.turnStartedAt;
+  final elapsed = startedAt == null ? Duration.zero : now.difference(startedAt);
+  final usage = message.usage;
+  return [
+    '$status…',
+    '${elapsed.inSeconds}s',
+    if (usage != null) usageSummaryText(usage),
+  ].join(' · ');
+}
+
+/// A muted one-line turn summary rendered under a completed LLM bubble.
+///
+/// Shows prompt and completion tokens, cached/reasoning counts when the
+/// provider reported them, and the turn's duration when known:
+/// `▲ 1,234  ▼ 356 · 800 cached · 12s`.
 @immutable
 class UsageBadge extends StatelessWidget {
   /// Creates a [UsageBadge] for [usage].
-  const UsageBadge({required this.usage, this.baseStyle, super.key});
+  const UsageBadge({
+    required this.usage,
+    this.duration,
+    this.baseStyle,
+    super.key,
+  });
 
   /// The turn's token usage.
   final UsageDetails usage;
+
+  /// How long the turn took, when known.
+  final Duration? duration;
 
   /// The bubble's body text style the badge derives its muted style from.
   final TextStyle? baseStyle;
@@ -147,14 +241,28 @@ class UsageBadge extends StatelessWidget {
     final color = (baseStyle?.color ?? const Color(0xFF888888)).withValues(
       alpha: 0.55,
     );
+    final duration = this.duration;
     return Text(
-      usageSummaryText(usage),
+      [
+        usageSummaryText(usage),
+        if (duration != null) formatTurnDuration(duration),
+      ].join(' · '),
       style: (baseStyle ?? const TextStyle()).copyWith(
         fontSize: 11,
         color: color,
       ),
     );
   }
+}
+
+/// Formats a turn duration for display (`0.8s`, `12s`, `2m 05s`).
+String formatTurnDuration(Duration duration) {
+  if (duration.inMinutes >= 1) {
+    final seconds = duration.inSeconds % 60;
+    return '${duration.inMinutes}m ${seconds.toString().padLeft(2, '0')}s';
+  }
+  if (duration.inSeconds >= 10) return '${duration.inSeconds}s';
+  return '${(duration.inMilliseconds / 1000).toStringAsFixed(1)}s';
 }
 
 /// Formats [usage] as the badge's one-line summary.

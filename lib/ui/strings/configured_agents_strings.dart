@@ -368,8 +368,7 @@ class ConfiguredAgentsStrings {
     fileMemoryAccessLabel: fileMemoryAccessLabel ?? this.fileMemoryAccessLabel,
     fileAccessLabel: fileAccessLabel ?? this.fileAccessLabel,
     fileWriteToolsLabel: fileWriteToolsLabel ?? this.fileWriteToolsLabel,
-    fileToolApprovalLabel:
-        fileToolApprovalLabel ?? this.fileToolApprovalLabel,
+    fileToolApprovalLabel: fileToolApprovalLabel ?? this.fileToolApprovalLabel,
     fileToolApprovalAlwaysAsk:
         fileToolApprovalAlwaysAsk ?? this.fileToolApprovalAlwaysAsk,
     fileToolApprovalAutoReadOnly:

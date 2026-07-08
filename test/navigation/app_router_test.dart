@@ -105,6 +105,9 @@ void main() {
 
     testWidgets('onboarding routes into the add-agent wizard', (tester) async {
       final services = _buildServices();
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
 
       await tester.pumpWidget(_app(services));
       await tester.pumpAndSettle();
@@ -113,6 +116,9 @@ void main() {
 
       expect(find.byType(AddAgentWizard), findsOneWidget);
       expect(find.textContaining('Provider'), findsWidgets);
+      // Setup during onboarding is full-screen: no shell rail around it,
+      // even at widths where the shell would show one.
+      expect(find.byType(NavigationRail), findsNothing);
     });
 
     testWidgets('keeps onboarding until an agent exists, then unlocks', (

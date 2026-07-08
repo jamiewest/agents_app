@@ -134,7 +134,8 @@ void main() {
 
         await provider.sendMessageStream('go').toList();
 
-        expect(notificationCount, 2);
+        // Message added, turn marked live, and turn finished.
+        expect(notificationCount, 3);
       },
     );
 
@@ -151,7 +152,8 @@ void main() {
           throwsA(isA<StateError>()),
         );
 
-        expect(notificationCount, 2);
+        // Message added, turn marked live, and turn finished.
+        expect(notificationCount, 3);
       },
     );
 
@@ -169,7 +171,9 @@ void main() {
     group('tool approvals', () {
       test('surfaces a pending approval yielded by the stream', () async {
         final agent = _FakeAgent(
-          updates: [_approvalUpdate('r1', 'file_access_write', {'path': 'a'})],
+          updates: [
+            _approvalUpdate('r1', 'file_access_write', {'path': 'a'}),
+          ],
         );
         final provider = AgentLlmProvider(agent: agent);
 
@@ -292,7 +296,11 @@ AgentResponseUpdate _approvalUpdate(
 
 class _FunctionToolCall extends ai.ToolCallContent
     implements ai.FunctionCallContent {
-  _FunctionToolCall({required super.callId, required this.name, this.arguments});
+  _FunctionToolCall({
+    required super.callId,
+    required this.name,
+    this.arguments,
+  });
 
   @override
   final String name;

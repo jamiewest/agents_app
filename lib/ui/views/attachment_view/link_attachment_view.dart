@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../providers/interface/attachments.dart';
 import '../../styles/toolkit_text_styles.dart';
@@ -81,7 +82,7 @@ class LinkAttachmentView extends StatelessWidget {
                   width: 16,
                   height: 16,
                   errorBuilder: (context, error, stackTrace) => Icon(
-                    Icons.link,
+                    Symbols.link,
                     size: 14,
                     color: scheme.onSurfaceVariant,
                   ),
@@ -89,7 +90,7 @@ class LinkAttachmentView extends StatelessWidget {
                       (context, child, frame, wasSynchronouslyLoaded) {
                         if (frame == null) {
                           return Icon(
-                            Icons.link,
+                            Symbols.link,
                             size: 14,
                             color: scheme.onSurfaceVariant,
                           );

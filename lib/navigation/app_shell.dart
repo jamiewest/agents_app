@@ -6,8 +6,10 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../ui/screens/chats_home.dart';
+import '../ui/widgets/side_panel_host.dart';
 
 /// Exposes the compact-width shell drawer to descendant pages, so their
 /// headers can show a hamburger button that opens it.
@@ -57,17 +59,9 @@ class _AppShellState extends State<AppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   static const _destinations = [
-    (
-      icon: Icons.chat_bubble_outline,
-      selected: Icons.chat_bubble,
-      label: 'Chats',
-    ),
-    (icon: Icons.alarm_rounded, selected: Icons.alarm_rounded, label: 'Tasks'),
-    (
-      icon: Icons.settings_outlined,
-      selected: Icons.settings,
-      label: 'Settings',
-    ),
+    (icon: Symbols.chat_bubble, label: 'Chats'),
+    (icon: Symbols.alarm_rounded, label: 'Tasks'),
+    (icon: Symbols.settings, label: 'Settings'),
   ];
 
   void _goBranch(int index) => widget.shell.goBranch(
@@ -92,27 +86,32 @@ class _AppShellState extends State<AppShell> {
                 onDestinationSelected: _goBranch,
               )
             : null,
-        body: AdaptiveLayout(
-          transitionDuration: const Duration(milliseconds: 250),
-          // The default entrance/exit animations keep the ticker busy (they
-          // starve pumpAndSettle and add churn on every resize); breakpoint
-          // swaps are instant instead.
-          internalAnimations: false,
-          primaryNavigation: SlotLayout(
-            config: <Breakpoint, SlotLayoutConfig>{
-              Breakpoints.mediumAndUp: SlotLayout.from(
-                key: const Key('primary-rail'),
-                builder: _buildRail,
-              ),
-            },
-          ),
-          body: SlotLayout(
-            config: <Breakpoint, SlotLayoutConfig>{
-              Breakpoints.standard: SlotLayout.from(
-                key: const Key('shell-body'),
-                builder: (context) => widget.shell,
-              ),
-            },
+        // The side panel overlays the whole adaptive layout — rail and
+        // body alike — so pages can slide utility content over the app
+        // without reflowing it.
+        body: SidePanelHost(
+          child: AdaptiveLayout(
+            transitionDuration: const Duration(milliseconds: 250),
+            // The default entrance/exit animations keep the ticker busy
+            // (they starve pumpAndSettle and add churn on every resize);
+            // breakpoint swaps are instant instead.
+            internalAnimations: false,
+            primaryNavigation: SlotLayout(
+              config: <Breakpoint, SlotLayoutConfig>{
+                Breakpoints.mediumAndUp: SlotLayout.from(
+                  key: const Key('primary-rail'),
+                  builder: _buildRail,
+                ),
+              },
+            ),
+            body: SlotLayout(
+              config: <Breakpoint, SlotLayoutConfig>{
+                Breakpoints.standard: SlotLayout.from(
+                  key: const Key('shell-body'),
+                  builder: (context) => widget.shell,
+                ),
+              },
+            ),
           ),
         ),
       ),
@@ -135,7 +134,9 @@ class _AppShellState extends State<AppShell> {
               for (final destination in _destinations)
                 NavigationRailDestination(
                   icon: Icon(destination.icon),
-                  selectedIcon: Icon(destination.selected),
+                  // Material Symbols renders the selected state through the
+                  // fill variation axis rather than a separate filled icon.
+                  selectedIcon: Icon(destination.icon, fill: 1),
                   label: Text(
                     destination.label,
                     style: Theme.of(context).textTheme.labelSmall,
@@ -172,9 +173,8 @@ class _AppDrawer extends StatelessWidget {
               in _AppShellState._destinations.indexed)
             ListTile(
               leading: Icon(
-                index == selectedIndex
-                    ? destination.selected
-                    : destination.icon,
+                destination.icon,
+                fill: index == selectedIndex ? 1 : 0,
               ),
               title: Text(destination.label),
               selected: index == selectedIndex,

@@ -5,6 +5,7 @@
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// First-run screen shown while the app has no usable agent.
 ///
@@ -45,30 +46,30 @@ class OnboardingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 32),
                 _OnboardingAction(
-                  icon: Icons.cloud_outlined,
+                  icon: Symbols.cloud,
                   title: 'API agent',
                   subtitle:
                       'Anthropic, Google, or any OpenAI-compatible endpoint. '
                       'Needs an API key.',
-                  onTap: () => context.go('/settings/agents/add'),
+                  onTap: () => context.go('/onboarding/add?type=api'),
                 ),
                 const SizedBox(height: 12),
                 _OnboardingAction(
-                  icon: Icons.memory_outlined,
+                  icon: Symbols.memory,
                   title: 'Local agent',
                   subtitle:
-                      'Runs a GGUF model on this device with llama.cpp. '
-                      'No key required.',
-                  onTap: () => context.go('/settings/agents/add'),
+                      'Runs a downloaded model on this device. No key '
+                      'required, works offline.',
+                  onTap: () => context.go('/onboarding/add?type=local'),
                 ),
                 const SizedBox(height: 12),
                 _OnboardingAction(
-                  icon: Icons.lan_outlined,
+                  icon: Symbols.lan,
                   title: 'Network agent',
                   subtitle:
                       'Use an agent shared by another device on your '
                       'network. Pair with a code from that device.',
-                  onTap: () => context.go('/settings/network/pair'),
+                  onTap: () => context.go('/onboarding/pair'),
                 ),
               ],
             ),
@@ -101,7 +102,7 @@ class _OnboardingAction extends StatelessWidget {
         leading: Icon(icon, size: 32),
         title: Text(title),
         subtitle: Text(subtitle),
-        trailing: enabled ? const Icon(Icons.chevron_right) : null,
+        trailing: enabled ? const Icon(Symbols.chevron_right) : null,
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       ),

@@ -5,6 +5,7 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../dialogs/adaptive_snack_bar/adaptive_snack_bar.dart';
 import '../../strings/configured_agents_strings.dart';
@@ -441,12 +442,12 @@ class _ConfiguredAgentsViewState extends State<ConfiguredAgentsView> {
     children: [
       IconButton(
         tooltip: strings.edit,
-        icon: const Icon(Icons.edit_outlined),
+        icon: const Icon(Symbols.edit),
         onPressed: onEdit,
       ),
       IconButton(
         tooltip: strings.delete,
-        icon: const Icon(Icons.delete_outline),
+        icon: const Icon(Symbols.delete),
         onPressed: onDelete,
       ),
     ],
@@ -556,7 +557,7 @@ class _TabScaffold extends StatelessWidget {
             style: style.accentColor == null
                 ? null
                 : FilledButton.styleFrom(backgroundColor: style.accentColor),
-            icon: const Icon(Icons.add),
+            icon: const Icon(Symbols.add),
             label: Text(addLabel),
           ),
         ),

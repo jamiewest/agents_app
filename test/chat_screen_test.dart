@@ -2,12 +2,13 @@ import 'package:agents_app/data/chat_transcript_store.dart';
 import 'package:agents_app/data/conversation_store.dart';
 import 'package:agents_app/domain/conversation.dart';
 import 'package:agents_app/main.dart';
-import 'package:agents_app/ui/views/action_button.dart';
 import 'package:agents_app/ui/views/chat_input/input_button.dart';
 import 'package:agents_app/ui/views/chat_input/input_state.dart';
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import 'support/chat_test_harness.dart';
 
@@ -40,7 +41,7 @@ void main() {
         tester.widget<InputButton>(find.byType(InputButton)).inputState,
         InputState.canSubmitPrompt,
       );
-      await tester.tap(find.byType(ActionButton));
+      await tester.tap(findSubmitButton());
       await tester.pump();
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 20));
@@ -76,7 +77,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'First question');
       await tester.pump();
-      await tester.tap(find.byType(ActionButton));
+      await tester.tap(findSubmitButton());
       await tester.pump();
       // The harness pipeline touches real async (plugin channels); drive it
       // with the real event loop before checking persisted state.
@@ -115,7 +116,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'My name is Jamie');
       await tester.pump();
-      await tester.tap(find.byType(ActionButton));
+      await tester.tap(findSubmitButton());
       await tester.pump();
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 200)),
@@ -143,7 +144,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'What is my name?');
       await tester.pump();
-      await tester.tap(find.byType(ActionButton));
+      await tester.tap(findSubmitButton());
       await tester.pump();
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 200)),
@@ -158,6 +159,68 @@ void main() {
       expect(texts.indexOf('My name is Jamie'), lessThan(3));
 
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('applies a config edit to the live agent mid-conversation', (
+      tester,
+    ) async {
+      final records = InMemoryRecordStore();
+      final capturing = CapturingChatClient();
+      final services = buildTestServices(records, chatClient: capturing);
+      await seedTestAgent(services);
+      final manager = services.getRequiredService<ConfiguredAgentsManager>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(agent: testAgent, services: services),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // First turn with the seeded (instruction-less) config.
+      await tester.enterText(find.byType(TextField), 'First question');
+      await tester.pump();
+      await tester.tap(findSubmitButton());
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pumpAndSettle();
+      // The harness composes a base system prompt; the seeded agent adds no
+      // instructions of its own yet.
+      expect(
+        capturing.lastRequestOptions?.instructions,
+        isNot(contains('pirate')),
+      );
+
+      // Edit the agent behind this chat. Instructions stand in for any
+      // rebuilt config field — tool access flags flow through the same
+      // factory path — and are directly observable on the request options.
+      await tester.runAsync(
+        () => manager.saveAgent(
+          testAgent.copyWith(instructions: 'You are a pirate.'),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pumpAndSettle();
+
+      // Second turn: the swapped-in agent carries the new instructions
+      // without leaving the conversation.
+      await tester.enterText(find.byType(TextField), 'Second question');
+      await tester.pump();
+      await tester.tap(findSubmitButton());
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        capturing.lastRequestOptions?.instructions,
+        contains('You are a pirate.'),
+      );
     });
 
     testWidgets('consolidates conversation actions into one overflow menu', (
@@ -175,15 +238,15 @@ void main() {
       await tester.pumpAndSettle();
 
       // The old individual icon buttons are gone from the app bar.
-      expect(find.byIcon(Icons.group_add_outlined), findsNothing);
-      expect(find.byIcon(Icons.restart_alt_outlined), findsNothing);
-      expect(find.byIcon(Icons.edit_outlined), findsNothing);
+      expect(find.byIcon(Symbols.group_add), findsNothing);
+      expect(find.byIcon(Symbols.restart_alt), findsNothing);
+      expect(find.byIcon(Symbols.edit), findsNothing);
 
       await tester.tap(find.byTooltip('Conversation actions'));
       await tester.pumpAndSettle();
 
       expect(find.text('New session'), findsOneWidget);
-      expect(find.text('Add agent to chat'), findsOneWidget);
+      expect(find.text('Start group chat…'), findsOneWidget);
       expect(find.text('Rename'), findsOneWidget);
       expect(find.text('Delete conversation'), findsOneWidget);
     });

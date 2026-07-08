@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../data/prompt_log.dart';
 
@@ -57,7 +58,7 @@ class PromptInspectorPanel extends StatelessWidget {
                   ),
                   if (entries.isNotEmpty)
                     TextButton.icon(
-                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      icon: const Icon(Symbols.delete_rounded, size: 18),
                       label: const Text('Clear'),
                       onPressed: log.clear,
                     ),
@@ -98,7 +99,7 @@ class _EmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Icon(
-              Icons.data_object_rounded,
+              Symbols.data_object_rounded,
               size: 40,
               color: theme.colorScheme.outline,
             ),
@@ -170,7 +171,7 @@ class _EntryCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                icon: const Icon(Icons.copy_rounded, size: 18),
+                icon: const Icon(Symbols.content_copy_rounded, size: 18),
                 label: const Text('Copy'),
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: entry.body));

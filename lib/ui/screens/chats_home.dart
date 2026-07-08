@@ -8,6 +8,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../data/channel_store.dart';
 import '../../data/chat_transcript_store.dart';
@@ -64,8 +65,9 @@ class ChatsScope extends InheritedWidget {
       onToggleSidebar != oldWidget.onToggleSidebar;
 }
 
-/// The detail-pane button that opens/closes the two-pane conversations
-/// sidebar.
+/// The detail-pane button that opens/closes the conversations sidebar:
+/// the persistent two-pane sidebar on wide layouts, or the conversations
+/// drawer on single-pane widths that host one.
 ///
 /// Uses the sidebar glyph: filled while the sidebar is open, outlined while
 /// it is collapsed. Renders nothing when the layout has no sidebar to
@@ -83,12 +85,34 @@ class SidebarToggleButton extends StatelessWidget {
     final collapsed = scope.sidebarCollapsed;
     return IconButton(
       tooltip: collapsed ? 'Show conversations' : 'Hide conversations',
-      icon: Icon(
-        collapsed ? Icons.view_sidebar_outlined : Icons.view_sidebar_rounded,
-      ),
+      icon: Icon(Symbols.view_sidebar, fill: collapsed ? 0 : 1),
       onPressed: onToggle,
     );
   }
+}
+
+/// The app-bar leading configuration for detail panes (open chats and
+/// channels).
+///
+/// Two-pane layouts show only the [SidebarToggleButton]: the persistent
+/// sidebar handles navigation, so the back button is dropped. Single-pane
+/// layouts that host the conversations drawer pair the back button with the
+/// toggle, which needs the wider `leadingWidth`. Elsewhere both values are
+/// null so the app bar falls back to the implied back button.
+({Widget? leading, double? leadingWidth}) detailPaneLeading(
+  BuildContext context,
+) {
+  final scope = ChatsScope.maybeOf(context);
+  if (scope == null || scope.onToggleSidebar == null) {
+    return (leading: null, leadingWidth: null);
+  }
+  if (scope.twoPane) {
+    return (leading: const SidebarToggleButton(), leadingWidth: null);
+  }
+  return (
+    leading: const Row(children: [BackButton(), SidebarToggleButton()]),
+    leadingWidth: 96,
+  );
 }
 
 /// The Chats destination shell: a persistent conversations/channels sidebar
@@ -117,11 +141,14 @@ class ChatsHome extends StatefulWidget {
 }
 
 class _ChatsHomeState extends State<ChatsHome> {
+  final _drawerKey = GlobalKey<ScaffoldState>();
   double _sidebarWidth = 300;
   bool _sidebarCollapsed = false;
 
   void _toggleSidebar() =>
       setState(() => _sidebarCollapsed = !_sidebarCollapsed);
+
+  void _openSidebarDrawer() => _drawerKey.currentState?.openDrawer();
 
   /// The conversation the detail navigator currently shows, parsed from the
   /// live location so the sidebar can highlight it and route deletions.
@@ -139,11 +166,19 @@ class _ChatsHomeState extends State<ChatsHome> {
     // reclaims width for the rail, and the body must degrade gracefully.
     builder: (context, constraints) {
       final twoPane = constraints.maxWidth >= twoPaneBreakpoint;
+      // Medium widths get the conversations list in a modal drawer so an
+      // open chat can still reach it; compact widths already have the
+      // shell drawer and back navigation.
+      final drawerSidebar = !twoPane && !Breakpoints.small.isActive(context);
       final selectedId = _selectedConversationId(context);
       return ChatsScope(
         twoPane: twoPane,
-        sidebarCollapsed: _sidebarCollapsed,
-        onToggleSidebar: twoPane ? _toggleSidebar : null,
+        sidebarCollapsed: twoPane ? _sidebarCollapsed : true,
+        onToggleSidebar: twoPane
+            ? _toggleSidebar
+            : drawerSidebar
+            ? _openSidebarDrawer
+            : null,
         child: twoPane
             ? Row(
                 children: [
@@ -168,6 +203,23 @@ class _ChatsHomeState extends State<ChatsHome> {
                   ],
                   Expanded(child: widget.navigationShell),
                 ],
+              )
+            : drawerSidebar
+            ? Scaffold(
+                key: _drawerKey,
+                drawer: Drawer(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerLow,
+                  child: SafeArea(
+                    child: ChatsListView(
+                      services: widget.services,
+                      presentation: ChatsListPresentation.drawer,
+                      selectedConversationId: selectedId,
+                    ),
+                  ),
+                ),
+                body: widget.navigationShell,
               )
             : widget.navigationShell,
       );
@@ -200,7 +252,7 @@ class ChatsRootPane extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.forum_outlined,
+                  Symbols.forum,
                   size: 56,
                   color: Theme.of(context).colorScheme.outline,
                 ),
@@ -230,7 +282,8 @@ enum ChatsListPresentation {
   /// A branded side panel with a header and New Conversation button.
   sidebar,
 
-  /// The sidebar layout hosted inside the compact-width navigation drawer;
+  /// The sidebar layout hosted inside a navigation drawer (the compact
+  /// shell drawer, or the chats drawer on medium single-pane widths);
   /// navigating from it closes the drawer.
   drawer,
 }
@@ -324,43 +377,58 @@ class _ChatsListViewState extends State<ChatsListView> {
     if (!mounted) return;
     final agents = _agentsById.values.toList();
     if (agents.isEmpty) {
-      context.go('/settings/agents');
+      // No agents yet: send the user to the guided wizard and say why.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add an agent to start chatting.')),
+      );
+      context.go('/settings/agents/add');
       return;
     }
     final selected =
         await showModalBottomSheet<(SavedAgentConfig, {bool private})>(
           context: context,
-          builder: (context) => SafeArea(
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('Start a chat with…'),
-                ),
-                for (final agent in agents)
-                  ListTile(
-                    leading: CircleAvatar(child: Text(_initialFor(agent.name))),
-                    title: Text(agent.name),
-                    subtitle: agent.description.isEmpty
-                        ? null
-                        : Text(
-                            agent.description,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                    trailing: IconButton(
-                      tooltip: 'Private chat — nothing is saved',
-                      icon: const Icon(Icons.visibility_off_outlined),
-                      onPressed: () =>
-                          Navigator.of(context).pop((agent, private: true)),
+          builder: (context) {
+            var private = false;
+            return SafeArea(
+              child: StatefulBuilder(
+                builder: (context, setSheetState) => ListView(
+                  shrinkWrap: true,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('Start a chat with…'),
                     ),
-                    onTap: () =>
-                        Navigator.of(context).pop((agent, private: false)),
-                  ),
-              ],
-            ),
-          ),
+                    SwitchListTile(
+                      value: private,
+                      onChanged: (value) =>
+                          setSheetState(() => private = value),
+                      secondary: const Icon(Symbols.visibility_off),
+                      title: const Text('Private chat'),
+                      subtitle: const Text('Nothing is saved'),
+                    ),
+                    const Divider(height: 1),
+                    for (final agent in agents)
+                      ListTile(
+                        leading: CircleAvatar(
+                          child: Text(_initialFor(agent.name)),
+                        ),
+                        title: Text(agent.name),
+                        subtitle: agent.description.isEmpty
+                            ? null
+                            : Text(
+                                agent.description,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                        onTap: () => Navigator.of(
+                          context,
+                        ).pop((agent, private: private)),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
     if (selected != null && mounted) {
       final (agent, :private) = selected;
@@ -441,7 +509,7 @@ class _ChatsListViewState extends State<ChatsListView> {
     floatingActionButton: FloatingActionButton(
       tooltip: 'New chat',
       onPressed: _startNewChat,
-      child: const Icon(Icons.add_comment_outlined),
+      child: const Icon(Symbols.add_comment),
     ),
     body: _buildStreamed(
       context,
@@ -452,7 +520,7 @@ class _ChatsListViewState extends State<ChatsListView> {
             actions: [
               IconButton(
                 tooltip: 'New channel',
-                icon: const Icon(Icons.tag),
+                icon: const Icon(Symbols.tag),
                 onPressed: _createChannel,
               ),
             ],
@@ -530,18 +598,40 @@ class _ChatsListViewState extends State<ChatsListView> {
     BuildContext context,
     List<Channel> channels,
     List<Conversation> conversations,
-  ) => [
-    if (channels.isNotEmpty) ...[
-      const _SectionHeader('Channels'),
-      for (final channel in channels) _channelTile(context, channel),
-      const _SectionHeader('Conversations'),
-    ],
-    for (final conversation in conversations)
-      _conversationTile(context, conversation),
-  ];
+  ) {
+    final groupChats = <Conversation>[];
+    // Conversations arrive newest first, so first-seen insertion order puts
+    // the most recently active agent's section on top.
+    final byAgent = <String, List<Conversation>>{};
+    for (final conversation in conversations) {
+      if (conversation.kind == ConversationKind.group) {
+        groupChats.add(conversation);
+      } else {
+        byAgent
+            .putIfAbsent(conversation.primaryAgentId, () => [])
+            .add(conversation);
+      }
+    }
+    return [
+      if (channels.isNotEmpty) ...[
+        const _SectionHeader('Channels'),
+        for (final channel in channels) _channelTile(context, channel),
+      ],
+      if (groupChats.isNotEmpty) ...[
+        const _SectionHeader('Group chats'),
+        for (final conversation in groupChats)
+          _conversationTile(context, conversation),
+      ],
+      for (final entry in byAgent.entries) ...[
+        _SectionHeader(_agentsById[entry.key]?.name ?? 'Unknown agent'),
+        for (final conversation in entry.value)
+          _conversationTile(context, conversation),
+      ],
+    ];
+  }
 
   Widget _buildEmptyState() => EmptyState(
-    icon: Icons.forum_outlined,
+    icon: Symbols.forum,
     title: 'No conversations yet',
     message:
         'Start a chat with one of your agents — they pick up right '
@@ -596,33 +686,21 @@ class _ChatsListViewState extends State<ChatsListView> {
   }
 
   Future<void> _deleteChannel(Channel channel) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete channel?'),
-        content: Text(
+    final confirmed = await showDeleteConfirmation(
+      context,
+      title: 'Delete channel?',
+      message:
           'Delete "${channel.name}"? Its conversations are kept and stay '
           'available in Chats.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete channel',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await _channels.delete(channel.id);
   }
 
   Widget _channelTile(BuildContext context, Channel channel) => _EntryTile(
     leading: Icon(
-      Icons.tag,
+      Symbols.tag,
       size: 18,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
     ),
@@ -643,24 +721,27 @@ class _ChatsListViewState extends State<ChatsListView> {
     final selected = conversation.id == widget.selectedConversationId;
     final agentName = agent?.name;
     final conversationTitle = conversation.title.trim();
+    // The agent name lives in the section header, so the tile only needs
+    // the conversation's own title.
     final title = conversationTitle.isEmpty
         ? (agentName ?? 'Untitled conversation')
-        : (agentName == null || agentName == conversationTitle
-              ? conversationTitle
-              : '$agentName • $conversationTitle');
+        : conversationTitle;
+    final preview = conversation.lastMessagePreview?.trim();
     final isGroup = conversation.kind == ConversationKind.group;
     return _EntryTile(
       leading: CircleAvatar(
         radius: 14,
         child: isGroup
-            ? const Icon(Icons.group_outlined, size: 16)
+            ? const Icon(Symbols.group, size: 16)
             : Text(
                 _initialFor(agentName ?? title),
                 style: Theme.of(context).textTheme.labelMedium,
               ),
       ),
       title: title,
+      subtitle: (preview == null || preview.isEmpty) ? null : preview,
       selected: selected,
+      unread: conversation.hasUnread,
       onTap: () {
         _closeDrawerIfHostedInOne();
         context.go('/chats/c/${conversation.id}');
@@ -745,10 +826,11 @@ class _ChatDetailPaneState extends State<ChatDetailPane> {
         }
         final agent = snapshot.data;
         if (agent == null) {
+          final leading = detailPaneLeading(context);
           return Scaffold(
             appBar: AppBar(
-              automaticallyImplyLeading: !embedded,
-              leading: embedded ? const SidebarToggleButton() : null,
+              leadingWidth: leading.leadingWidth,
+              leading: leading.leading,
             ),
             body: const Center(
               child: Text('This conversation\'s agent no longer exists.'),
@@ -794,7 +876,7 @@ class _SidebarHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.blur_on_rounded, color: scheme.primary, size: 24),
+              Icon(Symbols.blur_on_rounded, color: scheme.primary, size: 24),
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Text(
@@ -808,7 +890,7 @@ class _SidebarHeader extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'New channel',
-                icon: const Icon(Icons.tag, size: 20),
+                icon: const Icon(Symbols.tag, size: 20),
                 visualDensity: VisualDensity.compact,
                 onPressed: onNewChannel,
               ),
@@ -823,7 +905,7 @@ class _SidebarHeader extends StatelessWidget {
               ),
             ),
             onPressed: onNewChat,
-            icon: const Icon(Icons.add, size: 18),
+            icon: const Icon(Symbols.add, size: 18),
             label: const Text(
               'New Conversation',
               style: TextStyle(fontWeight: FontWeight.w500),
@@ -847,6 +929,7 @@ class _EntryTile extends StatelessWidget {
     required this.onRename,
     required this.onDelete,
     this.subtitle,
+    this.unread = false,
   });
 
   final Widget leading;
@@ -857,6 +940,9 @@ class _EntryTile extends StatelessWidget {
   final String menuTooltip;
   final VoidCallback onRename;
   final VoidCallback onDelete;
+
+  /// Whether to show an unread dot and emphasize the title.
+  final bool unread;
 
   @override
   Widget build(BuildContext context) {
@@ -894,7 +980,7 @@ class _EntryTile extends StatelessWidget {
                           color: selected
                               ? scheme.onSecondaryContainer
                               : scheme.onSurface,
-                          fontWeight: selected
+                          fontWeight: selected || unread
                               ? FontWeight.w600
                               : FontWeight.normal,
                         ),
@@ -915,11 +1001,21 @@ class _EntryTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (unread)
+                  Container(
+                    margin: const EdgeInsets.only(left: AppSpacing.sm),
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 PopupMenuButton<void Function()>(
                   tooltip: menuTooltip,
                   onSelected: (action) => action(),
                   icon: Icon(
-                    Icons.more_horiz,
+                    Symbols.more_horiz,
                     size: 18,
                     color: selected
                         ? scheme.onSecondaryContainer.withValues(alpha: 0.7)
@@ -933,7 +1029,7 @@ class _EntryTile extends StatelessWidget {
                       value: onRename,
                       child: const Row(
                         children: [
-                          Icon(Icons.edit_outlined, size: 18),
+                          Icon(Symbols.edit, size: 18),
                           SizedBox(width: AppSpacing.md),
                           Text('Rename'),
                         ],
@@ -944,7 +1040,7 @@ class _EntryTile extends StatelessWidget {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.delete_outline_rounded,
+                            Symbols.delete_rounded,
                             size: 18,
                             color: scheme.error,
                           ),
