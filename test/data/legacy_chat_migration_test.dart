@@ -158,6 +158,7 @@ void main() {
         createdAt: DateTime.utc(2026, 7, 1, 8),
         updatedAt: DateTime.utc(2026, 7, 2, 9),
         lastMessagePreview: 'see you then',
+        hasUnread: true,
       );
 
       final restored = Conversation.fromRecord('c1', conversation.toRecord());
@@ -172,6 +173,15 @@ void main() {
       expect(restored.createdAt, DateTime.utc(2026, 7, 1, 8));
       expect(restored.updatedAt, DateTime.utc(2026, 7, 2, 9));
       expect(restored.lastMessagePreview, 'see you then');
+      expect(restored.hasUnread, isTrue);
+      // Absent marker restores as read, and copyWith preserves updatedAt so
+      // clearing on open never reorders the list.
+      final cleared = restored.copyWith(hasUnread: false);
+      expect(
+        Conversation.fromRecord('c1', cleared.toRecord()).hasUnread,
+        false,
+      );
+      expect(cleared.updatedAt, DateTime.utc(2026, 7, 2, 9));
     });
 
     test('ConversationSession survives toRecord/fromRecord', () {

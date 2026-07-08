@@ -2,6 +2,7 @@ import 'package:agents_app/data/agent_task_store.dart';
 import 'package:agents_app/data/task_scheduler_service.dart';
 import 'package:agents_app/domain/agent_task.dart';
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -111,6 +112,41 @@ void main() {
       await scheduler.runNow('later');
 
       expect(ran, ['later']);
+    });
+  });
+
+  group('taskPromptMessage', () {
+    ModelConfig model(Map<String, String> settings) => ModelConfig(
+      id: 'm1',
+      sourceId: 's1',
+      modelId: 'gemma-4',
+      settings: settings,
+    );
+
+    test('defaults to a hidden user message when no role is set', () {
+      final message = taskPromptMessage('Do the thing.', model(const {}));
+
+      expect(message.role, ai.ChatRole.user);
+      expect(message.authorName, taskPromptAuthorName);
+      expect(message.text, 'Do the thing.');
+    });
+
+    test('falls back to a hidden user message when the model is unknown', () {
+      final message = taskPromptMessage('Do the thing.', null);
+
+      expect(message.role, ai.ChatRole.user);
+      expect(message.authorName, taskPromptAuthorName);
+    });
+
+    test('uses a system-role turn only when the model opts in', () {
+      final message = taskPromptMessage(
+        'Do the thing.',
+        model(const {taskPromptRoleSetting: taskPromptRoleSystem}),
+      );
+
+      expect(message.role, ai.ChatRole.system);
+      expect(message.authorName, isNull);
+      expect(message.text, 'Do the thing.');
     });
   });
 }

@@ -1,10 +1,12 @@
 import 'package:agents_app/data/chat_transcript_store.dart';
 import 'package:agents_app/data/conversation_store.dart';
+import 'package:agents_app/domain/agent_task.dart' show taskPromptAuthorName;
 import 'package:agents_app/domain/conversation.dart';
 import 'package:agents_app/main.dart';
 import 'package:agents_app/ui/views/chat_input/input_button.dart';
 import 'package:agents_app/ui/views/chat_input/input_state.dart';
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -249,6 +251,66 @@ void main() {
       expect(find.text('Start group chat…'), findsOneWidget);
       expect(find.text('Rename'), findsOneWidget);
       expect(find.text('Delete conversation'), findsOneWidget);
+    });
+
+    testWidgets('hides task prompts from the displayed transcript', (
+      tester,
+    ) async {
+      final records = InMemoryRecordStore();
+      final services = buildTestServices(records);
+      await seedTestAgent(services);
+
+      const conversationId = 'task-conv';
+      await ConversationStore(records).save(
+        testConversation(
+          id: conversationId,
+          title: 'Task: Digest',
+          updatedAt: DateTime.utc(2026, 7, 2, 9),
+        ),
+      );
+
+      Future<void> seedMessage(int seq, ai.ChatMessage message) =>
+          records.put(ChatMessageRecords.collection, '$conversationId-$seq', {
+            ChatMessageRecords.conversationIdField: conversationId,
+            ChatMessageRecords.sessionIdField: 'task-run',
+            ChatMessageRecords.seqField: seq,
+            ChatMessageRecords.senderAgentIdField: testAgent.id,
+            ChatMessageRecords.messageField: ChatMessageCodec.encode(message),
+          });
+
+      // A hidden-user prompt, a system-role prompt, and the agent's reply.
+      // Both prompt forms must stay out of the rendered transcript.
+      await seedMessage(
+        0,
+        ai.ChatMessage(
+          role: ai.ChatRole.user,
+          contents: [ai.TextContent('SECRET PROMPT')],
+          authorName: taskPromptAuthorName,
+        ),
+      );
+      await seedMessage(
+        1,
+        ai.ChatMessage.fromText(ai.ChatRole.system, 'SYSTEM SIDE'),
+      );
+      await seedMessage(
+        2,
+        ai.ChatMessage.fromText(ai.ChatRole.assistant, 'the result'),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChatScreen(
+            agent: testAgent,
+            services: services,
+            conversationId: conversationId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('the result'), findsAtLeastNWidgets(1));
+      expect(find.text('SECRET PROMPT'), findsNothing);
+      expect(find.text('SYSTEM SIDE'), findsNothing);
     });
 
     testWidgets('a private chat hides the conversation actions menu', (

@@ -607,10 +607,14 @@ class _ModelEditorState extends State<ModelEditor> {
         const SizedBox(height: 6),
         DropdownButtonFormField<T>(
           initialValue: value,
+          isExpanded: true,
           decoration: const InputDecoration(isDense: true),
           items: [
             for (final (itemValue, itemLabel) in items)
-              DropdownMenuItem(value: itemValue, child: Text(itemLabel)),
+              DropdownMenuItem(
+                value: itemValue,
+                child: Text(itemLabel, overflow: TextOverflow.ellipsis),
+              ),
           ],
           onChanged: (selected) {
             if (selected != null) onChanged(selected);
