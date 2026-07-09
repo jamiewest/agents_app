@@ -44,6 +44,14 @@ class LocalLlamaModelHost {
   /// Whether the shared runtime can run inference on multiple threads.
   bool get supportsMultiThreading => _sharedRuntime.supportsMultiThreading;
 
+  /// The load key of the resident model, or null when none is loaded.
+  ///
+  /// Set and cleared together with the resident session, so a non-null value
+  /// means a session is loaded. Lets a caller reuse the resident model — by
+  /// passing this exact key to [acquire], which cache-hits without reloading —
+  /// instead of forcing a load or eviction.
+  String? get currentKey => _currentKey;
+
   /// Returns the session for the model identified by [key], loading it through
   /// [load] on a miss.
   ///

@@ -2,6 +2,7 @@ import 'package:agents/agents.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:flutter/foundation.dart';
 
+import '../../../data/app_activity_monitor.dart';
 import '../interface/attachments.dart';
 import '../interface/chat_message.dart';
 import '../interface/llm_provider.dart';
@@ -25,6 +26,7 @@ class AgentLlmProvider extends LlmProvider
     this.session,
     this.optionsBuilder,
     this.toolActivity,
+    this.activity,
     Iterable<ChatMessage>? history,
   }) : _history = List<ChatMessage>.from(history ?? const []);
 
@@ -36,6 +38,10 @@ class AgentLlmProvider extends LlmProvider
 
   /// Optional factory for per-run options.
   final AgentRunOptions Function()? optionsBuilder;
+
+  /// Optional app-wide idle monitor; brackets each model turn so background
+  /// work can tell when a generation is in flight.
+  final AppActivityMonitor? activity;
 
   /// Live tool-activity label, when the app tracks it.
   ///
@@ -205,6 +211,7 @@ class AgentLlmProvider extends LlmProvider
   }) async* {
     _pendingApprovalContent = null;
     _activeRuns++;
+    activity?.beginInference();
     try {
       await for (final update in agent.runStreaming(
         session,
@@ -238,6 +245,7 @@ class AgentLlmProvider extends LlmProvider
       }
     } finally {
       _activeRuns--;
+      activity?.endInference();
     }
   }
 
