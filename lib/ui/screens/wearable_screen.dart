@@ -10,9 +10,12 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/embedding_settings.dart';
 import '../../wearable/pipeline/capture_archive.dart';
 import '../../wearable/pipeline/capture_processor.dart';
+import '../../wearable/pipeline/distillation_service.dart';
 import '../../wearable/pipeline/transcription_engine.dart';
+import '../../wearable/pipeline/wearable_memory.dart';
 import '../../wearable/protocol/protocol.dart';
 import '../../wearable/transport/ble_device_transport.dart';
 import '../../wearable/transport/capture_http_client.dart';
@@ -37,6 +40,21 @@ class _WearableScreenState extends State<WearableScreen> {
   late final CaptureArchive _archive = CaptureArchive(
     widget.services.getRequiredService<RecordStore>(),
   );
+  late final WearableMemoryStore _memory = WearableMemoryStore(
+    RecordStoreVectorStore(
+      widget.services.getRequiredService<RecordStore>(),
+      scorer: widget.services.getRequiredService<EmbeddingSettings>(),
+    ),
+  );
+  late final DistillationService _distillation = DistillationService(
+    agents: widget.services
+        .getRequiredService<ConfiguredAgentsManager>()
+        .agents,
+    factory: widget.services.getRequiredService<ConfiguredAgentFactory>(),
+    settings: widget.services.getRequiredService<KeyValueStore>(),
+    memory: _memory,
+    onLog: _logLine,
+  );
   late final CaptureProcessor _processor = CaptureProcessor(
     archive: _archive,
     transcription: const AppleSpeechEngine(),
@@ -46,9 +64,14 @@ class _WearableScreenState extends State<WearableScreen> {
         'transcript ${capture.id}: ${preview.isEmpty ? "(silence)" : preview}',
       );
     },
-    onBatchComplete: (processed) =>
-        _logLine('${processed.length} captures processed'),
+    onBatchComplete: (processed) {
+      _logLine('${processed.length} captures processed, distilling…');
+      unawaited(_distillation.distill(processed));
+    },
   );
+
+  List<SavedAgentConfig> _agents = const [];
+  String? _distillerAgentId;
   final _ssidController = TextEditingController();
   final _pskController = TextEditingController();
   final List<String> _log = [];
@@ -73,6 +96,32 @@ class _WearableScreenState extends State<WearableScreen> {
     _subscriptions.add(
       _transport.endpointUpdates.listen((e) => setState(() => _endpoint = e)),
     );
+    unawaited(_loadDistillerSetting());
+  }
+
+  Future<void> _loadDistillerSetting() async {
+    final manager = widget.services
+        .getRequiredService<ConfiguredAgentsManager>();
+    final settings = widget.services.getRequiredService<KeyValueStore>();
+    final agents = await manager.agents.listAgents();
+    final selected = await settings.read(
+      DistillationService.distillerAgentIdKey,
+    );
+    if (!mounted) return;
+    setState(() {
+      _agents = agents;
+      _distillerAgentId = agents.any((a) => a.id == selected) ? selected : null;
+    });
+  }
+
+  Future<void> _setDistiller(String? agentId) async {
+    final settings = widget.services.getRequiredService<KeyValueStore>();
+    if (agentId == null) {
+      await settings.delete(DistillationService.distillerAgentIdKey);
+    } else {
+      await settings.write(DistillationService.distillerAgentIdKey, agentId);
+    }
+    setState(() => _distillerAgentId = agentId);
   }
 
   @override
@@ -314,6 +363,27 @@ class _WearableScreenState extends State<WearableScreen> {
                   ],
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Symbols.psychology),
+              title: const Text('Distiller agent'),
+              subtitle: const Text(
+                'Summarizes synced captures into wearable memory; raw '
+                'transcripts are stored when unset',
+              ),
+              trailing: DropdownButton<String?>(
+                value: _distillerAgentId,
+                hint: const Text('None'),
+                onChanged: _busy ? null : _setDistiller,
+                items: [
+                  const DropdownMenuItem(child: Text('None')),
+                  for (final agent in _agents)
+                    DropdownMenuItem(value: agent.id, child: Text(agent.name)),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
