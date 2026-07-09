@@ -88,10 +88,17 @@ Rules:
   `captures(id, device_id, kind, start_epoch_ms, duration_ms, file_path,
   crc, status, transcript_or_description, processed_at)` + a `jobs` table
   with retry/backoff state.
-- Distillation is an agent run in the existing framework, fed the batch of
-  `{timestamp, transcript|description}`; it writes to the existing memory
-  store (`agents_flutter` RecordStore / vector store) tagged with date/time
-  ranges. The pipeline stays ignorant of what "memory" means.
+- Distillation is an agent run in the existing framework (a user-selected
+  "distiller" configured agent, run in a private scope), fed the batch of
+  `{timestamp, transcript|description}`. Its output lands in a **dedicated
+  `wearable_memory` vector collection** (`WearableMemoryStore` over
+  `RecordStoreVectorStore` + app embedding settings) rather than any
+  agent's chat memory — chat memory is scoped per agent + session, but
+  wearable observations must be recallable by every agent via the phase-3
+  device tools. Entries carry start/end epoch ranges for time-window
+  recall. Without a configured distiller, or when the run fails, raw
+  transcripts/descriptions are stored verbatim — observations are never
+  lost.
 
 ## Agent tools
 
