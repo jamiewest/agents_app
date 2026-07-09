@@ -179,7 +179,8 @@ GoRouter createAppRouter({
                 ),
                 GoRoute(
                   path: 'wearable',
-                  builder: (context, state) => const WearableScreen(),
+                  builder: (context, state) =>
+                      WearableScreen(services: services),
                 ),
               ],
             ),

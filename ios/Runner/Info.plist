@@ -36,6 +36,8 @@
 	<string>Agents App uses the microphone when recording video attachments.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Agents App accesses your photo library so you can attach images to chat messages.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Agents App transcribes audio from your wearable capture device on-device.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

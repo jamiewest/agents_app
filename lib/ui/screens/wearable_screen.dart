@@ -2,23 +2,31 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'package:agents_flutter/agents_flutter.dart';
+import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../wearable/pipeline/capture_archive.dart';
+import '../../wearable/pipeline/capture_processor.dart';
+import '../../wearable/pipeline/transcription_engine.dart';
 import '../../wearable/protocol/protocol.dart';
 import '../../wearable/transport/ble_device_transport.dart';
 import '../../wearable/transport/capture_http_client.dart';
 import '../../wearable/transport/device_transport.dart';
 
 /// Wearable capture device: one-tap sync (connect → clock sync → WiFi →
-/// pull → ack), recording consent, manual image capture, and one-time WiFi
-/// provisioning.
+/// pull → archive → ack → transcribe), recording consent, manual image
+/// capture, and one-time WiFi provisioning.
 class WearableScreen extends StatefulWidget {
   /// Creates a [WearableScreen].
-  const WearableScreen({super.key});
+  const WearableScreen({required this.services, super.key});
+
+  /// The application service provider.
+  final ServiceProvider services;
 
   @override
   State<WearableScreen> createState() => _WearableScreenState();
@@ -26,6 +34,21 @@ class WearableScreen extends StatefulWidget {
 
 class _WearableScreenState extends State<WearableScreen> {
   final DeviceTransport _transport = BleDeviceTransport();
+  late final CaptureArchive _archive = CaptureArchive(
+    widget.services.getRequiredService<RecordStore>(),
+  );
+  late final CaptureProcessor _processor = CaptureProcessor(
+    archive: _archive,
+    transcription: const AppleSpeechEngine(),
+    onProcessed: (capture, text) {
+      final preview = text.length > 120 ? '${text.substring(0, 120)}…' : text;
+      _logLine(
+        'transcript ${capture.id}: ${preview.isEmpty ? "(silence)" : preview}',
+      );
+    },
+    onBatchComplete: (processed) =>
+        _logLine('${processed.length} captures processed'),
+  );
   final _ssidController = TextEditingController();
   final _pskController = TextEditingController();
   final List<String> _log = [];
@@ -167,7 +190,15 @@ class _WearableScreenState extends State<WearableScreen> {
       for (final entry in manifest.entries) {
         final name = '${entry.id}_${entry.startEpochMs}.${entry.kind.name}';
         final bytes = await client.download(entry);
-        await File(p.join(dir.path, name)).writeAsBytes(bytes, flush: true);
+        final path = p.join(dir.path, name);
+        await File(path).writeAsBytes(bytes, flush: true);
+        // Durable point: file on disk + archive row. Only then is the
+        // capture eligible for ack (device-side deletion).
+        await _archive.recordDownloaded(
+          deviceId: manifest.deviceId,
+          entry: entry,
+          filePath: path,
+        );
         downloaded.add(entry.id);
         _logLine('saved $name (${(entry.size / 1024).toStringAsFixed(0)} KB)');
       }
@@ -179,6 +210,8 @@ class _WearableScreenState extends State<WearableScreen> {
     } finally {
       client.close();
     }
+    _logLine('processing captures…');
+    unawaited(_processor.processPending());
   });
 
   Future<Directory> _capturesDirectory() async {
