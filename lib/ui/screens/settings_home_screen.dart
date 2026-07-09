@@ -77,6 +77,15 @@ class SettingsHomeScreen extends StatelessWidget {
                   onTap: () => context.go('/settings/hosting'),
                 ),
                 ListTile(
+                  leading: const Icon(Symbols.watch),
+                  title: const Text('Wearable device'),
+                  subtitle: const Text(
+                    'Connect the capture wearable, sync audio and images',
+                  ),
+                  trailing: const Icon(Symbols.chevron_right),
+                  onTap: () => context.go('/settings/wearable'),
+                ),
+                ListTile(
                   leading: const Icon(Symbols.receipt_long),
                   title: const Text('Logs & diagnostics'),
                   subtitle: const Text(

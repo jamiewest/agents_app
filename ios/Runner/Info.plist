@@ -26,14 +26,16 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Agents App connects to your wearable capture device over Bluetooth to sync audio and images.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Agents App uses the camera to capture photos to attach to chat messages.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Agents App accesses your photo library so you can attach images to chat messages.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Agents App uses the microphone when recording video attachments.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Agents App hosts agents on your local network so other devices can connect to them.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Agents App uses the microphone when recording video attachments.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Agents App accesses your photo library so you can attach images to chat messages.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

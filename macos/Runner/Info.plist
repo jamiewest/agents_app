@@ -22,13 +22,15 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>$(PRODUCT_COPYRIGHT)</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Agents App connects to your wearable capture device over Bluetooth to sync audio and images.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Agents App uses the camera to capture photos to attach to chat messages.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>macOS contact autofill may look up your contact card to suggest
 		completions in text fields.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Agents App uses the camera to capture photos to attach to chat messages.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Agents App hosts agents on your local network so other devices can connect to them.</string>
 	<key>NSMainNibFile</key>

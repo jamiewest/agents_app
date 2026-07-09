@@ -19,6 +19,7 @@ import '../ui/screens/network_pairing_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../data/task_scheduler_service.dart';
 import '../ui/screens/tasks_screen.dart';
+import '../ui/screens/wearable_screen.dart';
 import 'app_bootstrap.dart';
 import 'app_shell.dart';
 
@@ -175,6 +176,10 @@ GoRouter createAppRouter({
                   path: 'logging',
                   builder: (context, state) =>
                       LoggingScreen(services: services),
+                ),
+                GoRoute(
+                  path: 'wearable',
+                  builder: (context, state) => const WearableScreen(),
                 ),
               ],
             ),

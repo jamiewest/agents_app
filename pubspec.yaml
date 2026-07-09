@@ -25,6 +25,7 @@ dependencies:
   file_selector: ^1.1.0
   flutter:
     sdk: flutter
+  flutter_blue_plus: ^2.3.10
   flutter_context_menu: ^0.4.2
   flutter_markdown_plus: ^1.0.7
   flutter_picture_taker: ^0.2.0
