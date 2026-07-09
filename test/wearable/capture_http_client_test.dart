@@ -201,6 +201,21 @@ void main() {
     },
   );
 
+  test('accepts manifest crc 0 as unverified (legacy firmware)', () async {
+    server.files[8] = randomBytes(512);
+    final real = server.entryFor(8);
+    final legacy = ManifestEntry(
+      id: real.id,
+      kind: real.kind,
+      startEpochMs: real.startEpochMs,
+      durationMs: real.durationMs,
+      size: real.size,
+      crc32: 0,
+    );
+    final bytes = await client.download(legacy);
+    expect(bytes, server.files[8]);
+  });
+
   test('throws on CRC mismatch', () async {
     server.files[4] = randomBytes(1024);
     final entry = server.entryFor(4);

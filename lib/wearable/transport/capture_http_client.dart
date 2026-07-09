@@ -99,6 +99,17 @@ class CaptureHttpClient {
         'id ${entry.id}: size ${bytes.length} != manifest ${entry.size}',
       );
     }
+    // crc32 == 0 marks entries from firmware < 0.1.1, whose CRC pass read
+    // nothing (write-only handle bug). Size still guards truncation; accept
+    // with a warning rather than stranding those captures on the device.
+    if (entry.crc32 == 0) {
+      developer.log(
+        'id ${entry.id}: manifest crc is 0 (legacy firmware) — '
+        'accepted unverified',
+        name: 'wearable.http',
+      );
+      return bytes;
+    }
     final crc = crc32(bytes);
     if (crc != entry.crc32) {
       throw CaptureIntegrityException(
