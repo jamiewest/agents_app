@@ -52,6 +52,13 @@ class LocalLlamaModelHost {
   /// instead of forcing a load or eviction.
   String? get currentKey => _currentKey;
 
+  /// The resident session, or null when none is loaded.
+  ///
+  /// Reading it never loads or evicts. Pair it with [currentKey] to reuse the
+  /// resident model without going through [acquire] (which would reload on a
+  /// key miss).
+  llama.LlamaSession? get currentSession => _current;
+
   /// Returns the session for the model identified by [key], loading it through
   /// [load] on a miss.
   ///

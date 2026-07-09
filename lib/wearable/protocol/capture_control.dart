@@ -23,15 +23,20 @@ abstract final class CaptureCommands {
       _encode({'op': 'record', 'enabled': enabled});
 
   /// `set_policy` — persist capture policy values; omitted args unchanged.
+  ///
+  /// [silenceRms] is the silence-gate threshold (PROTOCOL.md §4): segments
+  /// whose RMS never exceeds it are discarded on-device. 0 disables the gate.
   static List<int> setPolicy({
     int? imageIntervalSeconds,
     int? segmentSeconds,
     int? checkinThresholdBytes,
+    int? silenceRms,
   }) => _encode({
     'op': 'set_policy',
     'image_interval_s': ?imageIntervalSeconds,
     'segment_s': ?segmentSeconds,
     'checkin_threshold_bytes': ?checkinThresholdBytes,
+    'silence_rms': ?silenceRms,
   });
 
   /// `wifi_join` — bring up WiFi + HTTP server and publish the endpoint.

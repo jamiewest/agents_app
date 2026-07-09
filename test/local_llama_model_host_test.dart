@@ -20,7 +20,7 @@ class _FakeSession implements llama.LlamaSession {
     double? topP,
     int? seed,
     List<String> stopSequences = const <String>[],
-    List<Uint8List>? images,
+    List<Uint8List>? media,
     List<llama.LlamaChatTurn>? turns,
     llama.LlamaStatsCallback? onStats,
   }) => const Stream<String>.empty();
@@ -112,6 +112,21 @@ void main() {
       expect(identical(results[1], b), isTrue);
       expect(a.disposed, isTrue);
       expect(b.disposed, isFalse);
+    });
+
+    test('exposes the resident key and session, tracking eviction', () async {
+      expect(host.currentKey, isNull);
+      expect(host.currentSession, isNull);
+
+      final a = _FakeSession('a');
+      await host.acquire('model-a', (_) async => a);
+      expect(host.currentKey, 'model-a');
+      expect(identical(host.currentSession, a), isTrue);
+
+      final b = _FakeSession('b');
+      await host.acquire('model-b', (_) async => b);
+      expect(host.currentKey, 'model-b');
+      expect(identical(host.currentSession, b), isTrue);
     });
   });
 }

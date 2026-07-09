@@ -67,6 +67,11 @@ packages/agents_app/lib/wearable/
 
 - PDM mic → 16 kHz / 16-bit mono WAV segments (~60 s) to microSD,
   continuous while recording is enabled.
+- On-device silence gate (protocol v0.2, 2026-07-09): segments that never
+  exceed the `silence_rms` policy threshold (default -45 dBFS, matching the
+  app-side `SilenceGate`) for ≥300 ms are deleted at rotation — dead air
+  never reaches SD backlog, sync, or transcription. Manifest id gaps are
+  normal. Tunable via `set_policy {silence_rms}`; 0 disables.
 - OV2640 → JPEG still every N minutes (policy-set) to SD.
 - Append-only manifest journal on SD:
   `{id, type, start_epoch_ms, duration_ms, size, crc32}`.

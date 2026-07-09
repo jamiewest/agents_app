@@ -14,12 +14,15 @@ import 'package:extensions/ai.dart' as ai;
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sqflite;
 
+import 'data/app_activity_monitor.dart';
+import 'data/chat_title_summarizer.dart';
 import 'data/chat_transcript_store.dart';
 import 'data/conversation_service.dart';
 import 'data/conversation_store.dart';
@@ -99,6 +102,23 @@ final _builder = Host.createApplicationBuilder()
     // than one model at a time.
     flutter.services.tryAddSingleton<LocalLlamaModelHost>(
       (sp) => LocalLlamaModelHost(),
+    );
+    // App-wide idle signal: fed by the widget root (pointer/keyboard/lifecycle)
+    // and by AgentLlmProvider (generation in flight); read by the background
+    // title summarizer to decide when it is safe to work.
+    flutter.services.tryAddSingleton<AppActivityMonitor>(
+      (sp) => AppActivityMonitor(),
+    );
+    // Names conversations from their content using whatever local model is
+    // already resident, while the app is idle. Runs under the Host lifecycle.
+    flutter.services.addHostedService<ChatTitleSummarizer>(
+      (sp) => ChatTitleSummarizer(
+        conversations: ConversationStore(sp.getRequiredService<RecordStore>()),
+        transcripts: ChatTranscriptStore(sp.getRequiredService<RecordStore>()),
+        activity: sp.getRequiredService<AppActivityMonitor>(),
+        residentTitleClient: () => _residentTitleClient(sp),
+        loggerFactory: sp.getRequiredService<LoggerFactory>(),
+      ),
     );
     // App-wide item inventory the agents manage through the inventory
     // tools. sqflite has no web backend wired up here, so the store — and
@@ -303,10 +323,34 @@ class _LocalLlamaModelLocation {
   final bool isSelectedFile;
 }
 
+/// Config behind each resident local-model load key, so the title summarizer
+/// can rebuild a client for whatever model [LocalLlamaModelHost] currently
+/// holds and reuse its session through an acquire cache hit.
+final Map<String, ({ModelSourceConfig source, ModelConfig model})>
+_residentLocalConfigs = {};
+
+/// A chat client bound to the resident local model, or null when none is
+/// loaded. Reuses the resident session with no load and no eviction by asking
+/// [_createLocalLlamaClient] for exactly the resident load key.
+ai.ChatClient? _residentTitleClient(ServiceProvider services) {
+  final host = services.getRequiredService<LocalLlamaModelHost>();
+  final key = host.currentKey;
+  if (key == null) return null;
+  final config = _residentLocalConfigs[key];
+  if (config == null) return null;
+  return _createLocalLlamaClient(
+    services,
+    source: config.source,
+    model: config.model,
+    forTitle: true,
+  );
+}
+
 ai.ChatClient _createLocalLlamaClient(
   ServiceProvider services, {
   required ModelSourceConfig source,
   required ModelConfig model,
+  bool forTitle = false,
 }) {
   final location = _localLlamaModelLocation(model);
   final spec = _localLlamaSpec(
@@ -329,6 +373,10 @@ ai.ChatClient _createLocalLlamaClient(
     spec.draftGpuLayers,
     spec.maxDraftTokens,
   ].join('|');
+
+  // Remember the config behind this load key so the title summarizer can
+  // rebuild a client for whatever model the host currently holds.
+  _residentLocalConfigs[loadKey] = (source: source, model: model);
 
   // Format chosen from the GGUF's own metadata during load. The embedded
   // chat template is what the model was actually trained on, so it beats
@@ -369,8 +417,21 @@ ai.ChatClient _createLocalLlamaClient(
   // otherwise disposes it before running this loader, so at most one local
   // model is ever loaded. The loader runs only on a miss, so its progress,
   // download, and format-sniff work is skipped when the model is reused.
-  Future<llama.LlamaSession> sessionProvider() =>
-      host.acquire(loadKey, (runtime) async {
+  Future<llama.LlamaSession> sessionProvider() {
+    // Background titling must never trigger a load or eviction: it only ever
+    // reuses the already-resident session. If the resident model changed out
+    // from under us (e.g. a scheduled task swapped models), bail rather than
+    // reload — the summarizer catches this and moves on.
+    if (forTitle) {
+      final session = host.currentSession;
+      if (session == null || host.currentKey != loadKey) {
+        throw StateError(
+          'Local model is no longer resident; skipping background title.',
+        );
+      }
+      return Future<llama.LlamaSession>.value(session);
+    }
+    return host.acquire(loadKey, (runtime) async {
         try {
           final llama.LlamaSession loaded;
           final selectedLocalPath = location.localPath;
@@ -455,6 +516,7 @@ ai.ChatClient _createLocalLlamaClient(
           rethrow;
         }
       });
+  }
 
   final thinking = services.getService<ThinkingSettings>();
   return llama.createLlamaChatClient(
@@ -464,10 +526,13 @@ ai.ChatClient _createLocalLlamaClient(
     // recorded by whichever client first loaded this model before falling back
     // to the spec's file-name guess.
     formatResolver: () => ggufFormat ?? _resolvedLlamaFormats[loadKey],
-    inspector: services.getService<llama.PromptInspector>(),
+    inspector: forTitle ? null : services.getService<llama.PromptInspector>(),
     // Evaluated per request, so the chat toggle applies mid-conversation.
-    isThinkingEnabled: () =>
-        thinking?.enabledFor(model.id) ?? spec.enableThinking,
+    // Title generation forces thinking off: a reasoning block would consume the
+    // tiny output budget and leave no room for the title itself.
+    isThinkingEnabled: forTitle
+        ? () => false
+        : () => thinking?.enabledFor(model.id) ?? spec.enableThinking,
   );
 }
 
@@ -732,9 +797,10 @@ class AgentsApp extends StatefulWidget {
   State<AgentsApp> createState() => _AgentsAppState();
 }
 
-class _AgentsAppState extends State<AgentsApp> {
+class _AgentsAppState extends State<AgentsApp> with WidgetsBindingObserver {
   late final GoRouter _router;
   late final TaskSchedulerService _scheduler;
+  late final AppActivityMonitor _activity;
 
   @override
   void initState() {
@@ -750,32 +816,56 @@ class _AgentsAppState extends State<AgentsApp> {
       bootstrap: bootstrap,
       scheduler: _scheduler,
     );
+    // Feed the idle monitor so the background title summarizer knows when the
+    // user is active. Pointer events come through the root [Listener] in build.
+    _activity = widget.services.getRequiredService<AppActivityMonitor>();
+    WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_onKeyEvent);
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKeyEvent);
+    WidgetsBinding.instance.removeObserver(this);
     _scheduler.stop();
     super.dispose();
+  }
+
+  bool _onKeyEvent(KeyEvent event) {
+    _activity.reportUserActivity();
+    return false;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _activity.reportLifecycle(state);
   }
 
   @override
   Widget build(BuildContext context) {
     final themeSettings = widget.services.getRequiredService<ThemeSettings>();
-    return ListenableBuilder(
-      listenable: themeSettings,
-      builder: (context, _) => MaterialApp.router(
-        title: 'agents_app',
-        debugShowCheckedModeBanner: false,
-        theme: buildAppTheme(
-          seedColor: themeSettings.seed.color,
-          brightness: Brightness.light,
+    void reportActivity(PointerEvent _) => _activity.reportUserActivity();
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: reportActivity,
+      onPointerSignal: reportActivity,
+      onPointerHover: reportActivity,
+      child: ListenableBuilder(
+        listenable: themeSettings,
+        builder: (context, _) => MaterialApp.router(
+          title: 'agents_app',
+          debugShowCheckedModeBanner: false,
+          theme: buildAppTheme(
+            seedColor: themeSettings.seed.color,
+            brightness: Brightness.light,
+          ),
+          darkTheme: buildAppTheme(
+            seedColor: themeSettings.seed.color,
+            brightness: Brightness.dark,
+          ),
+          themeMode: themeSettings.mode,
+          routerConfig: _router,
         ),
-        darkTheme: buildAppTheme(
-          seedColor: themeSettings.seed.color,
-          brightness: Brightness.dark,
-        ),
-        themeMode: themeSettings.mode,
-        routerConfig: _router,
       ),
     );
   }
@@ -960,6 +1050,7 @@ class _ChatScreenState extends State<ChatScreen> {
       agent: agent,
       session: session,
       toolActivity: widget.services.getService<ToolActivity>(),
+      activity: widget.services.getService<AppActivityMonitor>(),
       history: displayHistory,
     );
     // Attach after restore so persistence reflects ongoing turns only.
@@ -1212,6 +1303,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final now = DateTime.now();
       _createdAt ??= now;
       _setDefaultTitleFrom(history);
+      await _adoptBackgroundTitle();
 
       String? preview;
       for (final message in history.reversed) {
@@ -1570,6 +1662,23 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!deleted) return;
     _deleted = true;
     if (mounted) context.go('/chats');
+  }
+
+  /// Adopts a title the background summarizer (or a rename elsewhere) wrote
+  /// underneath us, instead of overwriting it with the auto-derived one.
+  Future<void> _adoptBackgroundTitle() async {
+    if (_titleSource != ConversationTitleSource.firstMessage &&
+        _titleSource != ConversationTitleSource.none) {
+      return;
+    }
+    final stored = await _conversations!.get(_conversationId);
+    if (stored == null) return;
+    if (stored.titleSource == ConversationTitleSource.summary ||
+        stored.titleSource == ConversationTitleSource.manual) {
+      _title = stored.title;
+      _titleSource = stored.titleSource;
+      _refreshTitle();
+    }
   }
 
   void _setDefaultTitleFrom(List<ChatMessage> history) {
