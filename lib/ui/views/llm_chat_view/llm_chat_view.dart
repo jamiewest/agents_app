@@ -384,12 +384,13 @@ class _LlmChatViewState extends State<LlmChatView>
   }
 
   Stream<String> _convertSpeechToText(XFile file) async* {
-    // use the LLM to translate the attached audio to text
+    // Use the model to transcribe the attached audio to text. "Transcribe"
+    // (not "translate") so a multimodal model returns the spoken words in their
+    // original language rather than translating them to English.
     const prompt =
-        'translate the attached audio to text; provide the result of that '
-        'translation as just the text of the translation itself. be careful to '
-        'separate the background audio from the foreground audio and only '
-        'provide the result of translating the foreground audio.';
+        'Transcribe the attached audio to text; provide just the transcribed '
+        'text itself. Be careful to separate the background audio from the '
+        'foreground audio and only transcribe the foreground audio.';
     final attachments = [await FileAttachment.fromFile(file)];
 
     yield* widget.viewModel.provider.generateStream(

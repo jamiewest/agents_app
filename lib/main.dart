@@ -803,6 +803,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Conversation? _existingConversation;
   ModelConfig? _model;
   bool _supportsImageAttachments = true;
+  bool _isNetworkAgent = false;
+  Future<void> _networkTranscriptWrite = Future<void>.value();
   List<ConversationSession> _sessionList = const [];
   String? _viewSessionId;
   late String _conversationId;
@@ -893,6 +895,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _supportsImageAttachments =
         modelSource?.providerType != ProviderType.localLlama ||
         _model!.capabilities.supportsVision;
+    // Remote (A2A) agents run inside the host's harness and so bypass the
+    // local durable chat-history provider; the app persists their display
+    // transcript itself (see [_persistNetworkTranscript]).
+    _isNetworkAgent = modelSource?.providerType == ProviderType.network;
 
     final sessionList = widget.isPrivate
         ? const <ConversationSession>[]
@@ -1016,6 +1022,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _supportsImageAttachments =
           modelSource?.providerType != ProviderType.localLlama ||
           _model!.capabilities.supportsVision;
+      _isNetworkAgent = modelSource?.providerType == ProviderType.network;
 
       final extraDelegations = <AgentDelegationConfig>[
         if (record != null && record.kind == ConversationKind.group)
@@ -1208,6 +1215,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _conversationExists = true;
 
       unawaited(_persistSerializedSession(provider));
+      // Awaited so the pop/dispose flush (which awaits [_pendingPersistence])
+      // sees the final turn's transcript land before the screen tears down.
+      await _persistNetworkTranscript(provider);
     } catch (e, s) {
       developer.log(
         'Failed to persist conversation metadata.',
@@ -1260,6 +1270,85 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
   }
+
+  /// Rewrites the display transcript for a remote (A2A) conversation.
+  ///
+  /// Remote agents run inside the paired host's harness, so their turns never
+  /// reach the local [FlutterChatHistoryProvider] that writes the durable
+  /// transcript for local agents. Without this a networked conversation
+  /// reopens blank even though its metadata and session pointer were saved.
+  ///
+  /// The change listener fires on every streamed chunk, so this waits until
+  /// the turn has settled ([AgentLlmProvider.isBusy] is false) and then does a
+  /// full idempotent replace from the live UI history — never a per-chunk
+  /// append, which would multiply stored bubbles. Writes are serialized
+  /// through [_networkTranscriptWrite] because a replace is delete-then-write
+  /// and the listener can fire more than once around a turn.
+  Future<void> _persistNetworkTranscript(AgentLlmProvider provider) {
+    // A filtered session view swaps a partial slice into [provider.history];
+    // rewriting the whole transcript from it would drop the other sessions.
+    // Network chats are kept single-session (see the conversation-actions
+    // menu), so this only guards against a future caller reintroducing one.
+    if (widget.isPrivate ||
+        !_isNetworkAgent ||
+        provider.isBusy ||
+        _viewSessionId != null) {
+      return Future<void>.value();
+    }
+    final messages = _toTranscriptMessages(provider.history);
+    final write = _networkTranscriptWrite.then((_) async {
+      try {
+        await _transcripts!.replace(
+          conversationId: _conversationId,
+          sessionId: _sessionId,
+          messages: messages,
+          senderAgentId: widget.agent.id,
+        );
+      } catch (e, s) {
+        developer.log(
+          'Failed to persist networked conversation transcript.',
+          name: 'agents_app.chat_sessions',
+          error: e,
+          stackTrace: s,
+        );
+      }
+    });
+    _networkTranscriptWrite = write;
+    return write;
+  }
+
+  /// Converts the visible UI [history] to agent-native messages for durable
+  /// storage. Empty-text placeholders are dropped to match what
+  /// [_loadDisplayHistory] renders back on resume.
+  List<ai.ChatMessage> _toTranscriptMessages(Iterable<ChatMessage> history) => [
+    for (final message in history)
+      if ((message.text ?? '').trim().isNotEmpty)
+        ai.ChatMessage(
+          role: message.origin.isUser
+              ? ai.ChatRole.user
+              : ai.ChatRole.assistant,
+          contents: [
+            ai.TextContent(message.text!),
+            if (message.origin.isUser)
+              for (final attachment in message.attachments)
+                _toAgentAttachmentContent(attachment),
+          ],
+        ),
+  ];
+
+  /// Maps a UI [attachment] to the agent-native content the transcript stores,
+  /// so [_displayAttachmentsFor] can rebuild the chip on resume.
+  ai.AIContent _toAgentAttachmentContent(Attachment attachment) =>
+      switch (attachment) {
+        FileAttachment(
+          name: final name,
+          mimeType: final mimeType,
+          bytes: final bytes,
+        ) =>
+          ai.DataContent(bytes, mediaType: mimeType, name: name),
+        LinkAttachment(url: final url, mimeType: final mimeType) =>
+          ai.UriContent(url, mediaType: mimeType),
+      };
 
   Future<void> _discardEmptyConversation() async {
     final provider = _provider;
@@ -1396,7 +1485,10 @@ class _ChatScreenState extends State<ChatScreen> {
   /// serialized agent-session state new turns are stamped with — resets.
   Future<void> _startNewSession() async {
     final provider = _provider;
-    if (provider == null) return;
+    // Network chats are single-session: their transcript is rewritten whole
+    // from the live history, so a second session epoch would strand the
+    // earlier turns. The menu hides this action for them; guard it anyway.
+    if (provider == null || _isNetworkAgent) return;
     await _pendingPersistence;
 
     final endedAt = DateTime.now();
@@ -1586,7 +1678,9 @@ class _ChatScreenState extends State<ChatScreen> {
               );
             },
           ),
-        if (!widget.isPrivate && _sessionList.length > 1)
+        // Network chats stay single-session (their transcript is rewritten
+        // whole from the live history), so the per-session view never applies.
+        if (!widget.isPrivate && !_isNetworkAgent && _sessionList.length > 1)
           PopupMenuButton<String?>(
             tooltip: 'View a session',
             icon: Icon(
@@ -1620,11 +1714,16 @@ class _ChatScreenState extends State<ChatScreen> {
             tooltip: 'Conversation actions',
             onSelected: (action) => action(),
             itemBuilder: (context) => [
-              PopupMenuItem(
-                enabled: _provider != null,
-                value: () => unawaited(_startNewSession()),
-                child: const Text('New session'),
-              ),
+              // A new session re-stamps only new turns for local agents, but a
+              // network chat rewrites its whole transcript under one session,
+              // so segmenting it would strand the earlier turns. Keep remote
+              // conversations single-session.
+              if (!_isNetworkAgent)
+                PopupMenuItem(
+                  enabled: _provider != null,
+                  value: () => unawaited(_startNewSession()),
+                  child: const Text('New session'),
+                ),
               PopupMenuItem(
                 enabled: _provider != null,
                 value: () => unawaited(_addAgentToChat()),

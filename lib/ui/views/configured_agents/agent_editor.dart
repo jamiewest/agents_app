@@ -4,6 +4,7 @@
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 import '../../strings/configured_agents_strings.dart';
 import '../../styles/configured_agents_style.dart';
@@ -242,6 +243,15 @@ class _AgentEditorState extends State<AgentEditor> {
                   onChanged: (value) =>
                       _updateAccess(_access.copyWith(enableWebSearch: value)),
                 ),
+                // The run_shell tool spawns host processes, so it is only
+                // offered on desktop platforms.
+                if (UniversalPlatform.isDesktop)
+                  _AccessSwitchConfig(
+                    label: strings.shellAccessLabel,
+                    value: _access.enableShell,
+                    onChanged: (value) =>
+                        _updateAccess(_access.copyWith(enableShell: value)),
+                  ),
                 _AccessSwitchConfig(
                   label: strings.temporalAccessLabel,
                   value: _access.enableTemporal,

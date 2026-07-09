@@ -111,7 +111,18 @@ class _ChatInputState extends State<ChatInput> {
   final _focusNode = FocusNode();
 
   final _textController = TextEditingController();
-  final _waveController = WaveformRecorderController();
+  // Record WAV (mono, 16 kHz) on every platform. The on-device transcriber
+  // decodes the clip through llama.cpp's mtmd, whose audio decoder only accepts
+  // wav/mp3/flac — the default `aacLc` (m4a) on Apple platforms would not
+  // decode. Sample rate is honored natively; on web the capture rate may differ
+  // and mtmd's (Whisper) front-end resamples.
+  final _waveController = WaveformRecorderController(
+    config: const RecordConfig(
+      encoder: AudioEncoder.wav,
+      numChannels: 1,
+      sampleRate: 16000,
+    ),
+  );
   final _attachments = <Attachment>[];
 
   ChatViewModel? _viewModel;

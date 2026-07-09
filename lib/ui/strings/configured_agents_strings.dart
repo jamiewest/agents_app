@@ -48,6 +48,7 @@ class ConfiguredAgentsStrings {
     this.fileToolApprovalAutoReadOnly = 'Auto-approve read-only',
     this.fileToolApprovalAutoAll = 'Auto-approve all',
     this.webSearchAccessLabel = 'Web search',
+    this.shellAccessLabel = 'Shell commands',
     this.todoListAccessLabel = 'Todo list',
     this.agentModeAccessLabel = 'Agent mode',
     this.skillsAccessLabel = 'Skills',
@@ -180,6 +181,9 @@ class ConfiguredAgentsStrings {
   /// Label for hosted web-search tool access.
   final String webSearchAccessLabel;
 
+  /// Label for the `run_shell` host command tool access.
+  final String shellAccessLabel;
+
   /// Label for todo-list context access.
   final String todoListAccessLabel;
 
@@ -308,6 +312,7 @@ class ConfiguredAgentsStrings {
     String? fileToolApprovalAutoReadOnly,
     String? fileToolApprovalAutoAll,
     String? webSearchAccessLabel,
+    String? shellAccessLabel,
     String? todoListAccessLabel,
     String? agentModeAccessLabel,
     String? skillsAccessLabel,
@@ -376,6 +381,7 @@ class ConfiguredAgentsStrings {
     fileToolApprovalAutoAll:
         fileToolApprovalAutoAll ?? this.fileToolApprovalAutoAll,
     webSearchAccessLabel: webSearchAccessLabel ?? this.webSearchAccessLabel,
+    shellAccessLabel: shellAccessLabel ?? this.shellAccessLabel,
     todoListAccessLabel: todoListAccessLabel ?? this.todoListAccessLabel,
     agentModeAccessLabel: agentModeAccessLabel ?? this.agentModeAccessLabel,
     skillsAccessLabel: skillsAccessLabel ?? this.skillsAccessLabel,
