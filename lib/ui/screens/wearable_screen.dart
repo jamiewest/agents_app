@@ -13,11 +13,9 @@ import '../../wearable/transport/ble_device_transport.dart';
 import '../../wearable/transport/capture_http_client.dart';
 import '../../wearable/transport/device_transport.dart';
 
-/// Bring-up screen for the wearable capture device: connect over BLE,
-/// provision WiFi, drive control commands, and pull buffered captures.
-///
-/// This is the phase-1 manual surface; the background pipeline and agent
-/// tools replace most of it later.
+/// Wearable capture device: one-tap sync (connect → clock sync → WiFi →
+/// pull → ack), recording consent, manual image capture, and one-time WiFi
+/// provisioning.
 class WearableScreen extends StatefulWidget {
   /// Creates a [WearableScreen].
   const WearableScreen({super.key});
@@ -84,24 +82,29 @@ class _WearableScreenState extends State<WearableScreen> {
     }
   }
 
-  Future<void> _connect() => _guard('connect', () async {
-    _logLine('scanning…');
-    await _transport.connect();
-    _logLine('connected');
-    setState(() {});
-    _status = await _transport.readStatus();
-    _endpoint = await _transport.readEndpoint();
-    setState(() {});
-  });
-
-  Future<void> _timeSync() => _guard('time_sync', () async {
+  /// Connects (if needed) and syncs the device clock — every session
+  /// starts with a fresh clock so captures are time-addressable.
+  Future<void> _ensureConnected() async {
+    if (_transport.connectionState != DeviceConnectionState.connected) {
+      _logLine('scanning…');
+      await _transport.connect();
+      _logLine('connected');
+    }
     final response = await _transport.sendCommand(
       CaptureCommands.timeSync(DateTime.now().millisecondsSinceEpoch),
     );
-    _logLine(response.ok ? 'time synced' : 'time sync: ${response.error}');
-  });
+    if (!response.ok) {
+      _logLine('clock sync failed: ${response.error?.wireValue}');
+    }
+    _status = await _transport.readStatus();
+    _endpoint = await _transport.readEndpoint();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _connect() => _guard('connect', _ensureConnected);
 
   Future<void> _captureImage() => _guard('capture_image', () async {
+    await _ensureConnected();
     final response = await _transport.sendCommand(
       CaptureCommands.captureImage(),
     );
@@ -120,6 +123,7 @@ class _WearableScreenState extends State<WearableScreen> {
   });
 
   Future<void> _provision() => _guard('provision', () async {
+    await _ensureConnected();
     await _transport.provisionWifi(
       ssid: _ssidController.text,
       psk: _pskController.text,
@@ -147,7 +151,9 @@ class _WearableScreenState extends State<WearableScreen> {
     return endpoint;
   }
 
+  /// The one-tap flow: connect → clock sync → WiFi up → pull → ack.
   Future<void> _sync() => _guard('sync', () async {
+    await _ensureConnected();
     final endpoint = await _ensureEndpoint();
     _logLine('endpoint ${endpoint.ip}:${endpoint.port}');
     final client = CaptureHttpClient(endpoint);
@@ -163,10 +169,7 @@ class _WearableScreenState extends State<WearableScreen> {
         final bytes = await client.download(entry);
         await File(p.join(dir.path, name)).writeAsBytes(bytes, flush: true);
         downloaded.add(entry.id);
-        _logLine(
-          'saved $name (${(entry.size / 1024).toStringAsFixed(0)} KB, '
-          'crc ok)',
-        );
+        _logLine('saved $name (${(entry.size / 1024).toStringAsFixed(0)} KB)');
       }
       final ack = await client.ack(downloaded);
       _logLine(
@@ -199,31 +202,87 @@ class _WearableScreenState extends State<WearableScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _ConnectionCard(
-            connection: _connection,
-            busy: _busy,
-            onConnect: _connect,
-            onDisconnect: () => _guard('disconnect', _transport.disconnect),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(
+                    _connected
+                        ? Symbols.bluetooth_connected
+                        : Symbols.bluetooth,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_connection.name)),
+                  if (!_connected)
+                    TextButton(
+                      onPressed: _busy ? null : _connect,
+                      child: const Text('Connect'),
+                    )
+                  else
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => _guard('disconnect', _transport.disconnect),
+                      child: const Text('Disconnect'),
+                    ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    icon: const Icon(Symbols.sync),
+                    label: const Text('Sync'),
+                    onPressed: _busy ? null : _sync,
+                  ),
+                ],
+              ),
+            ),
           ),
-          if (_connected) ...[
+          if (_connected && _status != null) ...[
             const SizedBox(height: 12),
             _StatusCard(
-              status: _status,
+              status: _status!,
               busy: _busy,
-              onTimeSync: _timeSync,
               onCaptureImage: _captureImage,
               onRecordChanged: _setRecording,
             ),
-            const SizedBox(height: 12),
-            _WifiCard(
-              ssidController: _ssidController,
-              pskController: _pskController,
-              endpoint: _endpoint,
-              busy: _busy,
-              onProvision: _provision,
-              onSync: _sync,
-            ),
           ],
+          const SizedBox(height: 12),
+          Card(
+            child: ExpansionTile(
+              leading: const Icon(Symbols.wifi_password),
+              title: const Text('WiFi credentials'),
+              subtitle: const Text(
+                'Stored on the device; only needed when the network changes',
+              ),
+              childrenPadding: const EdgeInsets.all(12),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _ssidController,
+                        decoration: const InputDecoration(labelText: 'SSID'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _pskController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: _busy ? null : _provision,
+                      child: const Text('Provision'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -246,118 +305,18 @@ class _WearableScreenState extends State<WearableScreen> {
   }
 }
 
-class _ConnectionCard extends StatelessWidget {
-  const _ConnectionCard({
-    required this.connection,
-    required this.busy,
-    required this.onConnect,
-    required this.onDisconnect,
-  });
-
-  final DeviceConnectionState connection;
-  final bool busy;
-  final VoidCallback onConnect;
-  final VoidCallback onDisconnect;
-
-  @override
-  Widget build(BuildContext context) {
-    final connected = connection == DeviceConnectionState.connected;
-    return Card(
-      child: ListTile(
-        leading: Icon(
-          connected ? Symbols.bluetooth_connected : Symbols.bluetooth,
-        ),
-        title: Text('Connection: ${connection.name}'),
-        trailing: FilledButton(
-          onPressed: busy ? null : (connected ? onDisconnect : onConnect),
-          child: Text(connected ? 'Disconnect' : 'Connect'),
-        ),
-      ),
-    );
-  }
-}
-
 class _StatusCard extends StatelessWidget {
   const _StatusCard({
     required this.status,
     required this.busy,
-    required this.onTimeSync,
     required this.onCaptureImage,
     required this.onRecordChanged,
   });
 
-  final DeviceStatus? status;
+  final DeviceStatus status;
   final bool busy;
-  final VoidCallback onTimeSync;
   final VoidCallback onCaptureImage;
   final ValueChanged<bool> onRecordChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = status;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Device', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            if (s == null)
-              const Text('Waiting for status…')
-            else ...[
-              Text(
-                'fw ${s.firmwareVersion} · '
-                '${s.fileCount} files · '
-                '${(s.bufferedBytes / (1024 * 1024)).toStringAsFixed(1)} MB '
-                'buffered · wifi ${s.wifi.name}'
-                '${s.isTimeSynced ? '' : ' · CLOCK NOT SYNCED'}',
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Text('Recording'),
-                  Switch(
-                    value: s.recording,
-                    onChanged: busy ? null : onRecordChanged,
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    icon: const Icon(Symbols.schedule),
-                    label: const Text('Sync clock'),
-                    onPressed: busy ? null : onTimeSync,
-                  ),
-                  TextButton.icon(
-                    icon: const Icon(Symbols.photo_camera),
-                    label: const Text('Capture image'),
-                    onPressed: busy ? null : onCaptureImage,
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WifiCard extends StatelessWidget {
-  const _WifiCard({
-    required this.ssidController,
-    required this.pskController,
-    required this.endpoint,
-    required this.busy,
-    required this.onProvision,
-    required this.onSync,
-  });
-
-  final TextEditingController ssidController;
-  final TextEditingController pskController;
-  final DeviceEndpoint? endpoint;
-  final bool busy;
-  final VoidCallback onProvision;
-  final VoidCallback onSync;
 
   @override
   Widget build(BuildContext context) {
@@ -368,46 +327,24 @@ class _WifiCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'WiFi offload',
-              style: Theme.of(context).textTheme.titleMedium,
+              'fw ${status.firmwareVersion} · '
+              '${status.fileCount} files · '
+              '${(status.bufferedBytes / (1024 * 1024)).toStringAsFixed(1)} '
+              'MB buffered · wifi ${status.wifi.name}',
             ),
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: ssidController,
-                    decoration: const InputDecoration(labelText: 'SSID'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: pskController,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: busy ? null : onProvision,
-                  child: const Text('Provision'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  endpoint == null
-                      ? 'Endpoint: none (join happens on sync)'
-                      : 'Endpoint: ${endpoint!.ip}:${endpoint!.port}',
+                const Text('Recording'),
+                Switch(
+                  value: status.recording,
+                  onChanged: busy ? null : onRecordChanged,
                 ),
                 const Spacer(),
-                FilledButton.icon(
-                  icon: const Icon(Symbols.sync),
-                  label: const Text('Sync files'),
-                  onPressed: busy ? null : onSync,
+                TextButton.icon(
+                  icon: const Icon(Symbols.photo_camera),
+                  label: const Text('Capture image'),
+                  onPressed: busy ? null : onCaptureImage,
                 ),
               ],
             ),

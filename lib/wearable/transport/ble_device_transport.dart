@@ -54,6 +54,18 @@ class BleDeviceTransport implements DeviceTransport {
     if (_state == DeviceConnectionState.connected) return;
     _setState(DeviceConnectionState.scanning);
     try {
+      // The adapter reports off/unknown briefly after app launch; scanning
+      // before it is on silently finds nothing and times out (seen as
+      // "first connect click always fails").
+      await FlutterBluePlus.adapterState
+          .where((s) => s == BluetoothAdapterState.on)
+          .first
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => throw const DeviceUnreachableException(
+              'bluetooth adapter is not on',
+            ),
+          );
       final device = await _scanForDevice(timeout);
       _setState(DeviceConnectionState.connecting);
       // Personal/non-commercial use per the flutter_blue_plus v2 license
