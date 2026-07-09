@@ -15,6 +15,8 @@ import 'package:path_provider/path_provider.dart';
 import 'pipeline/capture_archive.dart';
 import 'pipeline/capture_processor.dart';
 import 'pipeline/distillation_service.dart';
+import 'pipeline/image_describer.dart';
+import 'pipeline/silence_gate.dart';
 import 'pipeline/transcription_engine.dart';
 import 'pipeline/wearable_memory.dart';
 import 'protocol/protocol.dart';
@@ -50,8 +52,10 @@ class WearableService implements Disposable {
     required KeyValueStore settings,
     ConfiguredAgentFactory? factory,
     DistillerRunner? distillerRunner,
+    DescriberRunner? describerRunner,
     DeviceTransport? transport,
     TranscriptionEngine? transcription,
+    ImageDescriber? imageDescriber,
     Future<Directory> Function()? resolveCapturesDirectory,
   }) : _settings = settings,
        transport = transport ?? BleDeviceTransport(),
@@ -71,7 +75,18 @@ class WearableService implements Disposable {
     );
     _processor = CaptureProcessor(
       archive: archive,
-      transcription: transcription ?? const AppleSpeechEngine(),
+      transcription:
+          transcription ?? const SilenceGatedEngine(AppleSpeechEngine()),
+      imageDescriber:
+          imageDescriber ??
+          ((factory != null || describerRunner != null)
+              ? AgentImageDescriber(
+                  agents: agents,
+                  settings: settings,
+                  factory: factory,
+                  runner: describerRunner,
+                )
+              : null),
       onProcessed: (capture, text) {
         final preview = text.length > 120 ? '${text.substring(0, 120)}…' : text;
         _log(
@@ -82,6 +97,7 @@ class WearableService implements Disposable {
       onBatchComplete: (processed) {
         _log('${processed.length} captures processed, distilling…');
         unawaited(_distillation.distill(processed));
+        unawaited(retentionSweep());
       },
     );
     _subscriptions.add(
@@ -278,6 +294,31 @@ class WearableService implements Disposable {
     } finally {
       client.close();
     }
+  }
+
+  /// How long processed capture files stay on disk. Transcripts,
+  /// descriptions, and memory entries are kept forever; only the raw
+  /// WAV/JPEG files are purged.
+  static const Duration retentionWindow = Duration(days: 7);
+
+  /// Deletes processed capture files older than [window]; returns how many
+  /// files were purged. Archive rows and their text survive.
+  Future<int> retentionSweep({Duration window = retentionWindow}) async {
+    final cutoff = DateTime.now().subtract(window).millisecondsSinceEpoch;
+    final candidates = await archive.purgeCandidates(cutoff);
+    var purged = 0;
+    for (final capture in candidates) {
+      final file = File(capture.filePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await archive.markFilePurged(capture.id);
+      purged++;
+    }
+    if (purged > 0) {
+      _log('retention: purged $purged processed capture files');
+    }
+    return purged;
   }
 
   @override

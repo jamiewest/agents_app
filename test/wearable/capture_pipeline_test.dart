@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:agents_app/wearable/pipeline/capture_archive.dart';
 import 'package:agents_app/wearable/pipeline/capture_processor.dart';
+import 'package:agents_app/wearable/pipeline/distillation_service.dart';
+import 'package:agents_app/wearable/pipeline/image_describer.dart';
 import 'package:agents_app/wearable/pipeline/transcription_engine.dart';
 import 'package:agents_app/wearable/protocol/protocol.dart';
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:extensions/ai.dart' as ai;
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeTranscriptionEngine implements TranscriptionEngine {
@@ -154,6 +159,55 @@ void main() {
       },
     );
 
+    test('jpgs are described when a describer is available', () async {
+      await archive.recordDownloaded(
+        deviceId: 'aabbcc',
+        entry: const ManifestEntry(
+          id: 4,
+          kind: CaptureKind.jpg,
+          startEpochMs: 1751990400000,
+          durationMs: 0,
+          size: 14000,
+          crc32: 5,
+        ),
+        filePath: '/tmp/4.jpg',
+      );
+      List<ArchivedCapture>? batch;
+      final processor = CaptureProcessor(
+        archive: archive,
+        transcription: engine,
+        imageDescriber: _FakeDescriber({'/tmp/4.jpg': 'a desk with a laptop'}),
+        onBatchComplete: (b) => batch = b,
+      );
+      await processor.processPending();
+      expect(await archive.pending(), isEmpty);
+      expect(batch!.single.kind, 'jpg');
+    });
+
+    test('jpgs stay pending (no retry burned) while describer is '
+        'unconfigured', () async {
+      await archive.recordDownloaded(
+        deviceId: 'aabbcc',
+        entry: const ManifestEntry(
+          id: 5,
+          kind: CaptureKind.jpg,
+          startEpochMs: 1751990400000,
+          durationMs: 0,
+          size: 14000,
+          crc32: 5,
+        ),
+        filePath: '/tmp/5.jpg',
+      );
+      final processor = CaptureProcessor(
+        archive: archive,
+        transcription: engine,
+        imageDescriber: _UnavailableDescriber(),
+      );
+      await processor.processPending();
+      final pending = await archive.pending();
+      expect(pending.single.attempts, 0);
+    });
+
     test('jpgs are left pending without an image describer', () async {
       await archive.recordDownloaded(
         deviceId: 'aabbcc',
@@ -176,4 +230,77 @@ void main() {
       expect(engine.calls, isEmpty);
     });
   });
+
+  group('AgentImageDescriber', () {
+    late InMemoryKeyValueStore settings;
+    late AgentConfigurationStore agents;
+    late File imageFile;
+
+    setUp(() async {
+      settings = InMemoryKeyValueStore();
+      agents = AgentConfigurationStore(settings);
+      imageFile = File(
+        '${Directory.systemTemp.createTempSync('describe').path}/1.jpg',
+      );
+      await imageFile.writeAsBytes([0xFF, 0xD8, 0xFF, 0xE0]);
+    });
+
+    tearDown(() => imageFile.parent.deleteSync(recursive: true));
+
+    test(
+      'throws DescriberUnavailableException without a distiller agent',
+      () async {
+        final describer = AgentImageDescriber(
+          agents: agents,
+          settings: settings,
+          runner: (_, _) async => fail('runner must not be called'),
+        );
+        expect(
+          () => describer.describe(imageFile.path),
+          throwsA(isA<DescriberUnavailableException>()),
+        );
+      },
+    );
+
+    test(
+      'sends the image to the distiller agent and returns its text',
+      () async {
+        await agents.saveAgent(
+          SavedAgentConfig(id: 'distiller-1', name: 'D', modelId: 'm'),
+        );
+        await settings.write(
+          DistillationService.distillerAgentIdKey,
+          'distiller-1',
+        );
+        ai.ChatMessage? seen;
+        final describer = AgentImageDescriber(
+          agents: agents,
+          settings: settings,
+          runner: (config, message) async {
+            seen = message;
+            return 'A desk with a laptop and a coffee mug.';
+          },
+        );
+        final text = await describer.describe(imageFile.path);
+        expect(text, contains('laptop'));
+        final data = seen!.contents.whereType<ai.DataContent>().single;
+        expect(data.mediaType, 'image/jpeg');
+        expect(data.data, [0xFF, 0xD8, 0xFF, 0xE0]);
+      },
+    );
+  });
+}
+
+class _FakeDescriber implements ImageDescriber {
+  _FakeDescriber(this.descriptions);
+  final Map<String, String> descriptions;
+
+  @override
+  Future<String> describe(String path) async => descriptions[path]!;
+}
+
+class _UnavailableDescriber implements ImageDescriber {
+  @override
+  Future<String> describe(String path) =>
+      throw const DescriberUnavailableException();
 }

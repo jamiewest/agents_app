@@ -4,6 +4,7 @@ library;
 import 'dart:developer' as developer;
 
 import 'capture_archive.dart';
+import 'image_describer.dart' show DescriberUnavailableException;
 import 'transcription_engine.dart';
 
 /// Describes one image file (local multimodal model). Optional until the
@@ -84,6 +85,10 @@ class CaptureProcessor {
       await archive.markDone(capture.id, text);
       onProcessed?.call(capture, text);
       return capture;
+    } on DescriberUnavailableException {
+      // No describer agent configured yet: leave the image pending without
+      // burning a retry; it processes once the user selects one.
+      return null;
     } catch (e, s) {
       developer.log(
         'processing ${capture.id} failed',

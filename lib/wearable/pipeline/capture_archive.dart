@@ -75,7 +75,9 @@ class ArchivedCapture {
           value[CaptureRecords.statusField] as String? ??
           CaptureRecords.statusPending,
       attempts = (value[CaptureRecords.attemptsField] as num?)?.toInt() ?? 0,
-      resultText = value[CaptureRecords.resultTextField] as String?;
+      resultText = value[CaptureRecords.resultTextField] as String?,
+      processedAtEpochMs =
+          (value[CaptureRecords.processedAtEpochMsField] as num?)?.toInt();
 
   /// Archive row id (`<deviceId>-<captureId>`).
   final String id;
@@ -106,6 +108,13 @@ class ArchivedCapture {
 
   /// Transcript or description, when done.
   final String? resultText;
+
+  /// Unix ms when processing finished, when done.
+  final int? processedAtEpochMs;
+
+  /// Whether the downloaded file is still on disk (retention may purge the
+  /// file while keeping this row and its [resultText]).
+  bool get hasFile => filePath.isNotEmpty;
 }
 
 /// Store of offloaded captures and their processing state.
@@ -193,6 +202,29 @@ class CaptureArchive {
     mutate(value);
     await _records.put(CaptureRecords.collection, id, value);
   }
+
+  /// Done captures processed before [cutoffEpochMs] whose files are still
+  /// on disk — retention candidates. The rows (and their transcripts/
+  /// descriptions) are kept; only files are purged.
+  Future<List<ArchivedCapture>> purgeCandidates(int cutoffEpochMs) async {
+    final records = await _records.query(
+      CaptureRecords.collection,
+      query: const RecordQuery(
+        equals: {CaptureRecords.statusField: CaptureRecords.statusDone},
+      ),
+    );
+    return [
+      for (final r in records)
+        if (ArchivedCapture._(r.id, r.value) case final capture
+            when capture.hasFile &&
+                (capture.processedAtEpochMs ?? 0) < cutoffEpochMs)
+          capture,
+    ];
+  }
+
+  /// Records that a capture's file was deleted by retention.
+  Future<void> markFilePurged(String id) =>
+      _update(id, (value) => value[CaptureRecords.filePathField] = '');
 
   /// All captures, newest first (for UI).
   Stream<List<ArchivedCapture>> watchAll() => _records

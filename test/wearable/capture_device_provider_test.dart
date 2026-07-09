@@ -198,6 +198,39 @@ void main() {
   });
 
   test(
+    'retention purges old processed files but keeps rows and text',
+    () async {
+      final file = File('${tempDir.path}/1.wav');
+      await file.writeAsBytes([1, 2, 3]);
+      await service.archive.recordDownloaded(
+        deviceId: 'dev',
+        entry: const ManifestEntry(
+          id: 1,
+          kind: CaptureKind.wav,
+          startEpochMs: 1751990400000,
+          durationMs: 60000,
+          size: 3,
+          crc32: 1,
+        ),
+        filePath: file.path,
+      );
+      await service.archive.markDone('dev-1', 'kept transcript');
+      // The zero-window cutoff must be strictly after the processed stamp.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+
+      final purged = await service.retentionSweep(window: Duration.zero);
+      expect(purged, 1);
+      expect(file.existsSync(), isFalse);
+      final rows = await service.archive.watchAll().first;
+      expect(rows.single.resultText, 'kept transcript');
+      expect(rows.single.hasFile, isFalse);
+
+      // A second sweep finds nothing to purge.
+      expect(await service.retentionSweep(window: Duration.zero), 0);
+    },
+  );
+
+  test(
     'live tools fail fast with device_unreachable when out of range',
     () async {
       transport.unreachable = true;
