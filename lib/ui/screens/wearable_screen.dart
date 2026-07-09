@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../wearable/pipeline/agent_transcription_engine.dart';
 import '../../wearable/pipeline/distillation_service.dart';
 import '../../wearable/protocol/protocol.dart';
 import '../../wearable/transport/device_transport.dart';
@@ -41,6 +42,7 @@ class _WearableScreenState extends State<WearableScreen> {
   bool _agentAccess = true;
   List<SavedAgentConfig> _agents = const [];
   String? _distillerAgentId;
+  String? _transcriptionEngine;
   final List<StreamSubscription<Object?>> _subscriptions = [];
 
   @override
@@ -67,11 +69,13 @@ class _WearableScreenState extends State<WearableScreen> {
     final selected = await settings.read(
       DistillationService.distillerAgentIdKey,
     );
+    final engine = await settings.read(SettingSwitchedEngine.engineSettingKey);
     final agentAccess = await _service.agentAccessEnabled();
     if (!mounted) return;
     setState(() {
       _agents = agents;
       _distillerAgentId = agents.any((a) => a.id == selected) ? selected : null;
+      _transcriptionEngine = engine;
       _agentAccess = agentAccess;
     });
   }
@@ -84,6 +88,16 @@ class _WearableScreenState extends State<WearableScreen> {
       await settings.write(DistillationService.distillerAgentIdKey, agentId);
     }
     setState(() => _distillerAgentId = agentId);
+  }
+
+  Future<void> _setTranscriptionEngine(String? engine) async {
+    final settings = widget.services.getRequiredService<KeyValueStore>();
+    if (engine == null) {
+      await settings.delete(SettingSwitchedEngine.engineSettingKey);
+    } else {
+      await settings.write(SettingSwitchedEngine.engineSettingKey, engine);
+    }
+    setState(() => _transcriptionEngine = engine);
   }
 
   Future<void> _setAgentAccess(bool enabled) async {
@@ -256,6 +270,30 @@ class _WearableScreenState extends State<WearableScreen> {
                           value: agent.id,
                           child: Text(agent.name),
                         ),
+                    ],
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Symbols.graphic_eq),
+                  title: const Text('Transcription'),
+                  subtitle: const Text(
+                    'Auto uses the local model (through the distiller '
+                    'agent) when one is set, else Apple Speech',
+                  ),
+                  trailing: DropdownButton<String?>(
+                    value: _transcriptionEngine,
+                    hint: const Text('Auto'),
+                    onChanged: _busy ? null : _setTranscriptionEngine,
+                    items: const [
+                      DropdownMenuItem(child: Text('Auto')),
+                      DropdownMenuItem(
+                        value: SettingSwitchedEngine.localEngine,
+                        child: Text('Local model'),
+                      ),
+                      DropdownMenuItem(
+                        value: SettingSwitchedEngine.appleEngine,
+                        child: Text('Apple Speech'),
+                      ),
                     ],
                   ),
                 ),

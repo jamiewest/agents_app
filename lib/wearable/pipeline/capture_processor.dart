@@ -3,6 +3,7 @@ library;
 
 import 'dart:developer' as developer;
 
+import 'agent_transcription_engine.dart' show TranscriberUnavailableException;
 import 'capture_archive.dart';
 import 'image_describer.dart' show DescriberUnavailableException;
 import 'transcription_engine.dart';
@@ -88,6 +89,10 @@ class CaptureProcessor {
     } on DescriberUnavailableException {
       // No describer agent configured yet: leave the image pending without
       // burning a retry; it processes once the user selects one.
+      return null;
+    } on TranscriberUnavailableException {
+      // Same deal for audio when the local engine is selected but no
+      // distiller agent is configured yet.
       return null;
     } catch (e, s) {
       developer.log(

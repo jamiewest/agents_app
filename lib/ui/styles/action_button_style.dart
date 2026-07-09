@@ -195,10 +195,10 @@ class ActionButtonStyle {
         bgColor = ToolkitColors.greyBackground;
         text = strings.closeMenu;
       case ActionButtonType.url:
-        icon = null; // Placeholder for URL icon
+        icon = ToolkitIcons.link;
         color = ToolkitColors.darkIcon;
         bgColor = ToolkitColors.transparent;
-        text = strings.attachFile;
+        text = strings.attachUrl;
         textStyle = textStyles.body2;
     }
 

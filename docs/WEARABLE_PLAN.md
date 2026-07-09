@@ -24,6 +24,16 @@ agents as tools — the agent's "eyes and ears".
   (on-device SFSpeechRecognizer/SpeechAnalyzer) first; whisper.cpp is a
   future engine behind the same interface (would require approved
   `llama_flutter` work).
+  - *Revised 2026-07-09:* the second engine is `AgentTranscriptionEngine`
+    (local Gemma 4 audio-in through the distiller agent — its mmproj
+    carries an audio encoder, and the existing mtmd path accepts WAV
+    `DataContent`), not whisper.cpp. No `llama_flutter` changes were
+    needed. Engine selection is the `wearable.transcription_engine`
+    setting (`apple` | `local` | unset = auto, which prefers the local
+    model once a distiller agent is configured and falls back to Apple
+    Speech otherwise). Audio *output* (Gemma 4 speech generation) is not
+    buildable on the vendored llama.cpp runtime — mtmd is input-only —
+    so it stays out of scope.
 - **Image analysis:** existing local multimodal path (Gemma + mmproj presets
   via `agents_llama`). No new vision stack.
 - **Repo bounds:** all Flutter-side code lives in `packages/agents_app/`

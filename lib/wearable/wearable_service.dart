@@ -9,9 +9,11 @@ import 'dart:io';
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/system.dart' show Disposable;
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'pipeline/agent_transcription_engine.dart';
 import 'pipeline/capture_archive.dart';
 import 'pipeline/capture_processor.dart';
 import 'pipeline/distillation_service.dart';
@@ -39,12 +41,26 @@ class WearableSyncResult {
   final int freedBytes;
 }
 
+/// Thrown when the device is reachable over BLE but a command or transfer
+/// fails (as opposed to [DeviceUnreachableException], the radio being gone).
+class WearableCommandException implements Exception {
+  /// Creates a [WearableCommandException].
+  const WearableCommandException(this.message);
+
+  /// What failed.
+  final String message;
+
+  @override
+  String toString() => 'WearableCommandException: $message';
+}
+
 /// Shared owner of the wearable device connection and pipeline.
 class WearableService implements Disposable {
   /// Creates a [WearableService].
   ///
-  /// [transport], [transcription], [distillerRunner], and
-  /// [resolveCapturesDirectory] are injectable for tests.
+  /// [transport], [transcription], [distillerRunner],
+  /// [resolveCapturesDirectory], and [httpClientFactory] are injectable for
+  /// tests.
   WearableService({
     required RecordStore records,
     required MemoryScorer scorer,
@@ -53,12 +69,15 @@ class WearableService implements Disposable {
     ConfiguredAgentFactory? factory,
     DistillerRunner? distillerRunner,
     DescriberRunner? describerRunner,
+    TranscriberRunner? transcriberRunner,
     DeviceTransport? transport,
     TranscriptionEngine? transcription,
     ImageDescriber? imageDescriber,
     Future<Directory> Function()? resolveCapturesDirectory,
+    CaptureHttpClient Function(DeviceEndpoint endpoint)? httpClientFactory,
   }) : _settings = settings,
        transport = transport ?? BleDeviceTransport(),
+       _httpClientFactory = httpClientFactory ?? CaptureHttpClient.new,
        _resolveCapturesDirectory =
            resolveCapturesDirectory ?? _defaultCapturesDirectory {
     archive = CaptureArchive(records);
@@ -75,8 +94,24 @@ class WearableService implements Disposable {
     );
     _processor = CaptureProcessor(
       archive: archive,
+      // Silence gate first, then the setting picks Apple Speech or the
+      // local multimodal model (audio through the distiller agent).
       transcription:
-          transcription ?? const SilenceGatedEngine(AppleSpeechEngine()),
+          transcription ??
+          SilenceGatedEngine(
+            SettingSwitchedEngine(
+              settings: settings,
+              apple: const AppleSpeechEngine(),
+              local: (factory != null || transcriberRunner != null)
+                  ? AgentTranscriptionEngine(
+                      agents: agents,
+                      settings: settings,
+                      factory: factory,
+                      runner: transcriberRunner,
+                    )
+                  : null,
+            ),
+          ),
       imageDescriber:
           imageDescriber ??
           ((factory != null || describerRunner != null)
@@ -125,6 +160,7 @@ class WearableService implements Disposable {
 
   final KeyValueStore _settings;
   final Future<Directory> Function() _resolveCapturesDirectory;
+  final CaptureHttpClient Function(DeviceEndpoint endpoint) _httpClientFactory;
   late final DistillationService _distillation;
   late final CaptureProcessor _processor;
   final List<StreamSubscription<Object?>> _subscriptions = [];
@@ -197,7 +233,9 @@ class WearableService implements Disposable {
       CaptureCommands.captureImage(),
     );
     if (!response.ok || response.captureId == null) {
-      throw StateError('capture failed: ${response.error?.wireValue}');
+      throw WearableCommandException(
+        'capture failed: ${response.error?.wireValue}',
+      );
     }
     _log('captured image id ${response.captureId}');
     return response.captureId!;
@@ -231,11 +269,15 @@ class WearableService implements Disposable {
       timeout: const Duration(seconds: 25),
     );
     if (!response.ok) {
-      throw StateError('wifi_join failed: ${response.error?.wireValue}');
+      throw WearableCommandException(
+        'wifi_join failed: ${response.error?.wireValue}',
+      );
     }
     final endpoint = await transport.readEndpoint();
     if (endpoint == null) {
-      throw StateError('device joined but published no endpoint');
+      throw const WearableCommandException(
+        'device joined but published no endpoint',
+      );
     }
     _endpoint = endpoint;
     return endpoint;
@@ -253,9 +295,28 @@ class WearableService implements Disposable {
 
   Future<WearableSyncResult> _syncOnce() async {
     await ensureConnected();
-    final endpoint = await _ensureEndpoint();
+    try {
+      return await _pull(await _ensureEndpoint());
+    } on Exception catch (e) {
+      // The published endpoint can outlive the device's actual WiFi session
+      // (silent AP drop keeps the characteristic advertising a dead
+      // ip/token). Rebuild the session once and retry.
+      if (!_isStaleEndpointError(e)) rethrow;
+      _log('bulk transfer failed ($e); rejoining wifi…');
+      _endpoint = null;
+      await transport.sendCommand(CaptureCommands.wifiLeave());
+      return _pull(await _ensureEndpoint());
+    }
+  }
+
+  static bool _isStaleEndpointError(Exception e) =>
+      e is SocketException ||
+      e is TimeoutException ||
+      e is http.ClientException;
+
+  Future<WearableSyncResult> _pull(DeviceEndpoint endpoint) async {
     _log('endpoint ${endpoint.ip}:${endpoint.port}');
-    final client = CaptureHttpClient(endpoint);
+    final client = _httpClientFactory(endpoint);
     try {
       final manifest = await client.fetchManifest();
       _log('${manifest.entries.length} files on device');

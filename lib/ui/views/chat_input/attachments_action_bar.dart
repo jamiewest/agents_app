@@ -115,7 +115,7 @@ class _AttachmentActionBarState extends State<AttachmentActionBar> {
         ),
         MenuItemButton(
           leadingIcon: Icon(
-            Symbols.link,
+            chatStyle.urlButtonStyle!.icon!,
             color: chatStyle.urlButtonStyle!.iconColor,
           ),
           onPressed: () => _onUrl(chatStrings),

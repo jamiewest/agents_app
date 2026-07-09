@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:agents_app/wearable/pipeline/agent_transcription_engine.dart';
 import 'package:agents_app/wearable/pipeline/capture_archive.dart';
 import 'package:agents_app/wearable/pipeline/capture_processor.dart';
 import 'package:agents_app/wearable/pipeline/distillation_service.dart';
@@ -208,6 +209,22 @@ void main() {
       expect(pending.single.attempts, 0);
     });
 
+    test('wavs stay pending (no retry burned) while the local transcriber '
+        'is unconfigured', () async {
+      await archive.recordDownloaded(
+        deviceId: 'aabbcc',
+        entry: wavEntry(6),
+        filePath: '/tmp/6.wav',
+      );
+      final processor = CaptureProcessor(
+        archive: archive,
+        transcription: _UnavailableTranscriber(),
+      );
+      await processor.processPending();
+      final pending = await archive.pending();
+      expect(pending.single.attempts, 0);
+    });
+
     test('jpgs are left pending without an image describer', () async {
       await archive.recordDownloaded(
         deviceId: 'aabbcc',
@@ -303,4 +320,10 @@ class _UnavailableDescriber implements ImageDescriber {
   @override
   Future<String> describe(String path) =>
       throw const DescriberUnavailableException();
+}
+
+class _UnavailableTranscriber implements TranscriptionEngine {
+  @override
+  Future<String> transcribe(String path) =>
+      throw const TranscriberUnavailableException();
 }

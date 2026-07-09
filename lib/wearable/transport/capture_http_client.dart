@@ -46,6 +46,11 @@ class CaptureHttpClient {
   final DeviceEndpoint endpoint;
   final http.Client _client;
 
+  /// Ceiling on reaching the device and receiving response headers. A stale
+  /// endpoint (device silently off WiFi) otherwise hangs for the OS connect
+  /// timeout. Body streaming is not covered — downloads may run longer.
+  static const Duration requestTimeout = Duration(seconds: 10);
+
   Map<String, String> get _auth => {
     'Authorization': endpoint.authorizationHeader,
   };
@@ -54,7 +59,9 @@ class CaptureHttpClient {
 
   /// Fetches the manifest of downloadable captures.
   Future<DeviceManifest> fetchManifest() async {
-    final response = await _client.get(_uri('/manifest'), headers: _auth);
+    final response = await _client
+        .get(_uri('/manifest'), headers: _auth)
+        .timeout(requestTimeout);
     if (response.statusCode != 200) {
       throw http.ClientException('manifest: HTTP ${response.statusCode}');
     }
@@ -129,7 +136,7 @@ class CaptureHttpClient {
     if (buffer.length > 0) {
       request.headers['Range'] = 'bytes=${buffer.length}-';
     }
-    final response = await _client.send(request);
+    final response = await _client.send(request).timeout(requestTimeout);
     if (response.statusCode != 200 && response.statusCode != 206) {
       throw http.ClientException(
         'file ${entry.id}: HTTP ${response.statusCode}',
@@ -149,11 +156,13 @@ class CaptureHttpClient {
   /// Acks downloaded captures; the device deletes them and frees SD space.
   /// Only call after the bytes are durably persisted locally.
   Future<AckResult> ack(List<int> ids) async {
-    final response = await _client.post(
-      _uri('/ack'),
-      headers: {..._auth, 'Content-Type': 'application/json'},
-      body: jsonEncode({'ids': ids}),
-    );
+    final response = await _client
+        .post(
+          _uri('/ack'),
+          headers: {..._auth, 'Content-Type': 'application/json'},
+          body: jsonEncode({'ids': ids}),
+        )
+        .timeout(requestTimeout);
     if (response.statusCode != 200) {
       throw http.ClientException('ack: HTTP ${response.statusCode}');
     }

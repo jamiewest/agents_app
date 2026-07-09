@@ -20,6 +20,9 @@ class LlmChatViewStrings {
   /// Label for attaching a file.
   final String attachFile;
 
+  /// Label for attaching a URL.
+  final String attachUrl;
+
   /// Label for taking a photo.
   final String takePhoto;
 
@@ -172,6 +175,7 @@ class LlmChatViewStrings {
     // Input/Attachment related
     this.addAttachment = 'Add Attachment',
     this.attachFile = 'Attach File',
+    this.attachUrl = 'Attach URL',
     this.takePhoto = 'Take Photo',
     this.scanBarcode = 'Scan Barcode',
     this.attachImage = 'Attach Image',
@@ -234,6 +238,7 @@ class LlmChatViewStrings {
   LlmChatViewStrings copyWith({
     String? addAttachment,
     String? attachFile,
+    String? attachUrl,
     String? takePhoto,
     String? scanBarcode,
     String? stop,
@@ -290,6 +295,7 @@ class LlmChatViewStrings {
     return LlmChatViewStrings(
       addAttachment: addAttachment ?? this.addAttachment,
       attachFile: attachFile ?? this.attachFile,
+      attachUrl: attachUrl ?? this.attachUrl,
       takePhoto: takePhoto ?? this.takePhoto,
       scanBarcode: scanBarcode ?? this.scanBarcode,
       stop: stop ?? this.stop,

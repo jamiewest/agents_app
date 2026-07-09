@@ -230,6 +230,25 @@ void main() {
     },
   );
 
+  test('force sync surfaces command failures with detail', () async {
+    // Reachable device whose wifi_join fails: the tool must return a
+    // structured error (not throw, which the framework would swallow into
+    // a detail-free generic message).
+    transport.cannedResponses['wifi_join'] = const ControlResponse(
+      op: 'wifi_join',
+      ok: false,
+    );
+    final context = await provider.provideAIContext(invokingContext());
+    final result = await invokeTool(
+      context,
+      CaptureDeviceProvider.forceSyncToolName,
+    );
+    final decoded = jsonDecode(result! as String) as Map<String, Object?>;
+    expect(decoded['ok'], false);
+    expect(decoded['error'], 'sync_failed');
+    expect(decoded['detail'], contains('wifi_join failed'));
+  });
+
   test(
     'live tools fail fast with device_unreachable when out of range',
     () async {

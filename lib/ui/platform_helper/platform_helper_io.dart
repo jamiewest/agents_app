@@ -7,6 +7,8 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../views/chat_input/macos_camera_screen.dart';
+
 /// Deletes a file from the file system.
 ///
 /// This method takes an [XFile] object and deletes the corresponding file
@@ -27,13 +29,14 @@ Future<void> deleteFile(XFile file) async {
 
 /// Checks if the device can take a photo.
 ///
-/// This method returns `true` if the device supports taking photos using
-/// the camera, and `false` otherwise. It uses the [ImagePicker] class
-/// to check for camera support.
+/// On macOS, photo capture is backed by `camera_macos` (see
+/// [takePhotoMacOS]) because `image_picker` has no desktop camera support.
+/// Elsewhere it uses the [ImagePicker] class to check for camera support.
 ///
 /// Returns:
 ///   A [bool] indicating whether the device can take a photo.
-bool canTakePhoto() => ImagePicker().supportsImageSource(ImageSource.camera);
+bool canTakePhoto() =>
+    Platform.isMacOS || ImagePicker().supportsImageSource(ImageSource.camera);
 
 /// Checks if the device can scan a barcode with the camera.
 ///
@@ -56,5 +59,6 @@ bool canScanBarcode() => Platform.isIOS || Platform.isMacOS;
 /// Returns:
 ///   A [Future] that completes with an [XFile] object representing the
 ///   captured photo, or `null` if the photo capture was canceled.
-Future<XFile?> takePhoto(BuildContext context) =>
-    ImagePicker().pickImage(source: ImageSource.camera);
+Future<XFile?> takePhoto(BuildContext context) => Platform.isMacOS
+    ? takePhotoMacOS(context)
+    : ImagePicker().pickImage(source: ImageSource.camera);

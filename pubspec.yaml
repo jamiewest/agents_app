@@ -17,6 +17,7 @@ dependencies:
     path: ../agents_llama
   animations: ^2.2.0
   anthropic_sdk_dart: ^5.0.0
+  camera_macos: ^0.1.0
   characters: ^1.4.1
   cross_file: ^0.3.5+2
   cupertino_icons: ^1.0.8

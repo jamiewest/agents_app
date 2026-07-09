@@ -27,6 +27,7 @@ class LocalModelPreset {
     this.chatFormat,
     this.supportsThinking = false,
     this.supportsVision = false,
+    this.supportsAudio = false,
   });
 
   /// Display name.
@@ -64,6 +65,11 @@ class LocalModelPreset {
   /// Whether the model accepts image input (requires [mmprojUrl]).
   final bool supportsVision;
 
+  /// Whether the model accepts audio input (requires an [mmprojUrl] whose
+  /// projector carries an audio encoder; the runtime re-checks with
+  /// `mtmd_support_audio` and fails audio turns when it does not).
+  final bool supportsAudio;
+
   /// Materializes the preset as a new [ModelConfig] for [sourceId].
   ///
   /// When [chatFormat] is unset the runtime auto-detects the format from
@@ -84,6 +90,7 @@ class LocalModelPreset {
           ModelCapabilities.minMemoryMbKey: '$minMemoryMb',
           if (supportsThinking) ModelCapabilities.thinkingKey: 'true',
           if (supportsVision) ModelCapabilities.visionKey: 'true',
+          if (supportsAudio) ModelCapabilities.audioKey: 'true',
         },
       );
 }
@@ -144,8 +151,8 @@ const List<LocalModelPreset> localModelPresets = [
   LocalModelPreset(
     name: 'Gemma 4 E4B (Mac)',
     subtitle:
-        'Q4_K_XL QAT · ~4.2 GB + 1 GB vision + MTP drafter · 16 GB RAM · '
-        'vision + speculative decoding, all-Metal',
+        'Q4_K_XL QAT · ~4.2 GB + 1 GB projector + MTP drafter · 16 GB RAM · '
+        'vision + audio + speculative decoding, all-Metal',
     url:
         'https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/'
         'resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf',
@@ -159,6 +166,7 @@ const List<LocalModelPreset> localModelPresets = [
     contextSize: 16384,
     minMemoryMb: 16384,
     supportsVision: true,
+    supportsAudio: true,
   ),
   // LFM2.5 VL for Macs. Q8_0 over Q4_0: at 1.6B the extra ~0.5 GB is
   // cheap on a desktop and the quant quality gap matters more on small

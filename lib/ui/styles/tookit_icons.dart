@@ -40,6 +40,9 @@ class ToolkitIcons {
   /// Icon representing an image or picture.
   static const IconData image = Symbols.photo;
 
+  /// Icon representing a link or URL.
+  static const IconData link = Symbols.link;
+
   /// Icon for editing.
   static const IconData edit = Symbols.edit;
 

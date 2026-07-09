@@ -171,6 +171,8 @@ final class CaptureDeviceProvider extends AIContextProvider {
         });
       } on DeviceUnreachableException catch (e) {
         return _unreachable(e);
+      } on Exception catch (e) {
+        return _failed('capture_failed', e);
       }
     },
   );
@@ -195,6 +197,8 @@ final class CaptureDeviceProvider extends AIContextProvider {
         });
       } on DeviceUnreachableException catch (e) {
         return _unreachable(e);
+      } on Exception catch (e) {
+        return _failed('sync_failed', e);
       }
     },
   );
@@ -205,6 +209,11 @@ final class CaptureDeviceProvider extends AIContextProvider {
     'detail': e.message,
     'last_seen': _service.lastStatusAt?.toIso8601String(),
   });
+
+  /// Structured failure the model can act on; without this the framework
+  /// swallows the exception into a detail-free generic message.
+  static String _failed(String error, Exception e) =>
+      jsonEncode({'ok': false, 'error': error, 'detail': e.toString()});
 
   static int? _parseEpochMs(Object? value) {
     if (value is! String || value.isEmpty) return null;
