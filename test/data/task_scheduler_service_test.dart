@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agents_app/data/agent_task_store.dart';
 import 'package:agents_app/data/task_scheduler_service.dart';
 import 'package:agents_app/domain/agent_task.dart';
@@ -112,6 +114,142 @@ void main() {
       await scheduler.runNow('later');
 
       expect(ran, ['later']);
+    });
+
+    test('failed recurring tasks become due again on their next cycle', () async {
+      final ran = <String>[];
+      final now = DateTime.utc(2026, 7, 2, 10);
+      final scheduler = TaskSchedulerService(
+        services,
+        runner: (task) async {
+          ran.add(task.id);
+          return 'ok';
+        },
+        now: () => now,
+      );
+      await store.save(
+        task(
+          id: 'retry',
+          intervalMinutes: 15,
+          status: AgentTaskStatus.failed,
+          nextRunAt: DateTime.utc(2026, 7, 2, 9, 45),
+        ),
+      );
+
+      await scheduler.tick();
+
+      expect(ran, ['retry']);
+      expect((await store.get('retry'))!.status, AgentTaskStatus.scheduled);
+    });
+
+    test('failed one-shot tasks never auto-retry but runNow works', () async {
+      final ran = <String>[];
+      final scheduler = TaskSchedulerService(
+        services,
+        runner: (task) async {
+          ran.add(task.id);
+          return 'ok';
+        },
+        now: () => DateTime.utc(2026, 7, 2, 10),
+      );
+      await store.save(
+        task(
+          id: 'once-failed',
+          status: AgentTaskStatus.failed,
+          nextRunAt: DateTime.utc(2026, 7, 2, 9),
+        ),
+      );
+
+      await scheduler.tick();
+      expect(ran, isEmpty);
+
+      await scheduler.runNow('once-failed');
+      expect(ran, ['once-failed']);
+    });
+
+    test('a slow tick is not overlapped by the next timer event', () async {
+      final ran = <String>[];
+      final gate = Completer<void>();
+      final scheduler = TaskSchedulerService(
+        services,
+        runner: (task) async {
+          ran.add(task.id);
+          if (task.id == 'a') await gate.future;
+          return 'ok';
+        },
+        now: () => DateTime.utc(2026, 7, 2, 10),
+      );
+      await store.save(task(id: 'a', nextRunAt: DateTime.utc(2026, 7, 2, 8)));
+      await store.save(task(id: 'b', nextRunAt: DateTime.utc(2026, 7, 2, 9)));
+
+      final slowTick = scheduler.tick();
+      // Let the first tick reach the (gated) runner for 'a'.
+      await Future<void>.delayed(Duration.zero);
+      expect(ran, ['a']);
+      // The next timer event fires while 'a' is still running: it must
+      // no-op instead of running 'b' concurrently.
+      await scheduler.tick();
+      expect(ran, ['a']);
+
+      gate.complete();
+      await slowTick;
+      expect(ran, ['a', 'b']);
+    });
+
+    test('runNow no-ops for a task that is already running', () async {
+      final ran = <String>[];
+      final scheduler = TaskSchedulerService(
+        services,
+        runner: (task) async {
+          ran.add(task.id);
+          return 'ok';
+        },
+        now: () => DateTime.utc(2026, 7, 2, 10),
+      );
+      await store.save(task(id: 'busy', status: AgentTaskStatus.running));
+
+      await scheduler.runNow('busy');
+
+      expect(ran, isEmpty);
+      expect((await store.get('busy'))!.status, AgentTaskStatus.running);
+    });
+  });
+
+  group('TaskSchedulerService.recoverInterrupted', () {
+    test('marks orphaned running tasks failed; recurring retry', () async {
+      final ran = <String>[];
+      final now = DateTime.utc(2026, 7, 2, 10);
+      final scheduler = TaskSchedulerService(
+        services,
+        runner: (task) async {
+          ran.add(task.id);
+          return 'ok';
+        },
+        now: () => now,
+      );
+      // Both were persisted as running when the app was killed mid-run.
+      await store.save(
+        task(
+          id: 'recurring',
+          intervalMinutes: 30,
+          status: AgentTaskStatus.running,
+          nextRunAt: DateTime.utc(2026, 7, 2, 9),
+        ),
+      );
+      await store.save(task(id: 'one-shot', status: AgentTaskStatus.running));
+
+      await scheduler.recoverInterrupted();
+
+      final recurring = (await store.get('recurring'))!;
+      final oneShot = (await store.get('one-shot'))!;
+      expect(recurring.status, AgentTaskStatus.failed);
+      expect(recurring.nextRunAt, now);
+      expect(oneShot.status, AgentTaskStatus.failed);
+
+      // The retry path picks up the recurring task only.
+      await scheduler.tick();
+      expect(ran, ['recurring']);
+      expect((await store.get('one-shot'))!.status, AgentTaskStatus.failed);
     });
   });
 

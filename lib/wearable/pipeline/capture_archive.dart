@@ -226,6 +226,12 @@ class CaptureArchive {
   Future<void> markFilePurged(String id) =>
       _update(id, (value) => value[CaptureRecords.filePathField] = '');
 
+  /// Deletes every archive row (transcripts/descriptions included). Pair
+  /// with deleting the capture files themselves — rows referencing missing
+  /// files would otherwise fail processing forever.
+  Future<void> clear() =>
+      _records.deleteWhere(CaptureRecords.collection, const RecordQuery());
+
   /// All captures, newest first (for UI).
   Stream<List<ArchivedCapture>> watchAll() => _records
       .watch(

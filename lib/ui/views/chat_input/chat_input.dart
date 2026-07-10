@@ -188,9 +188,9 @@ class _ChatInputState extends State<ChatInput> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 14),
                     child: AttachmentActionBar(
-                    onAttachments: onAttachments,
-                    onInsertText: onInsertText,
-                  ),
+                      onAttachments: onAttachments,
+                      onInsertText: onInsertText,
+                    ),
                   ),
                 Expanded(
                   child: TextOrAudioInput(
@@ -217,6 +217,7 @@ class _ChatInputState extends State<ChatInput> {
                     onCancelPrompt: onCancelPrompt,
                     onStartRecording: onStartRecording,
                     onStopRecording: onStopRecording,
+                    onCancelStt: onCancelStt,
                   ),
                 ),
               ],
@@ -255,6 +256,12 @@ class _ChatInputState extends State<ChatInput> {
   void onCancelPrompt() {
     assert(_inputState == InputState.canCancelPrompt);
     widget.onCancelMessage!();
+    _focusNode.requestFocus();
+  }
+
+  void onCancelStt() {
+    assert(_inputState == InputState.canCancelStt);
+    widget.onCancelStt!();
     _focusNode.requestFocus();
   }
 
@@ -302,7 +309,9 @@ class _ChatInputState extends State<ChatInput> {
     final insertion = '$leadingSpace$text ';
     _textController.value = TextEditingValue(
       text: '$before$insertion$after',
-      selection: TextSelection.collapsed(offset: before.length + insertion.length),
+      selection: TextSelection.collapsed(
+        offset: before.length + insertion.length,
+      ),
     );
     _focusNode.requestFocus();
   }

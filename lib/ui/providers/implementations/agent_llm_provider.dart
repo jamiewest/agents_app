@@ -96,16 +96,18 @@ class AgentLlmProvider extends LlmProvider
     ai.ChatMessage message,
   ) async* {
     final activity = toolActivity;
-    void onToolActivity() {
-      llmMessage.toolActivity = activity!.value;
-      if (!_disposed) notifyListeners();
-    }
+    // Per-bubble UI state: the message's own notification reaches the one
+    // live bubble, so no provider-wide notify (which would also re-trigger
+    // metadata persistence per tool call).
+    void onToolActivity() => llmMessage.toolActivity = activity!.value;
 
     // Keep the original start across an approval pause so the status line's
-    // timer spans the whole turn rather than restarting on resume.
+    // timer spans the whole turn rather than restarting on resume. The plain
+    // field is set before the notifying isGenerating write so one
+    // notification publishes both.
     llmMessage
-      ..isGenerating = true
-      ..turnStartedAt ??= DateTime.now();
+      ..turnStartedAt ??= DateTime.now()
+      ..isGenerating = true;
     if (!_disposed) notifyListeners();
 
     activity?.addListener(onToolActivity);
@@ -115,8 +117,7 @@ class AgentLlmProvider extends LlmProvider
         // Each model call of the turn (tool-loop sub-calls included)
         // contributes one UsageContent; summing them makes the bubble's
         // badge cover the whole turn.
-        onUsage: (details) =>
-            (llmMessage.usage ??= ai.UsageDetails()).add(details),
+        onUsage: llmMessage.addUsage,
       ).smoothed().map((chunk) {
         llmMessage.append(chunk);
         return chunk;
@@ -125,11 +126,11 @@ class AgentLlmProvider extends LlmProvider
       activity?.removeListener(onToolActivity);
       final startedAt = llmMessage.turnStartedAt;
       llmMessage
-        ..toolActivity = null
-        ..isGenerating = false
         ..turnDuration = startedAt == null
             ? null
-            : DateTime.now().difference(startedAt);
+            : DateTime.now().difference(startedAt)
+        ..toolActivity = null
+        ..isGenerating = false;
       // Notify after both success and streaming errors so listeners can
       // persist the transcript either way. The generator's finally can run
       // after disposal (e.g. navigating away mid-stream), so guard for that.

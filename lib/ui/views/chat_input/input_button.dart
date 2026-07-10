@@ -22,6 +22,8 @@ class InputButton extends StatelessWidget {
   /// - [onCancelPrompt]: Callback function when cancelling a prompt.
   /// - [onStartRecording]: Callback function when starting audio recording.
   /// - [onStopRecording]: Callback function when stopping audio recording.
+  /// - [onCancelStt]: Callback function when cancelling an in-flight
+  ///   transcription.
   const InputButton({
     required this.inputState,
     required this.chatStyle,
@@ -29,6 +31,7 @@ class InputButton extends StatelessWidget {
     required this.onCancelPrompt,
     required this.onStartRecording,
     required this.onStopRecording,
+    required this.onCancelStt,
     super.key,
   });
 
@@ -50,6 +53,9 @@ class InputButton extends StatelessWidget {
   /// Callback function when stopping audio recording.
   final void Function() onStopRecording;
 
+  /// Callback function when cancelling an in-flight transcription.
+  final void Function() onCancelStt;
+
   @override
   Widget build(BuildContext context) => switch (inputState) {
     InputState.canSubmitPrompt => ActionButton(
@@ -68,12 +74,22 @@ class InputButton extends StatelessWidget {
       style: chatStyle.stopButtonStyle!,
       onPressed: onStopRecording,
     ),
-    InputState.canCancelStt => AdaptiveCircularProgressIndicator(
-      color: chatStyle.progressIndicatorColor!,
+    // A transcription in flight is cancellable: a real stop button with the
+    // progress ring overlaid, instead of a bare (inert) spinner.
+    InputState.canCancelStt => Stack(
+      alignment: Alignment.center,
+      children: [
+        ActionButton(style: chatStyle.stopButtonStyle!, onPressed: onCancelStt),
+        IgnorePointer(
+          child: AdaptiveCircularProgressIndicator(
+            color: chatStyle.progressIndicatorColor!,
+          ),
+        ),
+      ],
     ),
     InputState.disabled => ActionButton(
       style: chatStyle.disabledButtonStyle!,
-      onPressed: () {},
+      onPressed: null,
     ),
   };
 }

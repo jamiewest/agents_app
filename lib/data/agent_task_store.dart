@@ -55,19 +55,35 @@ class AgentTaskStore {
       );
 
   /// Lists tasks whose next run is due at or before [now].
+  ///
+  /// Includes failed *recurring* tasks so they retry on their next cycle;
+  /// their visible status stays `failed` until the retry starts. Failed
+  /// one-shot tasks are only runnable manually.
   Future<List<AgentTask>> listDue(DateTime now) async {
+    final due = [
+      for (final task in await _byStatus(AgentTaskStatus.scheduled)) task,
+      for (final task in await _byStatus(AgentTaskStatus.failed))
+        if (task.intervalMinutes != null) task,
+    ];
+    return [
+      for (final task in due)
+        if (task.nextRunAt != null && !task.nextRunAt!.isAfter(now)) task,
+    ]..sort((a, b) => a.nextRunAt!.compareTo(b.nextRunAt!));
+  }
+
+  /// Lists tasks currently persisted with [status].
+  Future<List<AgentTask>> _byStatus(AgentTaskStatus status) async {
     final records = await _records.query(
       collection,
-      query: const RecordQuery(
-        equals: {'status': 'scheduled'},
-        orderBy: 'nextRunAt',
-      ),
+      query: RecordQuery(equals: {'status': status.name}, orderBy: 'nextRunAt'),
     );
     return [
       for (final record in records)
-        if (AgentTask.fromRecord(record.id, record.value) case final task
-            when task.nextRunAt != null && !task.nextRunAt!.isAfter(now))
-          task,
+        AgentTask.fromRecord(record.id, record.value),
     ];
   }
+
+  /// Lists tasks persisted as [AgentTaskStatus.running] — after a restart
+  /// these are runs the app was killed in the middle of.
+  Future<List<AgentTask>> listRunning() => _byStatus(AgentTaskStatus.running);
 }

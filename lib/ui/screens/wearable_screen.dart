@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -43,7 +44,18 @@ class _WearableScreenState extends State<WearableScreen> {
   List<SavedAgentConfig> _agents = const [];
   String? _distillerAgentId;
   String? _transcriptionEngine;
+  int? _imageInterval;
   final List<StreamSubscription<Object?>> _subscriptions = [];
+
+  /// Camera interval choices: seconds → label. 0 turns the camera off.
+  static const Map<int, String> _imageIntervals = {
+    0: 'Off',
+    60: 'Every minute',
+    300: 'Every 5 minutes',
+    900: 'Every 15 minutes',
+    3600: 'Every hour',
+    21600: 'Every 6 hours',
+  };
 
   @override
   void initState() {
@@ -71,12 +83,16 @@ class _WearableScreenState extends State<WearableScreen> {
     );
     final engine = await settings.read(SettingSwitchedEngine.engineSettingKey);
     final agentAccess = await _service.agentAccessEnabled();
+    final imageInterval = await _service.imageInterval();
     if (!mounted) return;
     setState(() {
       _agents = agents;
       _distillerAgentId = agents.any((a) => a.id == selected) ? selected : null;
       _transcriptionEngine = engine;
       _agentAccess = agentAccess;
+      _imageInterval = _imageIntervals.containsKey(imageInterval)
+          ? imageInterval
+          : null;
     });
   }
 
@@ -103,6 +119,69 @@ class _WearableScreenState extends State<WearableScreen> {
   Future<void> _setAgentAccess(bool enabled) async {
     await _service.setAgentAccess(enabled: enabled);
     setState(() => _agentAccess = enabled);
+  }
+
+  Future<void> _setImageInterval(int? seconds) async {
+    if (seconds == null) return;
+    await _guard('camera interval', () async {
+      await _service.setImageInterval(seconds: seconds);
+      setState(() => _imageInterval = seconds);
+    });
+  }
+
+  /// Confirmation gate for the destructive maintenance actions.
+  Future<bool> _confirm(String title, String message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _wipeDevice() async {
+    if (!await _confirm(
+      'Wipe device storage?',
+      'Deletes every capture on the device SD card, including recordings '
+          'that have not been synced yet. This cannot be undone.',
+    )) {
+      return;
+    }
+    await _guard('wipe device', _service.wipeDeviceCaptures);
+  }
+
+  Future<void> _clearLocalCaptures() async {
+    if (!await _confirm(
+      'Clear local captures?',
+      'Deletes all downloaded audio and image files and their archive '
+          'entries, including transcripts. Wearable memories are kept.',
+    )) {
+      return;
+    }
+    await _guard('clear captures', _service.clearLocalCaptures);
+  }
+
+  Future<void> _clearMemory() async {
+    if (!await _confirm(
+      'Clear wearable memory?',
+      'Deletes everything the wearable pipeline has saved to memory. '
+          'Agents will no longer be able to recall these observations.',
+    )) {
+      return;
+    }
+    await _guard('clear memory', _service.clearMemory);
   }
 
   @override
@@ -297,6 +376,24 @@ class _WearableScreenState extends State<WearableScreen> {
                     ],
                   ),
                 ),
+                ListTile(
+                  leading: const Icon(Symbols.photo_camera),
+                  title: const Text('Camera'),
+                  subtitle: const Text(
+                    'How often the device takes a picture; Off disables '
+                    'the camera (manual capture still works)',
+                  ),
+                  trailing: DropdownButton<int>(
+                    value: _imageInterval,
+                    hint: const Text('Device default'),
+                    onChanged: _busy ? null : _setImageInterval,
+                    items: [
+                      for (final MapEntry(:key, :value)
+                          in _imageIntervals.entries)
+                        DropdownMenuItem(value: key, child: Text(value)),
+                    ],
+                  ),
+                ),
                 SwitchListTile(
                   secondary: const Icon(Symbols.smart_toy),
                   title: const Text('Agent access'),
@@ -306,6 +403,51 @@ class _WearableScreenState extends State<WearableScreen> {
                   ),
                   value: _agentAccess,
                   onChanged: _busy ? null : _setAgentAccess,
+                ),
+                ListTile(
+                  leading: const Icon(Symbols.memory),
+                  title: const Text('Wearable memories'),
+                  subtitle: const Text(
+                    'Audit what the pipeline has saved to memory',
+                  ),
+                  trailing: const Icon(Symbols.chevron_right),
+                  onTap: () => context.go('/settings/wearable/memories'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Symbols.mobile_off),
+                  title: const Text('Wipe device storage'),
+                  subtitle: const Text(
+                    'Delete all captures on the device SD card, synced '
+                    'or not',
+                  ),
+                  enabled: !_busy,
+                  onTap: _wipeDevice,
+                ),
+                ListTile(
+                  leading: const Icon(Symbols.folder_delete),
+                  title: const Text('Clear local captures'),
+                  subtitle: const Text(
+                    'Delete downloaded files, transcripts, and the '
+                    'capture archive on this Mac',
+                  ),
+                  enabled: !_busy,
+                  onTap: _clearLocalCaptures,
+                ),
+                ListTile(
+                  leading: const Icon(Symbols.delete_forever),
+                  title: const Text('Clear wearable memory'),
+                  subtitle: const Text(
+                    'Delete everything the pipeline has saved to memory',
+                  ),
+                  enabled: !_busy,
+                  onTap: _clearMemory,
                 ),
               ],
             ),

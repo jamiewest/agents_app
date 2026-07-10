@@ -8,7 +8,8 @@ void main() {
     test('reports tool name on call content and clears on next call', () async {
       // Arrange: first model call emits a tool call, second streams the
       // answer — the shape a function-invoking loop produces.
-      final activity = ToolActivity();
+      final registry = ToolActivity();
+      final channel = registry.listen('conv-a');
       final client = ToolActivityTrackingChatClient(
         _ScriptedChatClient([
           [
@@ -21,24 +22,26 @@ void main() {
             _update([TextContent('It is 3pm.')]),
           ],
         ]),
-        activity: activity,
+        registry: registry,
+        conversationId: 'conv-a',
       );
       final seen = <String?>[];
-      activity.addListener(() => seen.add(activity.value));
+      channel.addListener(() => seen.add(channel.value));
 
       // Act: drain the first model call, then start the second.
       await client.getStreamingResponse(messages: _ask()).toList();
-      final duringToolRun = activity.value;
+      final duringToolRun = channel.value;
       await client.getStreamingResponse(messages: _ask()).toList();
 
       // Assert: set while the tool runs, cleared when the next call starts.
       expect(duringToolRun, 'get_current_time');
-      expect(activity.value, isNull);
+      expect(channel.value, isNull);
       expect(seen, ['get_current_time', null]);
     });
 
     test('joins multiple distinct tool names, ignoring duplicates', () async {
-      final activity = ToolActivity();
+      final registry = ToolActivity();
+      final channel = registry.listen('conv-a');
       final client = ToolActivityTrackingChatClient(
         _ScriptedChatClient([
           [
@@ -51,12 +54,90 @@ void main() {
             ]),
           ],
         ]),
-        activity: activity,
+        registry: registry,
+        conversationId: 'conv-a',
       );
 
       await client.getStreamingResponse(messages: _ask()).toList();
 
-      expect(activity.value, 'get_current_time, get_device_info');
+      expect(channel.value, 'get_current_time, get_device_info');
+    });
+  });
+
+  group('ToolActivity registry', () {
+    test('publishes only into the matching conversation channel', () async {
+      final registry = ToolActivity();
+      final channelA = registry.listen('conv-a');
+      final channelB = registry.listen('conv-b');
+      final client = ToolActivityTrackingChatClient(
+        _ScriptedChatClient([
+          [
+            _update([FunctionCallContent(callId: 'c1', name: 'search')]),
+          ],
+        ]),
+        registry: registry,
+        conversationId: 'conv-b',
+      );
+
+      await client.getStreamingResponse(messages: _ask()).toList();
+
+      // The background conversation's tool never bleeds into conv-a.
+      expect(channelB.value, 'search');
+      expect(channelA.value, isNull);
+    });
+
+    test('delegate scopes publish into the parent conversation', () async {
+      final registry = ToolActivity();
+      final channel = registry.listen('conv-a');
+      final client = ToolActivityTrackingChatClient(
+        _ScriptedChatClient([
+          [
+            _update([FunctionCallContent(callId: 'c1', name: 'search')]),
+          ],
+        ]),
+        registry: registry,
+        conversationId: 'conv-a#delegate',
+      );
+
+      await client.getStreamingResponse(messages: _ask()).toList();
+
+      expect(channel.value, 'search');
+    });
+
+    test('publish with no listener is a no-op', () async {
+      final registry = ToolActivity();
+      final client = ToolActivityTrackingChatClient(
+        _ScriptedChatClient([
+          [
+            _update([FunctionCallContent(callId: 'c1', name: 'search')]),
+          ],
+        ]),
+        registry: registry,
+        conversationId: 'background-task',
+      );
+
+      // No channel acquired for this conversation: nothing to observe,
+      // nothing thrown.
+      await client.getStreamingResponse(messages: _ask()).toList();
+    });
+
+    test('refcounted release keeps the channel until the last ref', () {
+      final registry = ToolActivity();
+      final first = registry.listen('conv-a');
+      final second = registry.listen('conv-a');
+      expect(identical(first, second), isTrue);
+
+      registry.release('conv-a');
+      // Still alive: the second ref holds it.
+      registry.publish('conv-a', 'search');
+      expect(first.value, 'search');
+
+      registry.release('conv-a');
+      // Disposed: publishing allocates nothing and reaches no one.
+      registry.publish('conv-a', 'other');
+      final fresh = registry.listen('conv-a');
+      expect(fresh.value, isNull);
+      expect(identical(fresh, first), isFalse);
     });
   });
 }

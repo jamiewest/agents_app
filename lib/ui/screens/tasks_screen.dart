@@ -180,7 +180,11 @@ class _TasksScreenState extends State<TasksScreen> {
           }
         },
         itemBuilder: (context) => [
-          const PopupMenuItem(value: 'run', child: Text('Run now')),
+          PopupMenuItem(
+            value: 'run',
+            enabled: task.status != AgentTaskStatus.running,
+            child: const Text('Run now'),
+          ),
           PopupMenuItem(
             value: 'pause',
             child: Text(paused ? 'Resume' : 'Pause'),

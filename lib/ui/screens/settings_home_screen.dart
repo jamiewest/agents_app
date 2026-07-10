@@ -4,6 +4,7 @@
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -69,15 +70,18 @@ class SettingsHomeScreen extends StatelessWidget {
                   trailing: const Icon(Symbols.chevron_right),
                   onTap: () => context.go('/settings/hosting'),
                 ),
-                ListTile(
-                  leading: const Icon(Symbols.watch),
-                  title: const Text('Wearable device'),
-                  subtitle: const Text(
-                    'Connect the capture wearable, sync audio and images',
+                // BLE is unavailable in the browser, so the wearable surface
+                // only exists on native builds.
+                if (!kIsWeb)
+                  ListTile(
+                    leading: const Icon(Symbols.watch),
+                    title: const Text('Wearable device'),
+                    subtitle: const Text(
+                      'Connect the capture wearable, sync audio and images',
+                    ),
+                    trailing: const Icon(Symbols.chevron_right),
+                    onTap: () => context.go('/settings/wearable'),
                   ),
-                  trailing: const Icon(Symbols.chevron_right),
-                  onTap: () => context.go('/settings/wearable'),
-                ),
                 ListTile(
                   leading: const Icon(Symbols.receipt_long),
                   title: const Text('Logs & diagnostics'),

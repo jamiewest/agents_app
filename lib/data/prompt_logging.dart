@@ -81,8 +81,16 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
             scope: scope,
           );
     final activity = toolActivity;
-    if (activity == null) return tracked;
-    return ToolActivityTrackingChatClient(tracked, activity: activity);
+    final conversationId = scope?.conversationId;
+    // Scope-less clients (e.g. hosting internals or the title summarizer)
+    // have no conversation channel to publish into, so they go untracked
+    // rather than surfacing activity under an unrelated open chat.
+    if (activity == null || conversationId == null) return tracked;
+    return ToolActivityTrackingChatClient(
+      tracked,
+      registry: activity,
+      conversationId: conversationId,
+    );
   }
 }
 

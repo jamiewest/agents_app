@@ -23,9 +23,9 @@ class LlmResponse {
   }) {
     _subscription = stream.listen(
       onUpdate,
-      onDone: () => onDone(null),
+      onDone: () => _finish(null),
       cancelOnError: true,
-      onError: (err) => _close(_exception(err)),
+      onError: (err) => _finish(_exception(err)),
     );
   }
 
@@ -38,7 +38,21 @@ class LlmResponse {
   final void Function(LlmException? error) onDone;
 
   /// Cancels the response stream.
-  void cancel() => _close(const LlmCancelException());
+  ///
+  /// Safe to call repeatedly or after the stream has already completed;
+  /// [onDone] fires at most once per response.
+  void cancel() => _finish(const LlmCancelException());
+
+  /// Detaches from the stream without reporting a result.
+  ///
+  /// For provider swaps: stops consuming the old provider's stream while
+  /// suppressing the cancel snackbar/CANCEL-append that [onDone] would
+  /// drive.
+  void detach() {
+    final subscription = _subscription;
+    _subscription = null;
+    unawaited(subscription?.cancel());
+  }
 
   StreamSubscription<String>? _subscription;
 
@@ -48,10 +62,12 @@ class LlmResponse {
     _ => LlmFailureException(err.toString()),
   };
 
-  void _close(LlmException error) {
-    assert(_subscription != null);
-    unawaited(_subscription!.cancel());
+  void _finish(LlmException? error) {
+    final subscription = _subscription;
+    if (subscription == null) return;
+    // Null before the callbacks so a re-entrant cancel is a no-op.
     _subscription = null;
-    onDone.call(error);
+    unawaited(subscription.cancel());
+    onDone(error);
   }
 }

@@ -39,6 +39,11 @@ abstract final class CaptureCommands {
     'silence_rms': ?silenceRms,
   });
 
+  /// `wipe_captures` — delete every capture on the device's SD card,
+  /// including un-synced data (§2.2, v0.4). Destructive; confirm with the
+  /// user before sending.
+  static List<int> wipeCaptures() => _encode({'op': 'wipe_captures'});
+
   /// `wifi_join` — bring up WiFi + HTTP server and publish the endpoint.
   static List<int> wifiJoin() => _encode({'op': 'wifi_join'});
 

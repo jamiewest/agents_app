@@ -14,9 +14,11 @@ import 'package:extensions/ai.dart' as ai;
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, KeyEvent, rootBundle;
 
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sqflite;
@@ -245,7 +247,17 @@ final _builder = Host.createApplicationBuilder()
 
 final host = _builder.build();
 
-Future<void> main() async => await host.run();
+Future<void> main() async {
+  // Outfit ships as bundled assets (assets/google_fonts/), so startup never
+  // depends on fonts.gstatic.com; fail loudly in debug if a weight ever
+  // falls off the bundle instead of silently fetching.
+  GoogleFonts.config.allowRuntimeFetching = false;
+  LicenseRegistry.addLicense(() async* {
+    final license = await rootBundle.loadString('assets/google_fonts/OFL.txt');
+    yield LicenseEntryWithLineBreaks(const ['google_fonts'], license);
+  });
+  await host.run();
+}
 // </start>
 
 enum _LocalLlamaPhase { idle, downloading, loading, ready, error }
@@ -432,90 +444,90 @@ ai.ChatClient _createLocalLlamaClient(
       return Future<llama.LlamaSession>.value(session);
     }
     return host.acquire(loadKey, (runtime) async {
-        try {
-          final llama.LlamaSession loaded;
-          final selectedLocalPath = location.localPath;
-          if (selectedLocalPath != null) {
-            _localLlamaProgress.update(
-              model.id,
-              const _LocalLlamaStatus(
-                phase: _LocalLlamaPhase.loading,
-                message: 'Loading selected local model...',
-              ),
-            );
-            await resolveFormatFromGguf(selectedLocalPath);
-            loaded = await runtime.loadModel(
-              spec,
-              localPath: selectedLocalPath,
-              localMmprojPath: location.mmprojLocalPath,
-              localDraftPath: location.draftLocalPath,
-            );
-          } else if (kIsWeb) {
-            _localLlamaProgress.update(
-              model.id,
-              _LocalLlamaStatus(
-                phase: _LocalLlamaPhase.loading,
-                message: location.isSelectedFile
-                    ? 'Loading selected local model...'
-                    : 'Loading local model from browser cache...',
-              ),
-            );
-            await resolveFormatFromGguf(location.modelUrl.toString());
-            loaded = await runtime.loadModel(
-              spec,
-              onProgress: (progress) {
-                _localLlamaProgress.update(
-                  model.id,
-                  _LocalLlamaStatus(
-                    phase: _LocalLlamaPhase.downloading,
-                    message: 'Downloading local model to browser cache...',
-                    progress: progress.clamp(0, 1).toDouble(),
-                  ),
-                );
-              },
-            );
-          } else {
-            final paths = await _downloadLocalModel(services, spec, model.id);
-            _localLlamaProgress.update(
-              model.id,
-              const _LocalLlamaStatus(
-                phase: _LocalLlamaPhase.loading,
-                message: 'Loading local model...',
-              ),
-            );
-            await resolveFormatFromGguf(paths.modelPath);
-            loaded = await runtime.loadModel(
-              spec,
-              localPath: paths.modelPath,
-              localMmprojPath: paths.mmprojPath,
-              localDraftPath: paths.draftPath,
-            );
-          }
+      try {
+        final llama.LlamaSession loaded;
+        final selectedLocalPath = location.localPath;
+        if (selectedLocalPath != null) {
+          _localLlamaProgress.update(
+            model.id,
+            const _LocalLlamaStatus(
+              phase: _LocalLlamaPhase.loading,
+              message: 'Loading selected local model...',
+            ),
+          );
+          await resolveFormatFromGguf(selectedLocalPath);
+          loaded = await runtime.loadModel(
+            spec,
+            localPath: selectedLocalPath,
+            localMmprojPath: location.mmprojLocalPath,
+            localDraftPath: location.draftLocalPath,
+          );
+        } else if (kIsWeb) {
           _localLlamaProgress.update(
             model.id,
             _LocalLlamaStatus(
-              phase: _LocalLlamaPhase.ready,
-              message: runtime.supportsMultiThreading
-                  ? 'Local model ready.'
-                  : 'Local model ready (single-threaded: this page is not '
-                        'cross-origin isolated, so larger models may take '
-                        'minutes per reply — reload once so the isolation '
-                        'service worker can enable multithreading).',
-              progress: 1,
+              phase: _LocalLlamaPhase.loading,
+              message: location.isSelectedFile
+                  ? 'Loading selected local model...'
+                  : 'Loading local model from browser cache...',
             ),
           );
-          return loaded;
-        } on Object catch (error) {
+          await resolveFormatFromGguf(location.modelUrl.toString());
+          loaded = await runtime.loadModel(
+            spec,
+            onProgress: (progress) {
+              _localLlamaProgress.update(
+                model.id,
+                _LocalLlamaStatus(
+                  phase: _LocalLlamaPhase.downloading,
+                  message: 'Downloading local model to browser cache...',
+                  progress: progress.clamp(0, 1).toDouble(),
+                ),
+              );
+            },
+          );
+        } else {
+          final paths = await _downloadLocalModel(services, spec, model.id);
           _localLlamaProgress.update(
             model.id,
-            _LocalLlamaStatus(
-              phase: _LocalLlamaPhase.error,
-              message: 'Local model failed: $error',
+            const _LocalLlamaStatus(
+              phase: _LocalLlamaPhase.loading,
+              message: 'Loading local model...',
             ),
           );
-          rethrow;
+          await resolveFormatFromGguf(paths.modelPath);
+          loaded = await runtime.loadModel(
+            spec,
+            localPath: paths.modelPath,
+            localMmprojPath: paths.mmprojPath,
+            localDraftPath: paths.draftPath,
+          );
         }
-      });
+        _localLlamaProgress.update(
+          model.id,
+          _LocalLlamaStatus(
+            phase: _LocalLlamaPhase.ready,
+            message: runtime.supportsMultiThreading
+                ? 'Local model ready.'
+                : 'Local model ready (single-threaded: this page is not '
+                      'cross-origin isolated, so larger models may take '
+                      'minutes per reply — reload once so the isolation '
+                      'service worker can enable multithreading).',
+            progress: 1,
+          ),
+        );
+        return loaded;
+      } on Object catch (error) {
+        _localLlamaProgress.update(
+          model.id,
+          _LocalLlamaStatus(
+            phase: _LocalLlamaPhase.error,
+            message: 'Local model failed: $error',
+          ),
+        );
+        rethrow;
+      }
+    });
   }
 
   final thinking = services.getService<ThinkingSettings>();
@@ -939,6 +951,23 @@ class _ChatScreenState extends State<ChatScreen> {
   Set<String> _relevantAgentIds = const {};
   bool _agentReloadScheduled = false;
   bool _agentReloadInProgress = false;
+  int _toolActivityRefs = 0;
+
+  /// Acquires this conversation's tool-activity channel, when the registry
+  /// is registered. Every acquisition is matched by [_releaseToolActivity];
+  /// the last release (in [dispose]) drops the channel.
+  ValueListenable<String?>? _listenToolActivity() {
+    final registry = widget.services.getService<ToolActivity>();
+    if (registry == null) return null;
+    _toolActivityRefs++;
+    return registry.listen(_conversationId);
+  }
+
+  void _releaseToolActivity() {
+    if (_toolActivityRefs == 0) return;
+    _toolActivityRefs--;
+    widget.services.getService<ToolActivity>()?.release(_conversationId);
+  }
 
   @override
   void initState() {
@@ -1049,7 +1078,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final provider = AgentLlmProvider(
       agent: agent,
       session: session,
-      toolActivity: widget.services.getService<ToolActivity>(),
+      toolActivity: _listenToolActivity(),
       activity: widget.services.getService<AppActivityMonitor>(),
       history: displayHistory,
     );
@@ -1191,7 +1220,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final provider = AgentLlmProvider(
         agent: agent,
         session: session,
-        toolActivity: widget.services.getService<ToolActivity>(),
+        // Acquired before the old provider's ref is released below, so the
+        // conversation's channel stays alive across the swap.
+        toolActivity: _listenToolActivity(),
+        // Match initial construction: without the idle monitor, background
+        // work (e.g. the title summarizer) could run mid-generation after
+        // a reload.
+        activity: widget.services.getService<AppActivityMonitor>(),
         history: old.history,
       );
       provider.addListener(() {
@@ -1203,6 +1238,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _providerFuture = Future<AgentLlmProvider>.value(provider);
       });
       old.dispose();
+      _releaseToolActivity();
     } catch (e, s) {
       developer.log(
         'Failed to reload agent after a configuration change.',
@@ -1361,7 +1397,11 @@ class _ChatScreenState extends State<ChatScreen> {
       session: provider.session,
       history: [...provider.history, ChatMessage.user(prompt, attachments)],
     );
-    await _persistMetadata(augmented);
+    try {
+      await _persistMetadata(augmented);
+    } finally {
+      augmented.dispose();
+    }
   }
 
   Future<void> _persistSerializedSession(AgentLlmProvider provider) async {
@@ -1743,6 +1783,9 @@ class _ChatScreenState extends State<ChatScreen> {
     unawaited(_agentChangesSub?.cancel());
     unawaited(_finishStateChangesBeforePop());
     _provider?.dispose();
+    while (_toolActivityRefs > 0) {
+      _releaseToolActivity();
+    }
     super.dispose();
   }
 

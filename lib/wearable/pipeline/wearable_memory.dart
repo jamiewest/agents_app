@@ -38,13 +38,17 @@ abstract final class WearableMemoryRecords {
 /// One recalled wearable memory.
 class WearableMemoryEntry {
   WearableMemoryEntry._(Map<String, Object?> record, this.score)
-    : content = record[WearableMemoryRecords.contentField] as String? ?? '',
+    : key = record[WearableMemoryRecords.keyField] as String? ?? '',
+      content = record[WearableMemoryRecords.contentField] as String? ?? '',
       startEpochMs =
           (record[WearableMemoryRecords.startEpochMsField] as num?)?.toInt() ??
           0,
       endEpochMs =
           (record[WearableMemoryRecords.endEpochMsField] as num?)?.toInt() ?? 0,
       source = record[WearableMemoryRecords.sourceField] as String? ?? '';
+
+  /// Store key of the entry (for deletion).
+  final String key;
 
   /// The remembered text.
   final String content;
@@ -139,6 +143,41 @@ class WearableMemoryStore {
     );
     entries.sort((a, b) => a.startEpochMs.compareTo(b.startEpochMs));
     return entries;
+  }
+
+  /// All stored entries, newest first (for the audit UI). [top] caps the
+  /// result; the store is expected to stay small (distilled notes).
+  Future<List<WearableMemoryEntry>> all({int top = 500}) async {
+    await _ensure();
+    final entries = <WearableMemoryEntry>[];
+    await for (final record in _collection.getFilteredAsync(top: top)) {
+      entries.add(WearableMemoryEntry._(record, 0));
+    }
+    entries.sort((a, b) => b.startEpochMs.compareTo(a.startEpochMs));
+    return entries;
+  }
+
+  /// Deletes a single entry by its [WearableMemoryEntry.key].
+  Future<void> delete(String key) async {
+    await _ensure();
+    await _collection.deleteAsync(key);
+  }
+
+  /// Deletes every stored entry; returns how many were removed.
+  Future<int> clear() async {
+    await _ensure();
+    var removed = 0;
+    // Loop: getFilteredAsync may cap results below the total count.
+    while (true) {
+      final keys = <String>[];
+      await for (final record in _collection.getFilteredAsync(top: 500)) {
+        final key = record[WearableMemoryRecords.keyField] as String?;
+        if (key != null) keys.add(key);
+      }
+      if (keys.isEmpty) return removed;
+      await _collection.deleteBatchAsync(keys);
+      removed += keys.length;
+    }
   }
 
   Future<List<WearableMemoryEntry>> _query(

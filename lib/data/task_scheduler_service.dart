@@ -59,13 +59,17 @@ class TaskSchedulerService {
   final DateTime Function() _now;
   late final AgentTaskRunner _runner;
   Timer? _timer;
+  bool _ticking = false;
 
   AgentTaskStore get _tasks =>
       AgentTaskStore(_services.getRequiredService<RecordStore>());
 
-  /// Starts the periodic tick.
+  /// Starts the periodic tick, first recovering runs interrupted by an app
+  /// restart.
   void start({Duration interval = const Duration(minutes: 1)}) {
-    _timer ??= Timer.periodic(interval, (_) => unawaited(tick()));
+    if (_timer != null) return;
+    unawaited(recoverInterrupted());
+    _timer = Timer.periodic(interval, (_) => unawaited(tick()));
   }
 
   /// Stops the periodic tick.
@@ -74,17 +78,47 @@ class TaskSchedulerService {
     _timer = null;
   }
 
+  /// Marks tasks persisted as `running` — orphaned by an app kill mid-run —
+  /// as failed. Recurring tasks become due immediately so the retry path
+  /// picks them up; one-shot tasks stay manually runnable.
+  Future<void> recoverInterrupted() async {
+    for (final task in await _tasks.listRunning()) {
+      developer.log(
+        'Task "${task.title}" was interrupted by an app restart.',
+        name: 'agents_app.tasks',
+      );
+      await _tasks.save(
+        task.copyWith(
+          status: AgentTaskStatus.failed,
+          nextRunAt: task.intervalMinutes == null ? null : _now(),
+        ),
+      );
+    }
+  }
+
   /// Runs every due task once. Public so tests can drive time directly.
+  ///
+  /// Re-entrant calls no-op: a slow run must not overlap the next timer
+  /// event.
   Future<void> tick() async {
-    for (final task in await _tasks.listDue(_now())) {
-      await _execute(task);
+    if (_ticking) return;
+    _ticking = true;
+    try {
+      for (final task in await _tasks.listDue(_now())) {
+        await _execute(task);
+      }
+    } finally {
+      _ticking = false;
     }
   }
 
   /// Executes [task] immediately, regardless of schedule.
+  ///
+  /// No-ops when the task is already running.
   Future<void> runNow(String taskId) async {
     final task = await _tasks.get(taskId);
-    if (task != null) await _execute(task);
+    if (task == null || task.status == AgentTaskStatus.running) return;
+    await _execute(task);
   }
 
   Future<void> _execute(AgentTask task) async {

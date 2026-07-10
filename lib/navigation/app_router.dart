@@ -4,6 +4,7 @@
 
 import 'package:animations/animations.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,7 +20,9 @@ import '../ui/screens/network_pairing_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../data/task_scheduler_service.dart';
 import '../ui/screens/tasks_screen.dart';
+import '../ui/screens/wearable_memories_screen.dart';
 import '../ui/screens/wearable_screen.dart';
+import '../ui/screens/wearable_unavailable_screen.dart';
 import 'app_bootstrap.dart';
 import 'app_shell.dart';
 
@@ -179,8 +182,19 @@ GoRouter createAppRouter({
                 ),
                 GoRoute(
                   path: 'wearable',
-                  builder: (context, state) =>
-                      WearableScreen(services: services),
+                  // The web build never registers WearableService (no BLE),
+                  // so guard before the screen resolves it.
+                  builder: (context, state) => kIsWeb
+                      ? const WearableUnavailableScreen()
+                      : WearableScreen(services: services),
+                  routes: [
+                    GoRoute(
+                      path: 'memories',
+                      builder: (context, state) => kIsWeb
+                          ? const WearableUnavailableScreen()
+                          : WearableMemoriesScreen(services: services),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -29,112 +29,118 @@ class LlmMessageView extends StatelessWidget {
   final ChatMessage message;
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      // const Spacer(flex: 1,),
-      ChatViewModelClient(
-        builder: (context, viewModel, child) {
-          final text = message.text;
-          final chatStyle = LlmChatViewStyle.resolveFor(
-            context,
-            viewModel.style,
-          );
-          final llmStyle = chatStyle.llmMessageStyle!;
-          final chatString = viewModel.strings;
+  Widget build(BuildContext context) => ListenableBuilder(
+    // The message notifies as its streamed text and turn state change, so
+    // only this bubble rebuilds per token; the whole row listens because
+    // the dots/live-status/usage sections all read message state.
+    listenable: message,
+    builder: (context, _) => Row(
+      children: [
+        // const Spacer(flex: 1,),
+        ChatViewModelClient(
+          builder: (context, viewModel, child) {
+            final text = message.text;
+            final chatStyle = LlmChatViewStyle.resolveFor(
+              context,
+              viewModel.style,
+            );
+            final llmStyle = chatStyle.llmMessageStyle!;
+            final chatString = viewModel.strings;
 
-          return Flexible(
-            flex: llmStyle.flex,
-            child: Container(
-              constraints: BoxConstraints(
-                minWidth: llmStyle.minWidth,
-                maxWidth: llmStyle.maxWidth,
-              ),
-              margin: llmStyle.margin,
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: Container(
-                      height: 28,
-                      width: 28,
-                      decoration: llmStyle.iconDecoration,
-                      child: Icon(
-                        llmStyle.icon,
-                        color: llmStyle.iconColor,
-                        size: 16,
+            return Flexible(
+              flex: llmStyle.flex,
+              child: Container(
+                constraints: BoxConstraints(
+                  minWidth: llmStyle.minWidth,
+                  maxWidth: llmStyle.maxWidth,
+                ),
+                margin: llmStyle.margin,
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Container(
+                        height: 28,
+                        width: 28,
+                        decoration: llmStyle.iconDecoration,
+                        child: Icon(
+                          llmStyle.icon,
+                          color: llmStyle.iconColor,
+                          size: 16,
+                        ),
                       ),
                     ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      HoveringButtons(
-                        isUserMessage: false,
-                        chatStyle: chatStyle,
-                        clipboardText: text,
-                        clipboardMessage: chatString.copyToClipboard,
-                        child: Container(
-                          width: double.infinity,
-                          decoration: llmStyle.decoration,
-                          margin: const EdgeInsets.only(left: 40),
-                          padding: llmStyle.padding,
-                          child: text == null
-                              ? SizedBox(
-                                  width: 32,
-                                  child: JumpingDotsProgressIndicator(
-                                    fontSize: 24,
-                                    color: chatStyle.progressIndicatorColor!,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        HoveringButtons(
+                          isUserMessage: false,
+                          chatStyle: chatStyle,
+                          clipboardText: text,
+                          clipboardMessage: chatString.copyToClipboard,
+                          child: Container(
+                            width: double.infinity,
+                            decoration: llmStyle.decoration,
+                            margin: const EdgeInsets.only(left: 40),
+                            padding: llmStyle.padding,
+                            child: text == null
+                                ? SizedBox(
+                                    width: 32,
+                                    child: JumpingDotsProgressIndicator(
+                                      fontSize: 24,
+                                      color: chatStyle.progressIndicatorColor!,
+                                    ),
+                                  )
+                                : AdaptiveCopyText(
+                                    clipboardText: text,
+                                    chatStyle: chatStyle,
+                                    chatStrings: chatString,
+                                    child: viewModel.responseBuilder == null
+                                        ? MarkdownBody(
+                                            data: text,
+                                            selectable: false,
+                                            styleSheet: llmStyle.markdownStyle,
+                                            onTapLink: (_, href, _) {
+                                              if (href != null) {
+                                                launchUrl(Uri.parse(href));
+                                              }
+                                            },
+                                          )
+                                        : viewModel.responseBuilder!(
+                                            context,
+                                            text,
+                                          ),
                                   ),
-                                )
-                              : AdaptiveCopyText(
-                                  clipboardText: text,
-                                  chatStyle: chatStyle,
-                                  chatStrings: chatString,
-                                  child: viewModel.responseBuilder == null
-                                      ? MarkdownBody(
-                                          data: text,
-                                          selectable: false,
-                                          styleSheet: llmStyle.markdownStyle,
-                                          onTapLink: (_, href, _) {
-                                            if (href != null) {
-                                              launchUrl(Uri.parse(href));
-                                            }
-                                          },
-                                        )
-                                      : viewModel.responseBuilder!(
-                                          context,
-                                          text,
-                                        ),
-                                ),
-                        ),
-                      ),
-                      if (message.isGenerating)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 40, top: 4),
-                          child: LiveTurnStatus(
-                            message: message,
-                            baseStyle: llmStyle.markdownStyle?.p,
-                          ),
-                        )
-                      else if (message.usage != null)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 40, top: 4),
-                          child: UsageBadge(
-                            usage: message.usage!,
-                            duration: message.turnDuration,
-                            baseStyle: llmStyle.markdownStyle?.p,
                           ),
                         ),
-                    ],
-                  ),
-                ],
+                        if (message.isGenerating)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 40, top: 4),
+                            child: LiveTurnStatus(
+                              message: message,
+                              baseStyle: llmStyle.markdownStyle?.p,
+                            ),
+                          )
+                        else if (message.usage != null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 40, top: 4),
+                            child: UsageBadge(
+                              usage: message.usage!,
+                              duration: message.turnDuration,
+                              baseStyle: llmStyle.markdownStyle?.p,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
-      ),
-      const Flexible(flex: 2, child: SizedBox()),
-    ],
+            );
+          },
+        ),
+        const Flexible(flex: 2, child: SizedBox()),
+      ],
+    ),
   );
 }
 

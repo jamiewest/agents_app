@@ -74,6 +74,7 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
         .getRequiredService<ConfiguredAgentsManager>();
     final sourceId = 'net-${result.hostId}';
     var addedCount = 0;
+    setState(() => _busy = true);
     try {
       await manager.saveSource(
         ModelSourceConfig(
@@ -111,10 +112,16 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
     } catch (error) {
       // Surface storage failures (e.g. a rejected keychain write) instead
       // of dropping them in this unawaited handler.
-      if (mounted) setState(() => _error = 'Could not save agents: $error');
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Could not save agents: $error';
+        });
+      }
       return;
     }
     if (!mounted) return;
+    setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -195,7 +202,7 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
                 ),
               const SizedBox(height: 12),
               FilledButton.icon(
-                onPressed: _selected.isEmpty ? null : _addSelected,
+                onPressed: _busy || _selected.isEmpty ? null : _addSelected,
                 icon: const Icon(Symbols.group_add),
                 label: Text(switch (_selected.length) {
                   0 => 'Add agents',

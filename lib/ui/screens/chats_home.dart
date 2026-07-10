@@ -327,6 +327,7 @@ class _ChatsListViewState extends State<ChatsListView> {
   late final Stream<List<Channel>> _channelStream;
   Map<String, SavedAgentConfig> _agentsById = const {};
   bool _initialized = false;
+  StreamSubscription<String>? _agentChangesSub;
 
   @override
   void didChangeDependencies() {
@@ -344,7 +345,16 @@ class _ChatsListViewState extends State<ChatsListView> {
     // while animating slot changes.
     _conversationStream = _conversations.watchAll().asBroadcastStream();
     _channelStream = _channels.watchAll().asBroadcastStream();
+    // Renames, additions, and deletions in Settings should show here without
+    // remounting the list.
+    _agentChangesSub = _manager.agentChanges.listen((_) => _loadAgents());
     _loadAgents();
+  }
+
+  @override
+  void dispose() {
+    _agentChangesSub?.cancel();
+    super.dispose();
   }
 
   bool _agentReloadScheduled = false;

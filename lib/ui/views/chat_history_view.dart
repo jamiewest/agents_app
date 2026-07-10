@@ -83,6 +83,10 @@ class _ChatHistoryViewState extends State<ChatHistoryView> {
           padding: padding,
           child: ListView.builder(
             reverse: true,
+            // Lifts the newest message's resting position above the bottom
+            // fade so its token-detail row isn't dimmed, while scrolled
+            // content still passes through the fade zone.
+            padding: const EdgeInsets.only(bottom: 24),
             itemCount: history.length,
             itemBuilder: (context, index) {
               final messageIndex = history.length - index - 1;

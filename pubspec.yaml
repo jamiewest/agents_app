@@ -58,3 +58,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # Bundled Outfit weights (400/500/600). google_fonts prefers these over
+    # runtime fetching, so typography is identical offline.
+    - assets/google_fonts/

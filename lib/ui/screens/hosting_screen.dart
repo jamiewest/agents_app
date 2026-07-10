@@ -37,6 +37,7 @@ class _HostingScreenState extends State<HostingScreen> {
   final Set<String> _selected = {};
   PairingPayload? _offer;
   String? _error;
+  bool _busy = false;
 
   A2AHostService get _host =>
       HostingScreen.instance ??= A2AHostService(widget.services);
@@ -57,6 +58,7 @@ class _HostingScreenState extends State<HostingScreen> {
 
   Future<void> _toggleHosting() async {
     setState(() {
+      _busy = true;
       _error = null;
       _offer = null;
     });
@@ -73,15 +75,18 @@ class _HostingScreenState extends State<HostingScreen> {
     } catch (e) {
       _error = '$e';
     }
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _busy = false);
   }
 
   Future<void> _generateOffer() async {
+    setState(() => _busy = true);
     try {
       final offer = await _host.createPairingOffer();
       if (mounted) setState(() => _offer = offer);
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -143,10 +148,15 @@ class _HostingScreenState extends State<HostingScreen> {
                 ),
               const SizedBox(height: 12),
               FilledButton.icon(
-                onPressed: running || _selected.isNotEmpty
+                onPressed: !_busy && (running || _selected.isNotEmpty)
                     ? _toggleHosting
                     : null,
-                icon: Icon(running ? Symbols.stop : Symbols.wifi_tethering),
+                icon: _busy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(running ? Symbols.stop : Symbols.wifi_tethering),
                 label: Text(
                   running
                       ? 'Stop sharing (port ${_host.port})'
@@ -156,7 +166,7 @@ class _HostingScreenState extends State<HostingScreen> {
               if (running) ...[
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
-                  onPressed: _generateOffer,
+                  onPressed: _busy ? null : _generateOffer,
                   icon: const Icon(Symbols.qr_code_2),
                   label: const Text('Generate pairing code'),
                 ),

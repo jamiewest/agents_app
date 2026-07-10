@@ -114,6 +114,13 @@ class A2AHostService {
   AuthorizedClientsStore get _clients =>
       AuthorizedClientsStore(_services.getRequiredService<KeyValueStore>());
 
+  /// Lowercases [value] and collapses everything outside `[a-z0-9]` to
+  /// single dashes, so it is safe inside a URL path segment.
+  static String _slugify(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+
   Future<String> _ensureHostId() async {
     if (_hostId != null) return _hostId!;
     final keyValueStore = _services.getRequiredService<KeyValueStore>();
@@ -134,11 +141,14 @@ class A2AHostService {
 
     _agentsByPath.clear();
     for (final config in agents) {
-      final slug = config.name
-          .toLowerCase()
-          .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-          .replaceAll(RegExp(r'^-+|-+$'), '');
-      final path = '/agents/${slug.isEmpty ? config.id : slug}';
+      final slug = _slugify(config.name);
+      var path = '/agents/${slug.isEmpty ? config.id : slug}';
+      if (_agentsByPath.containsKey(path)) {
+        // Two names normalized to the same slug ("Research Bot" and
+        // "research_bot"); suffix the stable agent id so neither hosted
+        // agent silently overwrites the other.
+        path = '$path-${_slugify(config.id)}';
+      }
       final agent = await factory.createAgent(config);
       // Sessions are scoped per paired client so two peers talking to the
       // same hosted agent never share conversation state.
@@ -331,50 +341,68 @@ class A2AHostService {
     HostedAgent hosted,
     String body,
     String callerKey,
-  ) =>
-      // One inbound run at a time: peers queue instead of being bounced.
-      // The caller key rides a zone value because the transport resolves
-      // sessions deep inside `handle` (and, for streaming, after this
-      // method has already returned its response).
-      _runPool.withResource(
-        () => runZoned(() async {
-          final result = await hosted._transport.handle(body);
-          if (result is Function) {
-            // Streaming: the transport returns a generator of JSON-RPC
-            // events; relay them as server-sent events.
-            final stream = (result as dynamic)() as Stream<Object?>;
-            final controller = StreamController<List<int>>();
-            unawaited(() async {
-              try {
-                await for (final event in stream) {
-                  final json = jsonEncode((event as dynamic).toJson());
-                  controller.add(utf8.encode('data: $json\n\n'));
-                }
-              } catch (e, s) {
-                developer.log(
-                  'A2A streaming response failed.',
-                  name: 'agents_app.a2a_host',
-                  error: e,
-                  stackTrace: s,
-                );
-              } finally {
-                await controller.close();
+  ) async {
+    // One inbound run at a time: peers queue instead of being bounced.
+    // The caller key rides a zone value because the transport resolves
+    // sessions deep inside `handle` (and, for streaming, after this
+    // method has already returned its response).
+    //
+    // The pool slot is acquired manually rather than via `withResource`:
+    // a streaming run is driven by iterating the SSE stream *after* the
+    // response returns, so the slot must stay held until the stream
+    // finishes — releasing at response time would let peers run
+    // concurrently against the single loaded model.
+    final lease = await _runPool.request();
+    var leaseOwnedByStream = false;
+    try {
+      return await runZoned(() async {
+        final result = await hosted._transport.handle(body);
+        if (result is Function) {
+          // Streaming: the transport returns a generator of JSON-RPC
+          // events; relay them as server-sent events.
+          final stream = (result as dynamic)() as Stream<Object?>;
+          final controller = StreamController<List<int>>();
+          var clientGone = false;
+          controller.onCancel = () => clientGone = true;
+          unawaited(() async {
+            try {
+              await for (final event in stream) {
+                // Breaking cancels the upstream generator, which stops
+                // driving the abandoned run.
+                if (clientGone) break;
+                final json = jsonEncode((event as dynamic).toJson());
+                controller.add(utf8.encode('data: $json\n\n'));
               }
-            }());
-            return shelf.Response.ok(
-              controller.stream,
-              headers: const {
-                'content-type': 'text/event-stream',
-                'cache-control': 'no-cache',
-              },
-            );
-          }
+            } catch (e, s) {
+              developer.log(
+                'A2A streaming response failed.',
+                name: 'agents_app.a2a_host',
+                error: e,
+                stackTrace: s,
+              );
+            } finally {
+              lease.release();
+              await controller.close();
+            }
+          }());
+          leaseOwnedByStream = true;
           return shelf.Response.ok(
-            jsonEncode((result as dynamic).toJson()),
-            headers: const {'content-type': 'application/json'},
+            controller.stream,
+            headers: const {
+              'content-type': 'text/event-stream',
+              'cache-control': 'no-cache',
+            },
           );
-        }, zoneValues: {_CallerIsolationKeyProvider.zoneKey: callerKey}),
-      );
+        }
+        return shelf.Response.ok(
+          jsonEncode((result as dynamic).toJson()),
+          headers: const {'content-type': 'application/json'},
+        );
+      }, zoneValues: {_CallerIsolationKeyProvider.zoneKey: callerKey});
+    } finally {
+      if (!leaseOwnedByStream) lease.release();
+    }
+  }
 }
 
 /// Resolves the session isolation key from the zone value stamped by

@@ -149,6 +149,11 @@ class WearableService implements Disposable {
   /// Settings key: whether agents may use the device tools.
   static const String agentAccessKey = 'wearable.agent_access_enabled';
 
+  /// Settings key: the device's periodic image capture interval in seconds
+  /// ('0' = camera off). Mirrors the last value pushed via `set_policy`;
+  /// the device itself persists the policy in NVS.
+  static const String imageIntervalKey = 'wearable.image_interval_s';
+
   /// The BLE control-plane transport (streams are shared with the UI).
   final DeviceTransport transport;
 
@@ -248,6 +253,83 @@ class WearableService implements Disposable {
     _log('recording ${enabled ? 'enabled' : 'disabled'}');
     lastStatus = await transport.readStatus();
     lastStatusAt = DateTime.now();
+  }
+
+  /// Sets the device's periodic image capture interval; 0 turns the camera
+  /// off (PROTOCOL.md §2.2). Persisted on the device and mirrored to
+  /// [imageIntervalKey] for the UI.
+  Future<void> setImageInterval({required int seconds}) async {
+    if (seconds != 0 && (seconds < 10 || seconds > 86400)) {
+      throw ArgumentError.value(
+        seconds,
+        'seconds',
+        'must be 0 (off) or 10–86400',
+      );
+    }
+    await ensureConnected();
+    final response = await transport.sendCommand(
+      CaptureCommands.setPolicy(imageIntervalSeconds: seconds),
+    );
+    if (!response.ok) {
+      throw WearableCommandException(
+        'set_policy failed: ${response.error?.wireValue}',
+      );
+    }
+    await _settings.write(imageIntervalKey, '$seconds');
+    _log(
+      seconds == 0
+          ? 'camera capture turned off'
+          : 'camera capture interval set to ${seconds}s',
+    );
+  }
+
+  /// The last image interval pushed to the device, in seconds (0 = off),
+  /// or null when never set (the device default applies).
+  Future<int?> imageInterval() async =>
+      int.tryParse(await _settings.read(imageIntervalKey) ?? '');
+
+  /// Deletes every capture on the device's SD card, including un-synced
+  /// data. Destructive — the caller must confirm with the user first.
+  Future<void> wipeDeviceCaptures() async {
+    await ensureConnected();
+    final response = await transport.sendCommand(
+      CaptureCommands.wipeCaptures(),
+    );
+    if (!response.ok) {
+      throw WearableCommandException(
+        'wipe_captures failed: ${response.error?.wireValue}',
+      );
+    }
+    lastStatus = await transport.readStatus();
+    lastStatusAt = DateTime.now();
+    _log('device captures wiped');
+  }
+
+  /// Deletes all downloaded capture files and the archive rows referencing
+  /// them (transcripts/descriptions included); returns how many files were
+  /// removed. Wearable memory is separate — see [clearMemory].
+  Future<int> clearLocalCaptures() async {
+    final dir = await capturesDirectory();
+    var removed = 0;
+    await for (final entry in dir.list()) {
+      if (entry is! File) continue;
+      try {
+        await entry.delete();
+        removed++;
+      } on FileSystemException catch (e) {
+        _log('could not delete ${entry.path}: ${e.message}');
+      }
+    }
+    await archive.clear();
+    _log('cleared $removed local capture files and the archive');
+    return removed;
+  }
+
+  /// Deletes every wearable memory entry; returns how many were removed.
+  Future<int> clearMemory() async {
+    final removed = await memory.clear();
+    _log('cleared $removed wearable memories');
+    return removed;
   }
 
   /// Stores WiFi credentials on the device.

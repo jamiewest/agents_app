@@ -197,6 +197,28 @@ class _LlmChatViewState extends State<LlmChatView>
   }
 
   @override
+  void didUpdateWidget(covariant LlmChatView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Every rebuild constructs a fresh ChatViewModel, so compare the
+    // providers themselves — they are stable across rebuilds and only
+    // change when the owner swaps agents (e.g. after a settings reload).
+    final oldProvider = oldWidget.viewModel.provider;
+    final newProvider = widget.viewModel.provider;
+    if (identical(oldProvider, newProvider)) return;
+
+    oldProvider.removeListener(_onHistoryChanged);
+    newProvider.addListener(_onHistoryChanged);
+
+    // In-flight responses stream from the old provider; detach silently so
+    // a stale stream cannot keep mutating messages, without surfacing a
+    // cancel snackbar for a swap the user didn't ask for.
+    _pendingPromptResponse?.detach();
+    _pendingPromptResponse = null;
+    _pendingSttResponse?.detach();
+    _pendingSttResponse = null;
+  }
+
+  @override
   void dispose() {
     super.dispose();
     widget.viewModel.provider.removeListener(_onHistoryChanged);
@@ -296,12 +318,11 @@ class _LlmChatViewState extends State<LlmChatView>
 
     _pendingPromptResponse = LlmResponse(
       stream: sendMessageStream(prompt, attachments: attachments),
-      // update during the streaming response input so that the end-user can see
-      // the response as it streams in; the stream can outlive this state when
-      // the user navigates away mid-response
-      onUpdate: (_) {
-        if (mounted) setState(() {});
-      },
+      // Painting during streaming is driven by the message's own
+      // notifications (ChatMessage.append), so only the live bubble
+      // rebuilds; the stream can outlive this state when the user
+      // navigates away mid-response.
+      onUpdate: (_) {},
       onDone: _onPromptDone,
     );
 
@@ -327,9 +348,8 @@ class _LlmChatViewState extends State<LlmChatView>
     _associatedResponse = null;
     _pendingPromptResponse = LlmResponse(
       stream: provider.sendToolApprovalStream(decision),
-      onUpdate: (_) {
-        if (mounted) setState(() {});
-      },
+      // Streaming repaints ride the message's own notifications.
+      onUpdate: (_) {},
       onDone: _onPromptDone,
     );
     setState(() {});
@@ -406,14 +426,21 @@ class _LlmChatViewState extends State<LlmChatView>
     Iterable<Attachment> attachments,
   ) async {
     assert(_pendingSttResponse != null);
-    setState(() {
-      // Preserve any existing attachments from the current input
-      _initialMessage = ChatMessage.user(response, attachments);
-      _pendingSttResponse = null;
-    });
+    _pendingSttResponse = null;
 
-    // delete the file now that the LLM has translated it
+    // Delete the recording first so completing after the widget unmounts
+    // still cleans it up.
     unawaited(ph.deleteFile(file));
+
+    if (!mounted) return;
+    setState(() {
+      // Preserve any existing attachments from the current input. A
+      // canceled or failed transcription yields an empty string, which
+      // ChatMessage.user rejects.
+      _initialMessage = response.isEmpty
+          ? null
+          : ChatMessage.user(response, attachments);
+    });
 
     // show any error that occurred
     unawaited(_showLlmException(error));
@@ -427,9 +454,12 @@ class _LlmChatViewState extends State<LlmChatView>
     // stop from the progress from indicating in case there was a failure
     // before any text response happened; the progress indicator uses a null
     // text message to keep progressing. plus we don't want to just show an
-    // empty LLM message.
-    final llmMessage = widget.viewModel.provider.history.last;
-    if (llmMessage.text == null) {
+    // empty LLM message. A failed STT run in an empty chat has no bubble at
+    // all, so guard the lookup.
+    final llmMessage = widget.viewModel.provider.history.lastOrNull;
+    if (llmMessage != null &&
+        llmMessage.origin.isLlm &&
+        llmMessage.text == null) {
       llmMessage.append(
         error is LlmCancelException
             ? widget.cancelMessage
