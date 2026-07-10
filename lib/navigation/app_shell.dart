@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../ui/app_theme.dart';
 import '../ui/screens/chats_home.dart';
 import '../ui/widgets/side_panel_host.dart';
 
@@ -148,8 +149,9 @@ class _AppShellState extends State<AppShell> {
       );
 }
 
-/// The compact-width navigation drawer: the top-level destinations near the
-/// top, then the persistent conversations/channels list below them.
+/// The compact-width navigation drawer: the conversations/channels list
+/// fills the top, and the top-level destinations sit anchored to the bottom
+/// where a thumb can reach them.
 class _AppDrawer extends StatelessWidget {
   const _AppDrawer({
     required this.services,
@@ -168,31 +170,98 @@ class _AppDrawer extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 8),
-          for (final (index, destination)
-              in _AppShellState._destinations.indexed)
-            ListTile(
-              leading: Icon(
-                destination.icon,
-                fill: index == selectedIndex ? 1 : 0,
-              ),
-              title: Text(destination.label),
-              selected: index == selectedIndex,
-              onTap: () {
-                Scaffold.of(context).closeDrawer();
-                onDestinationSelected(index);
-              },
-            ),
-          const SizedBox(height: 8),
-          const Divider(),
           Expanded(
             child: ChatsListView(
               services: services,
               presentation: ChatsListPresentation.drawer,
             ),
           ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (index, destination)
+                    in _AppShellState._destinations.indexed)
+                  _DrawerDestination(
+                    icon: destination.icon,
+                    label: destination.label,
+                    selected: index == selectedIndex,
+                    onTap: () {
+                      Scaffold.of(context).closeDrawer();
+                      onDestinationSelected(index);
+                    },
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     ),
   );
+}
+
+/// A stadium-shaped destination tile for the drawer's bottom menu, matching
+/// the conversation tiles above it.
+class _DrawerDestination extends StatelessWidget {
+  const _DrawerDestination({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 2,
+      ),
+      child: Material(
+        shape: const StadiumBorder(),
+        color: selected ? scheme.secondaryContainer : Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 22,
+                  fill: selected ? 1 : 0,
+                  color: selected
+                      ? scheme.onSecondaryContainer
+                      : scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  label,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: selected
+                        ? scheme.onSecondaryContainer
+                        : scheme.onSurface,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

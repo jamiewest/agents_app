@@ -594,6 +594,23 @@ class _ChatsListViewState extends State<ChatsListView> {
     ),
   );
 
+  /// Explicit user toggles, kept for this list's lifetime: the page and
+  /// sidebar presentations stay mounted across navigation, while a freshly
+  /// opened drawer starts back at the collapsed defaults.
+  final Map<String, bool> _sectionExpanded = {};
+
+  /// Whether the section is open: an explicit user toggle wins, otherwise
+  /// sections start collapsed except the one holding the open conversation.
+  bool _isExpanded(String key, {required bool containsSelection}) =>
+      _sectionExpanded[key] ?? containsSelection;
+
+  void _toggleSection(String key, {required bool expanded}) =>
+      setState(() => _sectionExpanded[key] = !expanded);
+
+  /// Builds the grouped, collapsible list. Currently the only grouping is
+  /// channels / group chats / by-agent; future view types (e.g. all agents
+  /// grouped by date) become alternate section builders feeding the same
+  /// [_CollapsibleSection] widgets.
   List<Widget> _listChildren(
     BuildContext context,
     List<Channel> channels,
@@ -613,21 +630,70 @@ class _ChatsListViewState extends State<ChatsListView> {
       }
     }
     return [
-      if (channels.isNotEmpty) ...[
-        const _SectionHeader('Channels'),
-        for (final channel in channels) _channelTile(context, channel),
-      ],
-      if (groupChats.isNotEmpty) ...[
-        const _SectionHeader('Group chats'),
-        for (final conversation in groupChats)
-          _conversationTile(context, conversation),
-      ],
-      for (final entry in byAgent.entries) ...[
-        _SectionHeader(_agentsById[entry.key]?.name ?? 'Unknown agent'),
-        for (final conversation in entry.value)
-          _conversationTile(context, conversation),
-      ],
+      if (channels.isNotEmpty)
+        _section(
+          key: 'channels',
+          title: 'Channels',
+          count: channels.length,
+          containsSelection: false,
+          unread: false,
+          children: [
+            for (final channel in channels) _channelTile(context, channel),
+          ],
+        ),
+      if (groupChats.isNotEmpty)
+        _conversationSection(
+          context,
+          key: 'group-chats',
+          title: 'Group chats',
+          conversations: groupChats,
+        ),
+      for (final entry in byAgent.entries)
+        _conversationSection(
+          context,
+          key: 'agent:${entry.key}',
+          title: _agentsById[entry.key]?.name ?? 'Unknown agent',
+          conversations: entry.value,
+        ),
     ];
+  }
+
+  Widget _conversationSection(
+    BuildContext context, {
+    required String key,
+    required String title,
+    required List<Conversation> conversations,
+  }) => _section(
+    key: key,
+    title: title,
+    count: conversations.length,
+    containsSelection: conversations.any(
+      (conversation) => conversation.id == widget.selectedConversationId,
+    ),
+    unread: conversations.any((conversation) => conversation.hasUnread),
+    children: [
+      for (final conversation in conversations)
+        _conversationTile(context, conversation),
+    ],
+  );
+
+  Widget _section({
+    required String key,
+    required String title,
+    required int count,
+    required bool containsSelection,
+    required bool unread,
+    required List<Widget> children,
+  }) {
+    final expanded = _isExpanded(key, containsSelection: containsSelection);
+    return _CollapsibleSection(
+      title: title,
+      count: count,
+      unread: unread,
+      expanded: expanded,
+      onToggle: () => _toggleSection(key, expanded: expanded),
+      children: children,
+    );
   }
 
   Widget _buildEmptyState() => EmptyState(
@@ -1060,19 +1126,122 @@ class _EntryTile extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.title);
+/// A collapsible group in the conversations list: a tappable header with
+/// the section title, entry count, an unread dot while collapsed, and a
+/// rotating chevron, above the section's tiles.
+class _CollapsibleSection extends StatelessWidget {
+  const _CollapsibleSection({
+    required this.title,
+    required this.count,
+    required this.unread,
+    required this.expanded,
+    required this.onToggle,
+    required this.children,
+  });
 
   final String title;
+  final int count;
+
+  /// Whether the section holds unread conversations (surfaced on the header
+  /// only while collapsed, since open sections show the per-tile dots).
+  final bool unread;
+
+  final bool expanded;
+  final VoidCallback onToggle;
+  final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-    child: Text(
-      title,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-      ),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.sm,
+            AppSpacing.sm,
+            AppSpacing.sm,
+            1,
+          ),
+          child: Material(
+            shape: const StadiumBorder(),
+            color: Colors.transparent,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onToggle,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.sm,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: scheme.primary,
+                        ),
+                      ),
+                    ),
+                    if (unread && !expanded)
+                      Container(
+                        margin: const EdgeInsets.only(right: AppSpacing.sm),
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: scheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(AppShape.small),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    AnimatedRotation(
+                      turns: expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
+                      child: Icon(
+                        Symbols.keyboard_arrow_down,
+                        size: 20,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: expanded
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: children,
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
+    );
+  }
 }

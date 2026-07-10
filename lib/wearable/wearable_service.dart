@@ -285,6 +285,10 @@ class WearableService implements Disposable {
 
   /// The full offload flow: connect → clock sync → WiFi → pull → archive →
   /// ack → (async) transcribe + distill. Concurrent calls share one run.
+  ///
+  /// The BLE link drops during the pull — the device pauses BLE so WiFi can
+  /// own the radio (PROTOCOL.md §5.1) — and the transport reports
+  /// disconnected afterwards; the next command reconnects.
   Future<WearableSyncResult> syncNow() {
     final inFlight = _syncInFlight;
     if (inFlight != null) return inFlight;
@@ -303,8 +307,13 @@ class WearableService implements Disposable {
       // ip/token). Rebuild the session once and retry.
       if (!_isStaleEndpointError(e)) rethrow;
       _log('bulk transfer failed ($e); rejoining wifi…');
-      _endpoint = null;
+      // The device pauses BLE during the pull (PROTOCOL.md §5.1) and only
+      // resumes advertising within ~15s of HTTP going idle, so reconnect
+      // with headroom. This also re-reads the (possibly stale) endpoint
+      // characteristic into _endpoint — clear it after, not before.
+      await ensureConnected(timeout: const Duration(seconds: 30));
       await transport.sendCommand(CaptureCommands.wifiLeave());
+      _endpoint = null;
       return _pull(await _ensureEndpoint());
     }
   }

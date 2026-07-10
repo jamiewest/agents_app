@@ -61,13 +61,6 @@ class SettingsHomeScreen extends StatelessWidget {
                   onTap: () => context.go('/settings/agents'),
                 ),
                 ListTile(
-                  leading: const Icon(Symbols.person_add),
-                  title: const Text('Add agent'),
-                  subtitle: const Text('Guided setup for a new agent'),
-                  trailing: const Icon(Symbols.chevron_right),
-                  onTap: () => context.go('/settings/agents/add'),
-                ),
-                ListTile(
                   leading: const Icon(Symbols.wifi_tethering),
                   title: const Text('Share agents on the network'),
                   subtitle: const Text(
