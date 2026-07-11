@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:agents/agents.dart' show InMemoryAgentFileStore;
+import 'package:agents_app/data/app_activity_monitor.dart';
 import 'package:agents_app/data/usage_store.dart';
 import 'package:agents_app/domain/conversation.dart';
 import 'package:agents_app/ui/views/action_button.dart';
@@ -53,6 +54,7 @@ const testAgent = SavedAgentConfig(
 ServiceProvider buildTestServices(
   InMemoryRecordStore records, {
   ai.ChatClient? chatClient,
+  AppActivityMonitor? activityMonitor,
 }) {
   final services = ServiceCollection()
     ..addRecordStore(recordStore: (_) => records)
@@ -84,6 +86,9 @@ ServiceProvider buildTestServices(
         );
       },
     );
+  if (activityMonitor != null) {
+    services.tryAddSingleton<AppActivityMonitor>((_) => activityMonitor);
+  }
   return services.buildServiceProvider();
 }
 

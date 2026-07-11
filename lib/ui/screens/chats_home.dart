@@ -15,10 +15,13 @@ import '../../data/chat_transcript_store.dart';
 import '../../data/conversation_store.dart';
 import '../../data/usage_store.dart';
 import '../../domain/channel.dart';
+import '../../domain/chats_filter.dart';
 import '../../domain/conversation.dart';
 import '../../main.dart' show ChatScreen;
 import '../app_theme.dart';
 import '../widgets/app_sliver_header.dart';
+import '../widgets/chats_filter_bar.dart';
+import '../widgets/chats_filter_sheet.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/draggable_separator.dart';
 import '../widgets/empty_state.dart';
@@ -36,6 +39,7 @@ class ChatsScope extends InheritedWidget {
     required this.sidebarCollapsed,
     required this.onToggleSidebar,
     required super.child,
+    this.filters,
     super.key,
   });
 
@@ -50,6 +54,11 @@ class ChatsScope extends InheritedWidget {
   /// sidebar (compact widths).
   final VoidCallback? onToggleSidebar;
 
+  /// The shared search/filter/sort state for every [ChatsListView] in this
+  /// scope. Owned by [ChatsHome] so it survives sidebar collapse/restore
+  /// and navigation; null outside the chats shell.
+  final ChatsFilterController? filters;
+
   /// The nearest [ChatsScope], or null outside the chats branch.
   static ChatsScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ChatsScope>();
@@ -62,7 +71,8 @@ class ChatsScope extends InheritedWidget {
   bool updateShouldNotify(ChatsScope oldWidget) =>
       twoPane != oldWidget.twoPane ||
       sidebarCollapsed != oldWidget.sidebarCollapsed ||
-      onToggleSidebar != oldWidget.onToggleSidebar;
+      onToggleSidebar != oldWidget.onToggleSidebar ||
+      filters != oldWidget.filters;
 }
 
 /// The detail-pane button that opens/closes the conversations sidebar:
@@ -142,8 +152,15 @@ class ChatsHome extends StatefulWidget {
 
 class _ChatsHomeState extends State<ChatsHome> {
   final _drawerKey = GlobalKey<ScaffoldState>();
+  final ChatsFilterController _filters = ChatsFilterController();
   double _sidebarWidth = 300;
   bool _sidebarCollapsed = false;
+
+  @override
+  void dispose() {
+    _filters.dispose();
+    super.dispose();
+  }
 
   void _toggleSidebar() =>
       setState(() => _sidebarCollapsed = !_sidebarCollapsed);
@@ -173,6 +190,7 @@ class _ChatsHomeState extends State<ChatsHome> {
       final selectedId = _selectedConversationId(context);
       return ChatsScope(
         twoPane: twoPane,
+        filters: _filters,
         sidebarCollapsed: twoPane ? _sidebarCollapsed : true,
         onToggleSidebar: twoPane
             ? _toggleSidebar
@@ -325,13 +343,23 @@ class _ChatsListViewState extends State<ChatsListView> {
   late final ConfiguredAgentsManager _manager;
   late final Stream<List<Conversation>> _conversationStream;
   late final Stream<List<Channel>> _channelStream;
-  Map<String, SavedAgentConfig> _agentsById = const {};
+  AgentFilterIndex _index = AgentFilterIndex();
   bool _initialized = false;
-  StreamSubscription<String>? _agentChangesSub;
+  StreamSubscription<void>? _configurationChangesSub;
+
+  /// Search/filter/sort state: the shell-owned controller from [ChatsScope]
+  /// when available (so it outlives this widget), else a locally owned one.
+  late ChatsFilterController _filters;
+  ChatsFilterController? _attachedFilters;
+  ChatsFilterController? _ownedFilters;
+  final TextEditingController _searchController = TextEditingController();
+
+  Map<String, SavedAgentConfig> get _agentsById => _index.agentsById;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _attachFilters();
     if (_initialized) return;
     _initialized = true;
     final records = widget.services.getRequiredService<RecordStore>();
@@ -345,31 +373,69 @@ class _ChatsListViewState extends State<ChatsListView> {
     // while animating slot changes.
     _conversationStream = _conversations.watchAll().asBroadcastStream();
     _channelStream = _channels.watchAll().asBroadcastStream();
-    // Renames, additions, and deletions in Settings should show here without
-    // remounting the list.
-    _agentChangesSub = _manager.agentChanges.listen((_) => _loadAgents());
-    _loadAgents();
+    // Renames, additions, and deletions in Settings should show here
+    // without remounting the list; capability and provider filters also
+    // depend on model/source records, so listen to the general stream.
+    _configurationChangesSub = _manager.configurationChanges.listen(
+      (_) => _loadConfiguration(),
+    );
+    _loadConfiguration();
+  }
+
+  void _attachFilters() {
+    final resolved =
+        ChatsScope.maybeOf(context)?.filters ??
+        (_ownedFilters ??= ChatsFilterController());
+    if (identical(resolved, _attachedFilters)) return;
+    _attachedFilters?.removeListener(_onQueryChanged);
+    _attachedFilters = resolved;
+    _filters = resolved;
+    resolved.addListener(_onQueryChanged);
+    if (_searchController.text != resolved.query.searchText) {
+      _searchController.text = resolved.query.searchText;
+    }
+  }
+
+  void _onQueryChanged() {
+    if (!mounted) return;
+    setState(() {
+      // Leaving the filtered view drops the transient auto-expansion so the
+      // user's saved section choices come back untouched.
+      if (!_filters.query.isActive) _filteredSectionExpanded.clear();
+      if (_searchController.text != _filters.query.searchText) {
+        _searchController.text = _filters.query.searchText;
+      }
+    });
   }
 
   @override
   void dispose() {
-    _agentChangesSub?.cancel();
+    _configurationChangesSub?.cancel();
+    _attachedFilters?.removeListener(_onQueryChanged);
+    _ownedFilters?.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   bool _agentReloadScheduled = false;
 
-  Future<void> _loadAgents() async {
+  Future<void> _loadConfiguration() async {
     final agents = await _manager.agents.listAgents();
+    final models = await _manager.sources.listModels();
+    final sources = await _manager.sources.listSources();
     _agentReloadScheduled = false;
     if (!mounted) return;
     setState(() {
-      _agentsById = {for (final agent in agents) agent.id: agent};
+      _index = AgentFilterIndex(
+        agents: agents,
+        models: models,
+        sources: sources,
+      );
     });
   }
 
-  /// Reloads agent names when the list mentions an agent we have not seen
-  /// — e.g. one added in Settings after this screen was first built.
+  /// Reloads the configuration when the list mentions an agent we have not
+  /// seen — e.g. one added in Settings after this screen was first built.
   void _ensureAgentsFor(List<Conversation> conversations) {
     if (_agentReloadScheduled) return;
     final unknown = conversations.any(
@@ -377,13 +443,13 @@ class _ChatsListViewState extends State<ChatsListView> {
     );
     if (unknown) {
       _agentReloadScheduled = true;
-      Future<void>.microtask(_loadAgents);
+      Future<void>.microtask(_loadConfiguration);
     }
   }
 
   Future<void> _startNewChat() async {
     _closeDrawerIfHostedInOne();
-    await _loadAgents();
+    await _loadConfiguration();
     if (!mounted) return;
     final agents = _agentsById.values.toList();
     if (agents.isEmpty) {
@@ -521,9 +587,13 @@ class _ChatsListViewState extends State<ChatsListView> {
       onPressed: _startNewChat,
       child: const Icon(Symbols.add_comment),
     ),
-    body: _buildStreamed(
-      context,
-      (channels, conversations) => CustomScrollView(
+    body: _buildStreamed(context, (channels, conversations) {
+      final hasData =
+          channels.isNotEmpty || (conversations?.isNotEmpty ?? false);
+      final filtered = conversations == null
+          ? null
+          : _applyQuery(channels, conversations);
+      return CustomScrollView(
         slivers: [
           AppSliverHeader(
             title: 'Chats',
@@ -535,24 +605,48 @@ class _ChatsListViewState extends State<ChatsListView> {
               ),
             ],
           ),
+          if (conversations != null && hasData)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xs,
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                ),
+                child: _buildFilterBar(context),
+              ),
+            ),
           if (conversations == null)
             const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(child: CircularProgressIndicator()),
             )
-          else if (conversations.isEmpty && channels.isEmpty)
+          else if (!hasData)
             SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState())
+          else if (filtered!.channels.isEmpty && filtered.conversations.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _buildNoMatchesState(context),
+            )
           else
             SliverList.list(
-              children: _listChildren(context, channels, conversations),
+              children: _listChildren(
+                context,
+                filtered.channels,
+                filtered.conversations,
+              ),
             ),
         ],
-      ),
-    ),
+      );
+    }),
   );
 
   /// The persistent, branded sidebar shown beside the chat on wide layouts.
-  Widget _buildSidebar(BuildContext context) => ColoredBox(
+  ///
+  /// A [Material] (not a plain [ColoredBox]) because the search field needs
+  /// a material ancestor even when the sidebar sits outside any Scaffold.
+  Widget _buildSidebar(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surfaceContainerLow,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -575,15 +669,84 @@ class _ChatsListViewState extends State<ChatsListView> {
                 ),
               );
             }
-            return ListView(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-              children: _listChildren(context, channels, conversations),
+            final filtered = _applyQuery(channels, conversations);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.xs,
+                    AppSpacing.lg,
+                    AppSpacing.sm,
+                  ),
+                  child: _buildFilterBar(context),
+                ),
+                Expanded(
+                  child:
+                      filtered.channels.isEmpty &&
+                          filtered.conversations.isEmpty
+                      ? _buildNoMatchesState(context)
+                      : ListView(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppSpacing.xs,
+                          ),
+                          children: _listChildren(
+                            context,
+                            filtered.channels,
+                            filtered.conversations,
+                          ),
+                        ),
+                ),
+              ],
             );
           }),
         ),
       ],
     ),
   );
+
+  Widget _buildFilterBar(BuildContext context) => ChatsFilterBar(
+    searchController: _searchController,
+    query: _filters.query,
+    agentNameOf: (agentId) => _agentsById[agentId]?.name ?? 'Unknown agent',
+    onQueryChanged: (query) => _filters.query = query,
+    onOpenFilters: _openFilterSheet,
+  );
+
+  Future<void> _openFilterSheet() async {
+    final agents = _agentsById.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final result = await showChatsFilterSheet(
+      context,
+      query: _filters.query,
+      agents: agents,
+    );
+    if (result != null) _filters.query = result;
+  }
+
+  /// Applies the active query; a pass-through when nothing is active.
+  ({List<Channel> channels, List<Conversation> conversations}) _applyQuery(
+    List<Channel> channels,
+    List<Conversation> conversations,
+  ) {
+    final query = _filters.query;
+    if (!query.isActive) {
+      return (channels: channels, conversations: conversations);
+    }
+    final now = DateTime.now();
+    return (
+      channels: [
+        for (final channel in channels)
+          if (channelMatchesQuery(channel, query, _index, now: now)) channel,
+      ],
+      conversations: [
+        for (final conversation in conversations)
+          if (conversationMatchesQuery(conversation, query, _index, now: now))
+            conversation,
+      ],
+    );
+  }
 
   /// Subscribes to the channel and conversation streams and hands the
   /// latest snapshot (conversations `null` until first loaded) to [builder].
@@ -609,13 +772,27 @@ class _ChatsListViewState extends State<ChatsListView> {
   /// opened drawer starts back at the collapsed defaults.
   final Map<String, bool> _sectionExpanded = {};
 
-  /// Whether the section is open: an explicit user toggle wins, otherwise
-  /// sections start collapsed except the one holding the open conversation.
-  bool _isExpanded(String key, {required bool containsSelection}) =>
-      _sectionExpanded[key] ?? containsSelection;
+  /// Toggles made while a search/filter is active. Kept apart from
+  /// [_sectionExpanded] so auto-expanding matches never overwrites the
+  /// user's saved choices; cleared when the query goes inactive.
+  final Map<String, bool> _filteredSectionExpanded = {};
 
-  void _toggleSection(String key, {required bool expanded}) =>
-      setState(() => _sectionExpanded[key] = !expanded);
+  /// Whether the section is open. While a query is active, sections with
+  /// matches auto-expand (transient toggles still win); otherwise an
+  /// explicit user toggle wins and sections start collapsed except the one
+  /// holding the open conversation.
+  bool _isExpanded(String key, {required bool containsSelection}) {
+    if (_filters.query.isActive) return _filteredSectionExpanded[key] ?? true;
+    return _sectionExpanded[key] ?? containsSelection;
+  }
+
+  void _toggleSection(String key, {required bool expanded}) => setState(() {
+    if (_filters.query.isActive) {
+      _filteredSectionExpanded[key] = !expanded;
+    } else {
+      _sectionExpanded[key] = !expanded;
+    }
+  });
 
   /// Builds the grouped, collapsible list. Currently the only grouping is
   /// channels / group chats / by-agent; future view types (e.g. all agents
@@ -626,9 +803,8 @@ class _ChatsListViewState extends State<ChatsListView> {
     List<Channel> channels,
     List<Conversation> conversations,
   ) {
+    final order = _filters.query.sortOrder;
     final groupChats = <Conversation>[];
-    // Conversations arrive newest first, so first-seen insertion order puts
-    // the most recently active agent's section on top.
     final byAgent = <String, List<Conversation>>{};
     for (final conversation in conversations) {
       if (conversation.kind == ConversationKind.group) {
@@ -639,31 +815,38 @@ class _ChatsListViewState extends State<ChatsListView> {
             .add(conversation);
       }
     }
+    final sortedChannels = sortChannels(channels, order);
+    final sortedGroups = sortGroupConversations(groupChats, order, _index);
     return [
-      if (channels.isNotEmpty)
+      if (sortedChannels.isNotEmpty)
         _section(
           key: 'channels',
           title: 'Channels',
-          count: channels.length,
+          count: sortedChannels.length,
           containsSelection: false,
           unread: false,
           children: [
-            for (final channel in channels) _channelTile(context, channel),
+            for (final channel in sortedChannels)
+              _channelTile(context, channel),
           ],
         ),
-      if (groupChats.isNotEmpty)
+      if (sortedGroups.isNotEmpty)
         _conversationSection(
           context,
           key: 'group-chats',
           title: 'Group chats',
-          conversations: groupChats,
+          conversations: sortedGroups,
         ),
-      for (final entry in byAgent.entries)
+      for (final agentId in orderAgentSections(byAgent, order, _index))
         _conversationSection(
           context,
-          key: 'agent:${entry.key}',
-          title: _agentsById[entry.key]?.name ?? 'Unknown agent',
-          conversations: entry.value,
+          key: 'agent:$agentId',
+          title: _agentsById[agentId]?.name ?? 'Unknown agent',
+          conversations: sortSectionConversations(
+            byAgent[agentId]!,
+            order,
+            _index,
+          ),
         ),
     ];
   }
@@ -715,6 +898,47 @@ class _ChatsListViewState extends State<ChatsListView> {
     actionLabel: 'New chat',
     onAction: _startNewChat,
   );
+
+  /// Shown when conversations exist but none survive the active query.
+  Widget _buildNoMatchesState(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Symbols.search_off,
+              size: 40,
+              color: theme.colorScheme.outline,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'No matching conversations',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Try different search terms or remove some filters.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            OutlinedButton(
+              onPressed: () => _filters.query = ChatsQuery(
+                sortOrder: _filters.query.sortOrder,
+              ),
+              child: const Text('Clear search and filters'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _renameConversation(Conversation conversation) async {
     final title = await showRenameDialog(

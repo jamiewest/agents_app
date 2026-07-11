@@ -348,31 +348,53 @@ Future<void> _until(bool Function() condition) async {
   }
 }
 
-/// An echo client whose streaming calls can be held open (to observe run
+/// An echo client whose model calls can be held open (to observe run
 /// concurrency) or made to fail.
+///
+/// Both entry points are gated identically: the A2A handler may drive the
+/// hosted agent through either, and the run-slot guarantee must hold for
+/// whichever one carries the inference.
 final class _GatedChatClient extends ai.ChatClient {
-  /// While set, streaming calls wait on this before answering.
+  /// While set, model calls wait on this before answering.
   Completer<void>? gate;
 
-  /// Fails the next streaming call when true.
+  /// Fails the next model call when true.
   bool failNextStream = false;
 
-  /// Streaming calls currently inside the model.
+  /// Model calls currently in flight.
   int active = 0;
 
   /// The largest [active] ever observed.
   int maxActive = 0;
+
+  Future<void> _enter() async {
+    active++;
+    maxActive = math.max(maxActive, active);
+    if (failNextStream) {
+      failNextStream = false;
+      throw StateError('scripted model failure');
+    }
+    final pending = gate;
+    if (pending != null) await pending.future;
+  }
 
   @override
   Future<ai.ChatResponse> getResponse({
     required Iterable<ai.ChatMessage> messages,
     ai.ChatOptions? options,
     CancellationToken? cancellationToken,
-  }) async => ai.ChatResponse(
-    messages: <ai.ChatMessage>[
-      ai.ChatMessage.fromText(ai.ChatRole.assistant, 'ok'),
-    ],
-  );
+  }) async {
+    try {
+      await _enter();
+      return ai.ChatResponse(
+        messages: <ai.ChatMessage>[
+          ai.ChatMessage.fromText(ai.ChatRole.assistant, 'ok'),
+        ],
+      );
+    } finally {
+      active--;
+    }
+  }
 
   @override
   Stream<ai.ChatResponseUpdate> getStreamingResponse({
@@ -380,15 +402,8 @@ final class _GatedChatClient extends ai.ChatClient {
     ai.ChatOptions? options,
     CancellationToken? cancellationToken,
   }) async* {
-    active++;
-    maxActive = math.max(maxActive, active);
     try {
-      if (failNextStream) {
-        failNextStream = false;
-        throw StateError('scripted stream failure');
-      }
-      final pending = gate;
-      if (pending != null) await pending.future;
+      await _enter();
       yield ai.ChatResponseUpdate.fromText(ai.ChatRole.assistant, 'ok');
     } finally {
       active--;

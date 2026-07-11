@@ -1,3 +1,4 @@
+import 'package:agents_app/data/app_activity_monitor.dart';
 import 'package:agents_app/data/chat_transcript_store.dart';
 import 'package:agents_app/data/conversation_store.dart';
 import 'package:agents_app/domain/agent_task.dart' show taskPromptAuthorName;
@@ -332,6 +333,53 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byTooltip('Conversation actions'), findsNothing);
+    });
+
+    testWidgets('a reloaded agent still brackets the idle monitor', (
+      tester,
+    ) async {
+      final records = InMemoryRecordStore();
+      final monitor = AppActivityMonitor();
+      final services = buildTestServices(
+        records,
+        chatClient: BlockingChatClient(),
+        activityMonitor: monitor,
+      );
+      await seedTestAgent(services);
+      final manager = services.getRequiredService<ConfiguredAgentsManager>();
+
+      await tester.pumpWidget(
+        MaterialApp(home: ChatScreen(agent: testAgent, services: services)),
+      );
+      await tester.pumpAndSettle();
+
+      // Edit the agent so the chat swaps in a rebuilt provider.
+      await tester.runAsync(
+        () => manager.saveAgent(
+          testAgent.copyWith(instructions: 'You are a pirate.'),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pumpAndSettle();
+
+      // A turn on the replacement provider must raise the app-wide
+      // inference signal; without it, background work (e.g. the title
+      // summarizer) could run mid-generation after any reload.
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.pump();
+      await tester.tap(findSubmitButton());
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+
+      expect(monitor.isInferenceInFlight, isTrue);
+
+      // Unmount while the scripted model never answers; the pending bubble
+      // animation would otherwise outlive the test.
+      await tester.pumpWidget(const SizedBox.shrink());
     });
   });
 }

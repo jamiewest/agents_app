@@ -282,6 +282,37 @@ void main() {
       expect(newerTop, lessThan(olderTop));
     });
 
+    testWidgets('an agent rename updates the list without remounting', (
+      tester,
+    ) async {
+      final records = InMemoryRecordStore();
+      final services = buildTestServices(records);
+      await seedTestAgent(services);
+      final store = ConversationStore(records);
+      await store.save(
+        testConversation(
+          id: 'c1',
+          title: 'Some chat',
+          updatedAt: DateTime.utc(2026, 6, 30, 9),
+        ),
+      );
+
+      await tester.pumpWidget(_host(_buildRouter(services)));
+      await tester.pumpAndSettle();
+      expect(find.text('Test Agent'), findsOneWidget);
+
+      // Rename in Settings; the visible list must follow via agentChanges,
+      // not a remount.
+      final manager = services.getRequiredService<ConfiguredAgentsManager>();
+      await tester.runAsync(
+        () => manager.saveAgent(testAgent.copyWith(name: 'Renamed Agent')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Renamed Agent'), findsOneWidget);
+      expect(find.text('Test Agent'), findsNothing);
+    });
+
     testWidgets('renames a conversation from the tile menu', (tester) async {
       final records = InMemoryRecordStore();
       final services = buildTestServices(records);
