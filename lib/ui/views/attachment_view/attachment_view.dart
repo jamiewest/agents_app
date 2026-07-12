@@ -12,8 +12,9 @@ import 'link_attachment_view.dart';
 /// A widget that displays an attachment based on its type.
 ///
 /// This widget determines the appropriate view for the given [attachment]
-/// and renders it accordingly. It supports file attachments and image
-/// attachments, but throws an exception for link attachments.
+/// and renders it accordingly. Image content — byte-backed image files and
+/// links with an `image/` MIME type — renders as an image; other files and
+/// links render as file and link previews.
 @immutable
 class AttachmentView extends StatelessWidget {
   /// Creates an AttachmentView.
@@ -29,6 +30,7 @@ class AttachmentView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => switch (attachment) {
     (final ImageFileAttachment a) => ImageAttachmentView(a),
+    (final LinkAttachment a) when a.isImage => ImageAttachmentView(a),
     (final FileAttachment a) => FileAttachmentView(a),
     (final LinkAttachment a) => LinkAttachmentView(a),
   };

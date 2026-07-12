@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../chat_view_model/chat_view_model_client.dart';
 import '../../providers/interface/chat_message.dart';
 import '../../styles/llm_chat_view_style.dart';
+import '../attachment_view/image_attachment_view.dart';
 import '../jumping_dots_progress_indicator/jumping_dots_progress_indicator.dart';
 import 'adaptive_copy_text.dart';
 import 'hovering_buttons.dart';
@@ -40,6 +41,11 @@ class LlmMessageView extends StatelessWidget {
         ChatViewModelClient(
           builder: (context, viewModel, child) {
             final text = message.text;
+            final images = message.attachments
+                .where((attachment) => attachment.isImage)
+                .toList();
+            final hasImages = images.isNotEmpty;
+            final hasText = text != null && text.isNotEmpty;
             final chatStyle = LlmChatViewStyle.resolveFor(
               context,
               viewModel.style,
@@ -83,7 +89,52 @@ class LlmMessageView extends StatelessWidget {
                             decoration: llmStyle.decoration,
                             margin: const EdgeInsets.only(left: 40),
                             padding: llmStyle.padding,
-                            child: text == null
+                            child: hasImages || hasText
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      for (var i = 0; i < images.length; i++)
+                                        Padding(
+                                          padding: EdgeInsets.only(
+                                            top: i == 0 ? 0 : 8,
+                                          ),
+                                          child: ImageAttachmentView(images[i]),
+                                        ),
+                                      if (hasText)
+                                        Padding(
+                                          padding: EdgeInsets.only(
+                                            top: hasImages ? 12 : 0,
+                                          ),
+                                          child: AdaptiveCopyText(
+                                            clipboardText: text,
+                                            chatStyle: chatStyle,
+                                            chatStrings: chatString,
+                                            child:
+                                                viewModel.responseBuilder ==
+                                                    null
+                                                ? MarkdownBody(
+                                                    data: text,
+                                                    selectable: false,
+                                                    styleSheet:
+                                                        llmStyle.markdownStyle,
+                                                    onTapLink: (_, href, _) {
+                                                      if (href != null) {
+                                                        launchUrl(
+                                                          Uri.parse(href),
+                                                        );
+                                                      }
+                                                    },
+                                                  )
+                                                : viewModel.responseBuilder!(
+                                                    context,
+                                                    text,
+                                                  ),
+                                          ),
+                                        ),
+                                    ],
+                                  )
+                                : message.isGenerating
                                 ? SizedBox(
                                     width: 32,
                                     child: JumpingDotsProgressIndicator(
@@ -91,26 +142,7 @@ class LlmMessageView extends StatelessWidget {
                                       color: chatStyle.progressIndicatorColor!,
                                     ),
                                   )
-                                : AdaptiveCopyText(
-                                    clipboardText: text,
-                                    chatStyle: chatStyle,
-                                    chatStrings: chatString,
-                                    child: viewModel.responseBuilder == null
-                                        ? MarkdownBody(
-                                            data: text,
-                                            selectable: false,
-                                            styleSheet: llmStyle.markdownStyle,
-                                            onTapLink: (_, href, _) {
-                                              if (href != null) {
-                                                launchUrl(Uri.parse(href));
-                                              }
-                                            },
-                                          )
-                                        : viewModel.responseBuilder!(
-                                            context,
-                                            text,
-                                          ),
-                                  ),
+                                : const SizedBox.shrink(),
                           ),
                         ),
                         if (message.isGenerating)

@@ -20,6 +20,17 @@ sealed class Attachment {
   /// The name of the attachment.
   final String name;
 
+  /// Whether this attachment holds displayable image content.
+  ///
+  /// True for [ImageFileAttachment]s and for [LinkAttachment]s whose supplied
+  /// or inferred MIME type is an `image/` type; false for ordinary files and
+  /// links.
+  bool get isImage => switch (this) {
+    ImageFileAttachment() => true,
+    FileAttachment() => false,
+    LinkAttachment(:final mimeType) => Attachment._isImage(mimeType),
+  };
+
   static String _mimeType(XFile file) =>
       file.mimeType ?? lookupMimeType(file.name) ?? 'application/octet-stream';
 
