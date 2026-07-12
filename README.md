@@ -7,9 +7,18 @@ optional capture wearable.
 ## Setup
 
 ```sh
-cd packages/agents_app
 flutter pub get
 flutter run            # pick a device: macOS, iOS, Android, or Chrome
+```
+
+Committed dependencies use immutable Git revisions. To develop against sibling
+checkouts, copy `pubspec_overrides.yaml.example` to `pubspec_overrides.yaml`.
+
+Before the first iOS or macOS build, install the checksummed llama.cpp
+framework release:
+
+```sh
+dart run tool/bootstrap_llama.dart
 ```
 
 On first launch the onboarding flow walks through adding an agent — either an
@@ -84,6 +93,7 @@ flutter analyze                 # static analysis
 dart format lib test            # format
 ```
 
-The repo is a Dart workspace; see the root `CLAUDE.md` and `packages.md` for
-monorepo-wide conventions. `packages/agents` mirrors the upstream C#
-Microsoft Agents framework — don't restructure it from here.
+The reusable framework packages are maintained in
+[`jamiewest/agents`](https://github.com/jamiewest/agents), while local GGUF
+inference is maintained in
+[`jamiewest/agents_llama`](https://github.com/jamiewest/agents_llama).

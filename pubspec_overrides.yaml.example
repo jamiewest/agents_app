@@ -1,0 +1,9 @@
+dependency_overrides:
+  agents:
+    path: ../agents/packages/agents
+  agents_flutter:
+    path: ../agents/packages/agents_flutter
+  agents_llama:
+    path: ../agents_llama/packages/agents_llama
+  llama_flutter:
+    path: ../agents_llama/packages/llama_flutter
