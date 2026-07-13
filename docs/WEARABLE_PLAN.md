@@ -36,7 +36,7 @@ agents as tools — the agent's "eyes and ears".
     so it stays out of scope.
 - **Image analysis:** existing local multimodal path (Gemma + mmproj presets
   via `agents_llama`). No new vision stack.
-- **Repo bounds:** all Flutter-side code lives in `packages/agents_app/`
+- **Repo bounds:** all Flutter-side code lives in this repository
   (including the Apple Speech Swift bridge in `ios/`/`macos/` Runner). The
   `agents`, `agents_flutter`, `agents_llama`, and `llama_flutter` packages
   are used through their public APIs only.
@@ -46,7 +46,7 @@ agents as tools — the agent's "eyes and ears".
 ## App-side layout
 
 ```
-packages/agents_app/lib/wearable/
+lib/wearable/
   protocol/    Pure Dart: status/manifest/control models, framing, CRC,
                time-sync math. Zero Flutter/BLE imports. All unit tests
                live here, against byte/JSON fixtures.
