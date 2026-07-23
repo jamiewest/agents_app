@@ -1,8 +1,7 @@
 # agents_app
 
 The Flutter app built on `agents_flutter`: multi-agent chat with cloud and
-fully local models, scheduled agent tasks, LAN agent sharing (A2A), and an
-optional capture wearable.
+fully local models, scheduled agent tasks, and LAN agent sharing (A2A).
 
 ## Setup
 
@@ -30,7 +29,7 @@ runs on-device via llama.cpp.
 | Platform | Notes |
 |---|---|
 | macOS / iOS / Android | Full feature set. |
-| Web (Chrome) | Chat and providers work (local inference uses wllama and needs cross-origin isolation). No LAN hosting, no wearable — both need sockets/BLE the browser doesn't expose. |
+| Web (Chrome) | Chat and providers work (local inference uses wllama and needs cross-origin isolation). No LAN hosting — it needs sockets the browser doesn't expose. |
 
 Typography (Outfit 400/500/600/700) is bundled under `assets/google_fonts/`,
 so startup looks identical offline; runtime font fetching is disabled in
@@ -68,12 +67,6 @@ host). Traffic is plain HTTP on the local network — share only on networks
 you trust. Inbound runs queue one at a time so a busy host serves peers in
 order.
 
-## Wearable (native only)
-
-Settings → Wearable device pairs the XIAO ESP32S3 capture wearable over BLE
-and syncs audio/images into agent memory. The entry is hidden on web, where
-BLE is unavailable. See `docs/WEARABLE_PLAN.md` for the device plan.
-
 ## Privacy
 
 - **Prompt logs** (Settings → Logs & diagnostics) record every request sent
@@ -88,7 +81,6 @@ BLE is unavailable. See `docs/WEARABLE_PLAN.md` for the device plan.
 ```sh
 flutter test                    # run all tests
 flutter test test/<file>.dart  # one file
-flutter test --platform chrome test/settings_wearable_visibility_test.dart
 flutter analyze                 # static analysis
 dart format lib test            # format
 ```
@@ -96,4 +88,4 @@ dart format lib test            # format
 The reusable framework packages are maintained in
 [`jamiewest/agents`](https://github.com/jamiewest/agents), while local GGUF
 inference is maintained in
-[`jamiewest/agents_llama`](https://github.com/jamiewest/agents_llama).
+[`jamiewest/llama_cpp_flutter`](https://github.com/jamiewest/llama_cpp_flutter).

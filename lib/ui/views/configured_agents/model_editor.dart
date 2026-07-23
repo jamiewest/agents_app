@@ -5,7 +5,7 @@
 import 'dart:async';
 
 import 'package:agents_flutter/agents_flutter.dart';
-import 'package:agents_llama/agents_llama.dart' as llama;
+import 'package:llama_cpp_flutter/llama_cpp_flutter.dart' as llama;
 import 'package:file_selector/file_selector.dart' as file_selector;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';

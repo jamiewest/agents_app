@@ -9,7 +9,8 @@ import 'package:agents/agents.dart'
         ChatHistoryMemoryProviderScope,
         ChatHistoryMemoryProviderState;
 import 'package:agents_flutter/agents_flutter.dart';
-import 'package:agents_llama/agents_llama.dart' as llama;
+import 'package:llama_cpp_flutter/chat.dart' as llama;
+import 'package:llama_cpp_flutter/llama_cpp_flutter.dart' as llama;
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/foundation.dart';
@@ -53,8 +54,6 @@ import 'ui/widgets/conversation_actions.dart';
 import 'ui/widgets/side_panel_host.dart';
 import 'ui/widgets/prompt_inspector_panel.dart';
 import 'ui/widgets/usage_stats_sheet.dart';
-import 'wearable/tools/capture_device_provider.dart';
-import 'wearable/wearable_service.dart';
 
 // Optional seed values so the demo can start with a working Anthropic agent.
 // Supply them as compile-time defines, e.g.
@@ -140,20 +139,6 @@ final _builder = Host.createApplicationBuilder()
         manager: sp.getRequiredService<ConfiguredAgentsManager>(),
       ),
     );
-    // The wearable capture device (XIAO ESP32S3 Sense): one shared owner of
-    // the BLE transport + offload pipeline, used by both the device screen
-    // and the agent tools. Native (BLE + platform speech) only.
-    if (!kIsWeb) {
-      flutter.services.tryAddSingleton<WearableService>(
-        (sp) => WearableService(
-          records: sp.getRequiredService<RecordStore>(),
-          scorer: sp.getRequiredService<EmbeddingSettings>(),
-          agents: sp.getRequiredService<ConfiguredAgentsManager>().agents,
-          factory: sp.getRequiredService<ConfiguredAgentFactory>(),
-          settings: sp.getRequiredService<KeyValueStore>(),
-        ),
-      );
-    }
     flutter.useFlutterHarnessAgent();
     flutter.useConfiguredAgents(
       // One summary log record per agent run (request in, response out) in
@@ -205,18 +190,6 @@ final _builder = Host.createApplicationBuilder()
           records,
           namespace: '$namespace#memory',
         );
-
-        // The wearable device tools (memory recall, status, capture, sync)
-        // are app-wide capabilities; the provider contributes nothing when
-        // the user turns agent access off. Registered before chat memory so
-        // its stable instructions sit high in the cached prompt prefix.
-        final wearable = sp.getService<WearableService>();
-        if (wearable != null) {
-          options.aiContextProviders = [
-            ...?options.aiContextProviders,
-            CaptureDeviceProvider(wearable),
-          ];
-        }
 
         // Long-term memory: whole-conversation recall through the vector
         // store, scoped so agents never see each other's memories.

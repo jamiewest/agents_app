@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:agents_llama/agents_llama.dart' as llama;
+import 'package:llama_cpp_flutter/llama_cpp_flutter.dart' as llama;
 
 /// Owns the single local llama model that may be resident at one time.
 ///

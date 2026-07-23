@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:agents_flutter/agents_flutter.dart';
-import 'package:agents_llama/agents_llama.dart'
+import 'package:llama_cpp_flutter/chat.dart'
     show PromptInspector, PromptSnapshot;
 import 'package:extensions/ai.dart';
 import 'package:extensions/system.dart';

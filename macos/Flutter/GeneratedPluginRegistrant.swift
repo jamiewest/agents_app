@@ -9,11 +9,10 @@ import camera_macos
 import connectivity_plus
 import device_info_plus
 import file_selector_macos
-import flutter_blue_plus_darwin
 import flutter_secure_storage_darwin
 import flutter_timezone
 import geolocator_apple
-import llama_flutter
+import llama_cpp_flutter
 import mobile_scanner
 import network_info_plus
 import package_info_plus
@@ -28,11 +27,10 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   ConnectivityPlusPlugin.register(with: registry.registrar(forPlugin: "ConnectivityPlusPlugin"))
   DeviceInfoPlusMacosPlugin.register(with: registry.registrar(forPlugin: "DeviceInfoPlusMacosPlugin"))
   FileSelectorPlugin.register(with: registry.registrar(forPlugin: "FileSelectorPlugin"))
-  FlutterBluePlusPlugin.register(with: registry.registrar(forPlugin: "FlutterBluePlusPlugin"))
   FlutterSecureStorageDarwinPlugin.register(with: registry.registrar(forPlugin: "FlutterSecureStorageDarwinPlugin"))
   FlutterTimezonePlugin.register(with: registry.registrar(forPlugin: "FlutterTimezonePlugin"))
   GeolocatorPlugin.register(with: registry.registrar(forPlugin: "GeolocatorPlugin"))
-  LlamaFlutterPlugin.register(with: registry.registrar(forPlugin: "LlamaFlutterPlugin"))
+  LlamaCppFlutterPlugin.register(with: registry.registrar(forPlugin: "LlamaCppFlutterPlugin"))
   MobileScannerPlugin.register(with: registry.registrar(forPlugin: "MobileScannerPlugin"))
   NetworkInfoPlusPlugin.register(with: registry.registrar(forPlugin: "NetworkInfoPlusPlugin"))
   FPPPackageInfoPlusPlugin.register(with: registry.registrar(forPlugin: "FPPPackageInfoPlusPlugin"))

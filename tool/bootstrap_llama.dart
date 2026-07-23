@@ -10,7 +10,9 @@ Future<void> main() async {
 
   final packageConfig = File('.dart_tool/package_config.json');
   if (!packageConfig.existsSync()) {
-    stderr.writeln('Run flutter pub get before bootstrapping llama_flutter.');
+    stderr.writeln(
+      'Run flutter pub get before bootstrapping llama_cpp_flutter.',
+    );
     exitCode = 66;
     return;
   }
@@ -18,10 +20,10 @@ Future<void> main() async {
   final config = jsonDecode(await packageConfig.readAsString());
   final packages = config['packages'] as List<Object?>;
   final llama = packages.cast<Map<String, Object?>>().where(
-    (package) => package['name'] == 'llama_flutter',
+    (package) => package['name'] == 'llama_cpp_flutter',
   );
   if (llama.isEmpty) {
-    stderr.writeln('llama_flutter is missing from package_config.json.');
+    stderr.writeln('llama_cpp_flutter is missing from package_config.json.');
     exitCode = 69;
     return;
   }

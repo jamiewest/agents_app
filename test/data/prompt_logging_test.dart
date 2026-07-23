@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:agents_app/data/prompt_log.dart';
 import 'package:agents_app/data/prompt_logging.dart';
 import 'package:agents_flutter/agents_flutter.dart';
-import 'package:agents_llama/agents_llama.dart' show PromptSnapshot;
+import 'package:llama_cpp_flutter/chat.dart' show PromptSnapshot;
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/system.dart' show CancellationToken;
 import 'package:flutter_test/flutter_test.dart';

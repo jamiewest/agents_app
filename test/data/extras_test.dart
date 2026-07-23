@@ -1,7 +1,8 @@
 import 'package:agents_app/data/local_model_presets.dart';
 import 'package:agents_app/data/thinking_settings.dart';
 import 'package:agents_flutter/agents_flutter.dart';
-import 'package:agents_llama/agents_llama.dart' show supportedChatFormatNames;
+import 'package:llama_cpp_flutter/llama_cpp_flutter.dart'
+    show supportedChatFormatNames;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

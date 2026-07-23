@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:agents_app/data/local_llama_model_host.dart';
-import 'package:agents_llama/agents_llama.dart' as llama;
+import 'package:llama_cpp_flutter/llama_cpp_flutter.dart' as llama;
 import 'package:flutter_test/flutter_test.dart';
 
 /// A session that records whether it was disposed.
@@ -22,11 +22,46 @@ class _FakeSession implements llama.LlamaSession {
     List<String> stopSequences = const <String>[],
     List<Uint8List>? media,
     List<llama.LlamaChatTurn>? turns,
+    int sequenceId = 0,
     llama.LlamaStatsCallback? onStats,
   }) => const Stream<String>.empty();
 
   @override
   Future<void> cancel() async {}
+
+  @override
+  llama.LlamaSessionCapabilities get capabilities =>
+      const llama.LlamaSessionCapabilities(
+        canPersistState: false,
+        reportsStateSize: false,
+      );
+
+  @override
+  Future<int> saveState(String path, {int sequenceId = 0}) async => 0;
+
+  @override
+  Future<int> loadState(String path, {int sequenceId = 0}) async => 0;
+
+  @override
+  Future<int> stateSizeBytes({int sequenceId = 0}) async => 0;
+
+  @override
+  Future<llama.LlamaStashResult> stashState(
+    String key, {
+    int sequenceId = 0,
+  }) async => (tokens: 0, bytes: 0);
+
+  @override
+  Future<int> restoreStashedState(String key, {int sequenceId = 0}) async => 0;
+
+  @override
+  Future<int> dropStashedState(String key) async => 0;
+
+  @override
+  Future<void> clearSequence(int sequenceId) async {}
+
+  @override
+  Future<void> setImageTokenBudget(int? imageTokenBudget) async {}
 
   @override
   Future<void> dispose() async => disposed = true;

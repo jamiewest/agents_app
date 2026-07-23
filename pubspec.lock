@@ -12,28 +12,18 @@ packages:
   agents:
     dependency: "direct main"
     description:
-      path: "packages/agents"
-      ref: "0ca5dd079e42294687c23003a4795d365ca79ea7"
-      resolved-ref: "0ca5dd079e42294687c23003a4795d365ca79ea7"
-      url: "https://github.com/jamiewest/agents.git"
-    source: git
-    version: "1.4.0"
+      name: agents
+      sha256: "9cb0e4403ad6977909515553d65ab8c23f9ae598a04ccc69bca9f420e1002fa7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.5.0"
   agents_flutter:
     dependency: "direct main"
     description:
       path: "packages/agents_flutter"
-      ref: "0ca5dd079e42294687c23003a4795d365ca79ea7"
-      resolved-ref: "0ca5dd079e42294687c23003a4795d365ca79ea7"
+      ref: "65111a0e61e5f02f41a61a50a04d1baab4ac167c"
+      resolved-ref: "65111a0e61e5f02f41a61a50a04d1baab4ac167c"
       url: "https://github.com/jamiewest/agents.git"
-    source: git
-    version: "0.0.1"
-  agents_llama:
-    dependency: "direct main"
-    description:
-      path: "packages/agents_llama"
-      ref: "4f8dde66136e83c3259fc7ccc427cf344b4e3a27"
-      resolved-ref: "4f8dde66136e83c3259fc7ccc427cf344b4e3a27"
-      url: "https://github.com/jamiewest/agents_llama.git"
     source: git
     version: "0.0.1"
   animations:
@@ -92,14 +82,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "9.5.6"
-  bluez:
-    dependency: transitive
-    description:
-      name: bluez
-      sha256: "61a7204381925896a374301498f2f5399e59827c6498ae1e924aaa598751b545"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.8.3"
   boolean_selector:
     dependency: transitive
     description:
@@ -433,62 +415,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutter_blue_plus:
-    dependency: "direct main"
-    description:
-      name: flutter_blue_plus
-      sha256: "8b2e2f5870539e2d2a8a6473557455b990b87bc0cd86e7224bb3e20ee2eb00df"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.3.10"
-  flutter_blue_plus_android:
-    dependency: transitive
-    description:
-      name: flutter_blue_plus_android
-      sha256: "5f1db477d442974c516196718e2ab66e3601e9a2de271bddde9368c1a85e6e64"
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.0.3"
-  flutter_blue_plus_darwin:
-    dependency: transitive
-    description:
-      name: flutter_blue_plus_darwin
-      sha256: bf41a4a07978b4c86a344c0c6e7388ff69f2b442a8d943b8da6d7f01a5c435bc
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.0.3"
-  flutter_blue_plus_linux:
-    dependency: transitive
-    description:
-      name: flutter_blue_plus_linux
-      sha256: "79387947c27d04fce505916d168a1f8b7a89846d22d11a659970aba316459622"
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.0.3"
-  flutter_blue_plus_platform_interface:
-    dependency: transitive
-    description:
-      name: flutter_blue_plus_platform_interface
-      sha256: "9378ed463673ab51e7ab72cf4bad3633b134182ca184ddcc598d6f7474ada993"
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.0.3"
-  flutter_blue_plus_web:
-    dependency: transitive
-    description:
-      name: flutter_blue_plus_web
-      sha256: "62670fd0072e9424661170c3439eb2784679e0cb8420907ae2fe979aab8eed71"
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.0.3"
-  flutter_blue_plus_winrt:
-    dependency: transitive
-    description:
-      name: flutter_blue_plus_winrt
-      sha256: "0000b2d818e6f79ad07764206fdd8afb69426fd44453c6254c35828fd16aa09f"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.20"
   flutter_context_menu:
     dependency: "direct main"
     description:
@@ -923,15 +849,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.0"
-  llama_flutter:
-    dependency: transitive
+  llama_cpp_flutter:
+    dependency: "direct main"
     description:
-      path: "packages/llama_flutter"
-      ref: "4f8dde66136e83c3259fc7ccc427cf344b4e3a27"
-      resolved-ref: "4f8dde66136e83c3259fc7ccc427cf344b4e3a27"
-      url: "https://github.com/jamiewest/agents_llama.git"
-    source: git
-    version: "0.1.0"
+      name: llama_cpp_flutter
+      sha256: "23d0ab580e492816e571e9cb61b49e02151fe59dcf58d10c36bd33c7657a0f63"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.0"
   logging:
     dependency: transitive
     description:

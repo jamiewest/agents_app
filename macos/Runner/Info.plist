@@ -22,8 +22,6 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Agents App connects to your wearable capture device over Bluetooth to sync audio and images.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Agents App uses the camera to capture photos to attach to chat messages.</string>
 	<key>NSContactsUsageDescription</key>
@@ -37,7 +35,5 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Agents App transcribes audio from your wearable capture device on-device.</string>
 </dict>
 </plist>
