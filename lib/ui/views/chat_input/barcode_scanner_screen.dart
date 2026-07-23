@@ -5,6 +5,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 /// Opens the barcode scanner as a full-screen modal and resolves with the
@@ -144,10 +145,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         MobileScanner(controller: _controller, onDetect: _handleDetection),
         CustomPaint(painter: _ScannerOverlay(), child: const SizedBox.expand()),
         if (_detectedValues.isNotEmpty)
-          _DetectedCodesList(
-            values: _detectedValues,
-            onSelect: _selectValue,
-          ),
+          _DetectedCodesList(values: _detectedValues, onSelect: _selectValue),
         if (_showInstructions)
           Positioned(
             bottom: 32,
@@ -192,12 +190,12 @@ class _TorchButton extends StatelessWidget {
         case TorchState.on:
         case TorchState.auto:
           return IconButton(
-            icon: const Icon(Icons.flash_on, color: Colors.amber),
+            icon: const Icon(LucideIcons.zap300, color: Colors.amber),
             onPressed: controller.toggleTorch,
           );
         case TorchState.off:
           return IconButton(
-            icon: const Icon(Icons.flash_off, color: Colors.white),
+            icon: const Icon(LucideIcons.zapOff300, color: Colors.white),
             onPressed: controller.toggleTorch,
           );
       }

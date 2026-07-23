@@ -6,7 +6,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../ui/app_theme.dart';
 import '../ui/screens/chats_home.dart';
@@ -60,9 +60,9 @@ class _AppShellState extends State<AppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   static const _destinations = [
-    (icon: Symbols.chat_bubble, label: 'Chats'),
-    (icon: Symbols.alarm_rounded, label: 'Tasks'),
-    (icon: Symbols.settings, label: 'Settings'),
+    (icon: LucideIcons.messageCircle300, label: 'Chats'),
+    (icon: LucideIcons.alarmClock300, label: 'Tasks'),
+    (icon: LucideIcons.settings300, label: 'Settings'),
   ];
 
   void _goBranch(int index) => widget.shell.goBranch(

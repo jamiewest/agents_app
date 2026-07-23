@@ -8,7 +8,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/local_model_presets.dart';
 import '../app_theme.dart';
@@ -363,7 +363,7 @@ class _KindChooser extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _KindCard(
-        icon: Symbols.cloud,
+        icon: LucideIcons.cloud300,
         title: 'API agent',
         subtitle:
             'Anthropic, Google, or any OpenAI-compatible endpoint. '
@@ -372,7 +372,7 @@ class _KindChooser extends StatelessWidget {
       ),
       const SizedBox(height: 12),
       _KindCard(
-        icon: Symbols.memory,
+        icon: LucideIcons.cpu300,
         title: 'Local agent',
         subtitle:
             'Runs a downloaded model on this device. No key required, '
@@ -381,7 +381,7 @@ class _KindChooser extends StatelessWidget {
       ),
       const SizedBox(height: 12),
       _KindCard(
-        icon: Symbols.lan,
+        icon: LucideIcons.network300,
         title: 'Network agent',
         subtitle:
             'Use an agent shared by another device. Pair with a code; '
@@ -411,7 +411,7 @@ class _KindCard extends StatelessWidget {
       leading: Icon(icon, size: 32),
       title: Text(title),
       subtitle: Text(subtitle),
-      trailing: const Icon(Symbols.chevron_right),
+      trailing: const Icon(LucideIcons.chevronRight300),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
     ),
@@ -446,7 +446,7 @@ class _StepIndicator extends StatelessWidget {
                 ? scheme.primary
                 : scheme.surfaceContainerHighest,
             child: i < step
-                ? Icon(Symbols.check, size: 15, color: scheme.onPrimary)
+                ? Icon(LucideIcons.check300, size: 15, color: scheme.onPrimary)
                 : Text(
                     '${i + 1}',
                     style: labelStyle?.copyWith(

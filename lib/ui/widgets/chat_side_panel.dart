@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../app_theme.dart';
 
@@ -63,7 +63,7 @@ class ChatSidePanel extends StatelessWidget {
                 IconButton(
                   tooltip: 'Close panel',
                   visualDensity: VisualDensity.compact,
-                  icon: const Icon(Symbols.close, size: 20),
+                  icon: const Icon(LucideIcons.x300, size: 20),
                   onPressed: onClose,
                 ),
               ],
@@ -89,7 +89,7 @@ class _PanelPlaceholder extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Symbols.right_panel_open, size: 40, color: scheme.outline),
+          Icon(LucideIcons.panelRightOpen300, size: 40, color: scheme.outline),
           const SizedBox(height: AppSpacing.md),
           Text(
             'Nothing here yet',

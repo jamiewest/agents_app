@@ -9,7 +9,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/channel_store.dart';
 import '../../data/conversation_store.dart';
@@ -183,7 +183,7 @@ class _ChannelScreenState extends State<ChannelScreen>
         actions: [
           IconButton(
             tooltip: 'New channel chat',
-            icon: const Icon(Symbols.add_comment),
+            icon: const Icon(LucideIcons.messageSquarePlus300),
             onPressed: _startChannelChat,
           ),
           PopupMenuButton<void Function()>(
@@ -248,7 +248,7 @@ class _ConversationsTab extends StatelessWidget {
       }
       if (items.isEmpty) {
         return const EmptyState(
-          icon: Symbols.tag,
+          icon: LucideIcons.hash300,
           title: 'No channel conversations yet',
           message: 'Start one with a member agent using the button above.',
         );
@@ -261,7 +261,7 @@ class _ConversationsTab extends StatelessWidget {
               agentsById[conversation.coordinatorAgentId ??
                   conversation.primaryAgentId];
           return ListTile(
-            leading: const Icon(Symbols.tag),
+            leading: const Icon(LucideIcons.hash300),
             title: Text(
               conversation.title.trim().isEmpty
                   ? (agent?.name ?? 'Conversation')
@@ -334,7 +334,7 @@ class _FilesTabState extends State<_FilesTab> {
       padding: const EdgeInsets.all(12),
       child: OutlinedButton.icon(
         onPressed: _upload,
-        icon: const Icon(Symbols.upload_file),
+        icon: const Icon(LucideIcons.fileUp300),
         label: const Text('Upload text file'),
       ),
     );
@@ -373,7 +373,7 @@ class _FilesTabState extends State<_FilesTab> {
   }
 
   Widget _fileTile(BuildContext context, String file) => ListTile(
-    leading: const Icon(Symbols.description),
+    leading: const Icon(LucideIcons.fileText300),
     title: Text(file),
     onTap: () async {
       final content = await _store.readFileAsync(file);

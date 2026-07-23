@@ -13,6 +13,7 @@ import 'package:agents_app/ui/views/attachment_view/image_attachment_view.dart';
 import 'package:agents_app/ui/views/attachment_view/link_attachment_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// A valid 1x1 transparent PNG.
 final pngBytes = base64Decode(
@@ -104,7 +105,7 @@ void main() {
       await tester.pumpWidget(host(ImageAttachmentView(broken)));
       await _settleImages(tester);
 
-      expect(find.byIcon(Icons.broken_image_outlined), findsOneWidget);
+      expect(find.byIcon(LucideIcons.imageOff300), findsOneWidget);
       expect(find.text('broken.png'), findsOneWidget);
     });
 
@@ -122,7 +123,7 @@ void main() {
         body: const [],
       );
 
-      expect(find.byIcon(Icons.broken_image_outlined), findsOneWidget);
+      expect(find.byIcon(LucideIcons.imageOff300), findsOneWidget);
       expect(find.text('generated image'), findsOneWidget);
     });
 

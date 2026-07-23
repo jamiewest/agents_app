@@ -11,7 +11,7 @@ import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'support/chat_test_harness.dart';
 
@@ -241,9 +241,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // The old individual icon buttons are gone from the app bar.
-      expect(find.byIcon(Symbols.group_add), findsNothing);
-      expect(find.byIcon(Symbols.restart_alt), findsNothing);
-      expect(find.byIcon(Symbols.edit), findsNothing);
+      expect(find.byIcon(LucideIcons.userPlus300), findsNothing);
+      expect(find.byIcon(LucideIcons.rotateCcw300), findsNothing);
+      expect(find.byIcon(LucideIcons.pencil300), findsNothing);
 
       await tester.tap(find.byTooltip('Conversation actions'));
       await tester.pumpAndSettle();
@@ -349,7 +349,9 @@ void main() {
       final manager = services.getRequiredService<ConfiguredAgentsManager>();
 
       await tester.pumpWidget(
-        MaterialApp(home: ChatScreen(agent: testAgent, services: services)),
+        MaterialApp(
+          home: ChatScreen(agent: testAgent, services: services),
+        ),
       );
       await tester.pumpAndSettle();
 

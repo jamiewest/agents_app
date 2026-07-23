@@ -8,7 +8,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/channel_store.dart';
 import '../../data/chat_transcript_store.dart';
@@ -95,7 +95,9 @@ class SidebarToggleButton extends StatelessWidget {
     final collapsed = scope.sidebarCollapsed;
     return IconButton(
       tooltip: collapsed ? 'Show conversations' : 'Hide conversations',
-      icon: Icon(Symbols.view_sidebar, fill: collapsed ? 0 : 1),
+      icon: collapsed
+          ? Icon(LucideIcons.panelRightClose300)
+          : Icon(LucideIcons.panelRightOpen300),
       onPressed: onToggle,
     );
   }
@@ -270,7 +272,7 @@ class ChatsRootPane extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Symbols.forum,
+                  LucideIcons.messagesSquare300,
                   size: 56,
                   color: Theme.of(context).colorScheme.outline,
                 ),
@@ -478,7 +480,7 @@ class _ChatsListViewState extends State<ChatsListView> {
                       value: private,
                       onChanged: (value) =>
                           setSheetState(() => private = value),
-                      secondary: const Icon(Symbols.visibility_off),
+                      secondary: const Icon(LucideIcons.eyeOff300),
                       title: const Text('Private chat'),
                       subtitle: const Text('Nothing is saved'),
                     ),
@@ -585,7 +587,7 @@ class _ChatsListViewState extends State<ChatsListView> {
     floatingActionButton: FloatingActionButton(
       tooltip: 'New chat',
       onPressed: _startNewChat,
-      child: const Icon(Symbols.add_comment),
+      child: const Icon(LucideIcons.messageSquarePlus300),
     ),
     body: _buildStreamed(context, (channels, conversations) {
       final hasData =
@@ -600,7 +602,7 @@ class _ChatsListViewState extends State<ChatsListView> {
             actions: [
               IconButton(
                 tooltip: 'New channel',
-                icon: const Icon(Symbols.tag),
+                icon: const Icon(LucideIcons.hash300),
                 onPressed: _createChannel,
               ),
             ],
@@ -890,7 +892,7 @@ class _ChatsListViewState extends State<ChatsListView> {
   }
 
   Widget _buildEmptyState() => EmptyState(
-    icon: Symbols.forum,
+    icon: LucideIcons.messagesSquare300,
     title: 'No conversations yet',
     message:
         'Start a chat with one of your agents — they pick up right '
@@ -909,7 +911,7 @@ class _ChatsListViewState extends State<ChatsListView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Symbols.search_off,
+              LucideIcons.searchX300,
               size: 40,
               color: theme.colorScheme.outline,
             ),
@@ -1000,7 +1002,7 @@ class _ChatsListViewState extends State<ChatsListView> {
 
   Widget _channelTile(BuildContext context, Channel channel) => _EntryTile(
     leading: Icon(
-      Symbols.tag,
+      LucideIcons.hash300,
       size: 18,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
     ),
@@ -1032,7 +1034,7 @@ class _ChatsListViewState extends State<ChatsListView> {
       leading: CircleAvatar(
         radius: 14,
         child: isGroup
-            ? const Icon(Symbols.group, size: 16)
+            ? const Icon(LucideIcons.users300, size: 16)
             : Text(
                 _initialFor(agentName ?? title),
                 style: Theme.of(context).textTheme.labelMedium,
@@ -1176,7 +1178,11 @@ class _SidebarHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Symbols.blur_on_rounded, color: scheme.primary, size: 24),
+              Icon(
+                LucideIcons.circleDotDashed300,
+                color: scheme.primary,
+                size: 24,
+              ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Text(
@@ -1190,7 +1196,7 @@ class _SidebarHeader extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'New channel',
-                icon: const Icon(Symbols.tag, size: 20),
+                icon: const Icon(LucideIcons.hash300, size: 20),
                 visualDensity: VisualDensity.compact,
                 onPressed: onNewChannel,
               ),
@@ -1205,7 +1211,7 @@ class _SidebarHeader extends StatelessWidget {
               ),
             ),
             onPressed: onNewChat,
-            icon: const Icon(Symbols.add, size: 18),
+            icon: const Icon(LucideIcons.plus300, size: 18),
             label: const Text(
               'New Conversation',
               style: TextStyle(fontWeight: FontWeight.w500),
@@ -1315,7 +1321,7 @@ class _EntryTile extends StatelessWidget {
                   tooltip: menuTooltip,
                   onSelected: (action) => action(),
                   icon: Icon(
-                    Symbols.more_horiz,
+                    LucideIcons.ellipsis300,
                     size: 18,
                     color: selected
                         ? scheme.onSecondaryContainer.withValues(alpha: 0.7)
@@ -1329,7 +1335,7 @@ class _EntryTile extends StatelessWidget {
                       value: onRename,
                       child: const Row(
                         children: [
-                          Icon(Symbols.edit, size: 18),
+                          Icon(LucideIcons.pencil300, size: 18),
                           SizedBox(width: AppSpacing.md),
                           Text('Rename'),
                         ],
@@ -1340,7 +1346,7 @@ class _EntryTile extends StatelessWidget {
                       child: Row(
                         children: [
                           Icon(
-                            Symbols.delete_rounded,
+                            LucideIcons.trash2300,
                             size: 18,
                             color: scheme.error,
                           ),
@@ -1453,7 +1459,7 @@ class _CollapsibleSection extends StatelessWidget {
                       duration: const Duration(milliseconds: 200),
                       curve: Curves.easeInOut,
                       child: Icon(
-                        Symbols.keyboard_arrow_down,
+                        LucideIcons.chevronDown300,
                         size: 20,
                         color: scheme.onSurfaceVariant,
                       ),

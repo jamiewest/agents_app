@@ -9,7 +9,7 @@ import 'package:llama_cpp_flutter/llama_cpp_flutter.dart' as llama;
 import 'package:file_selector/file_selector.dart' as file_selector;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../data/local_model_store.dart';
 import '../../strings/configured_agents_strings.dart';
@@ -893,7 +893,7 @@ class _LlamaModelFileField extends StatelessWidget {
                     onClear!();
                     field.didChange(null);
                   },
-                  icon: const Icon(Symbols.close),
+                  icon: const Icon(LucideIcons.x300),
                   tooltip: 'Clear selection',
                 ),
               OutlinedButton.icon(
@@ -901,7 +901,7 @@ class _LlamaModelFileField extends StatelessWidget {
                   final selectedPath = await onChoose();
                   if (selectedPath != null) field.didChange(selectedPath);
                 },
-                icon: const Icon(Symbols.folder_open),
+                icon: const Icon(LucideIcons.folderOpen300),
                 label: const Text('Choose file'),
               ),
             ],

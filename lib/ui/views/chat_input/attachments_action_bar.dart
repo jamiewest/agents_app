@@ -12,7 +12,7 @@ import '../../dialogs/url_input_dialog.dart';
 import '../../strings/llm_chat_view_strings.dart';
 import '../../utility.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../chat_view_model/chat_view_model_client.dart';
 import '../../dialogs/adaptive_snack_bar/adaptive_snack_bar.dart';
@@ -93,7 +93,7 @@ class _AttachmentActionBarState extends State<AttachmentActionBar> {
         if (_canScan && widget.onInsertText != null)
           MenuItemButton(
             leadingIcon: Icon(
-              Symbols.qr_code_scanner,
+              LucideIcons.scanQrCode300,
               color: chatStyle.attachFileButtonStyle!.iconColor,
             ),
             onPressed: _onScanBarcode,

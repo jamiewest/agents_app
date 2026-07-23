@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../dialogs/adaptive_dialog.dart';
 import '../../dialogs/image_preview_dialog.dart';
@@ -113,7 +114,7 @@ class _BrokenImagePlaceholder extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.broken_image_outlined, color: scheme.onSurfaceVariant),
+          Icon(LucideIcons.imageOff300, color: scheme.onSurfaceVariant),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),

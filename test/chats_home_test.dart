@@ -10,8 +10,8 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'support/chat_test_harness.dart';
 
@@ -463,16 +463,16 @@ void main() {
       expect(find.text('AGENT TEAMS'), findsOneWidget);
 
       // The open chat's app bar hides the sidebar; the icon flips to the
-      // unfilled "show" affordance.
+      // "show" affordance.
       await tester.tap(find.byTooltip('Hide conversations'));
       await tester.pumpAndSettle();
       expect(find.text('AGENT TEAMS'), findsNothing);
-      expect(tester.widget<Icon>(find.byIcon(Symbols.view_sidebar)).fill, 0);
+      expect(find.byIcon(LucideIcons.panelRightClose300), findsOneWidget);
 
       await tester.tap(find.byTooltip('Show conversations'));
       await tester.pumpAndSettle();
       expect(find.text('AGENT TEAMS'), findsOneWidget);
-      expect(tester.widget<Icon>(find.byIcon(Symbols.view_sidebar)).fill, 1);
+      expect(find.byIcon(LucideIcons.panelRightOpen300), findsOneWidget);
     });
 
     testWidgets(

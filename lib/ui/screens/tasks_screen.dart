@@ -6,7 +6,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/agent_task_store.dart';
 import '../../data/task_scheduler_service.dart';
@@ -97,7 +97,7 @@ class _TasksScreenState extends State<TasksScreen> {
               actions: [
                 IconButton(
                   tooltip: 'New task',
-                  icon: const Icon(Symbols.add_task),
+                  icon: const Icon(LucideIcons.listPlus300),
                   onPressed: _createTask,
                 ),
               ],
@@ -111,7 +111,7 @@ class _TasksScreenState extends State<TasksScreen> {
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: EmptyState(
-                  icon: Symbols.task_alt,
+                  icon: LucideIcons.circleCheckBig300,
                   title: 'No tasks yet',
                   message:
                       'Tasks run while the app is open and leave a '
@@ -141,11 +141,11 @@ class _TasksScreenState extends State<TasksScreen> {
     final paused = task.status == AgentTaskStatus.paused;
     return ListTile(
       leading: Icon(switch (task.status) {
-        AgentTaskStatus.running => Symbols.play_circle,
-        AgentTaskStatus.paused => Symbols.pause_circle,
-        AgentTaskStatus.failed => Symbols.error,
-        AgentTaskStatus.completed => Symbols.check_circle,
-        AgentTaskStatus.scheduled => Symbols.schedule,
+        AgentTaskStatus.running => LucideIcons.circlePlay300,
+        AgentTaskStatus.paused => LucideIcons.circlePause300,
+        AgentTaskStatus.failed => LucideIcons.circleAlert300,
+        AgentTaskStatus.completed => LucideIcons.circleCheck300,
+        AgentTaskStatus.scheduled => LucideIcons.clock300,
       }),
       title: Text(task.title),
       subtitle: Text(

@@ -5,7 +5,7 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../views/configured_agents/configured_agents.dart';
 
@@ -47,7 +47,7 @@ class _WebSecurityNotice extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Symbols.lock, size: 18, color: scheme.onSurfaceVariant),
+          Icon(LucideIcons.lock300, size: 18, color: scheme.onSurfaceVariant),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

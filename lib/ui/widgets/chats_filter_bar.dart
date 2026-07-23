@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../domain/chats_filter.dart';
 import '../app_theme.dart';
@@ -100,12 +100,12 @@ class ChatsFilterBar extends StatelessWidget {
               horizontal: AppSpacing.md,
               vertical: AppSpacing.sm,
             ),
-            prefixIcon: const Icon(Symbols.search, size: 20),
+            prefixIcon: const Icon(LucideIcons.search300, size: 20),
             suffixIcon: value.text.isEmpty
                 ? null
                 : IconButton(
                     tooltip: 'Clear search',
-                    icon: const Icon(Symbols.close, size: 18),
+                    icon: const Icon(LucideIcons.x300, size: 18),
                     visualDensity: VisualDensity.compact,
                     onPressed: () {
                       searchController.clear();
@@ -122,7 +122,7 @@ class ChatsFilterBar extends StatelessWidget {
     isLabelVisible: query.filterCount > 0,
     child: IconButton(
       tooltip: 'Filter and sort',
-      icon: const Icon(Symbols.tune),
+      icon: const Icon(LucideIcons.slidersHorizontal300),
       visualDensity: VisualDensity.compact,
       onPressed: onOpenFilters,
     ),

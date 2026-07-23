@@ -6,7 +6,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// Adds agents hosted on another device: paste a pairing code, redeem it,
 /// pick which of the host's agents to add as teammates.
@@ -169,7 +169,7 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
                       dimension: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Symbols.link),
+                  : const Icon(LucideIcons.link300),
               label: const Text('Pair'),
             ),
             if (_error case final error?) ...[
@@ -203,7 +203,7 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: _busy || _selected.isEmpty ? null : _addSelected,
-                icon: const Icon(Symbols.group_add),
+                icon: const Icon(LucideIcons.userPlus300),
                 label: Text(switch (_selected.length) {
                   0 => 'Add agents',
                   1 => 'Add 1 agent',

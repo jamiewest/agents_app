@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../navigation/app_shell.dart';
 
@@ -33,7 +33,7 @@ class AppSliverHeader extends StatelessWidget {
           ? null
           : IconButton(
               tooltip: 'Menu',
-              icon: const Icon(Symbols.menu),
+              icon: const Icon(LucideIcons.menu300),
               onPressed: openDrawer,
             ),
       title: Text(title),

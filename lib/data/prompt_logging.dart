@@ -11,6 +11,16 @@ import 'prompt_log.dart';
 import 'tool_activity.dart';
 import 'usage_store.dart';
 
+/// Builds the local llama client for [source]/[model], with [scope]
+/// identifying the conversation the client will serve (null for scope-less
+/// internal callers such as hosting infrastructure).
+typedef LocalChatClientResolver =
+    ChatClient Function({
+      required ModelSourceConfig source,
+      required ModelConfig model,
+      AgentScope? scope,
+    });
+
 /// A [ConfiguredChatClientFactory] that captures every prompt it produces.
 ///
 /// Wraps each cloud provider's client in a [LoggingChatClient] so the request
@@ -30,12 +40,22 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
     required this.log,
     this.usageSink,
     this.toolActivity,
+    this.localClientResolver,
     super.isWeb,
     super.customClientResolver,
   });
 
   /// The unified prompt log every produced client writes to.
   final PromptLog log;
+
+  /// Scope-aware resolver for local llama clients.
+  ///
+  /// The base factory's `customClientResolver` never sees the conversation
+  /// scope, so local models are resolved here instead: the produced client
+  /// derives its KV owner key from the scope, letting each conversation keep
+  /// its own KV-cache lineage in the shared resident model. Falls back to
+  /// the base resolver when null.
+  final LocalChatClientResolver? localClientResolver;
 
   /// The ledger receiving one usage record per model call, when tracking is
   /// enabled.
@@ -53,13 +73,23 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
     http.Client? httpClient,
     AgentScope? scope,
   }) {
-    final inner = super.createChatClient(
-      source: source,
-      model: model,
-      apiKey: apiKey,
-      httpClient: httpClient,
-      scope: scope,
-    );
+    // Local llama routes through the scope-aware resolver so the client can
+    // key KV ownership to the conversation. The base factory would wrap its
+    // provider client in TextFileInliningChatClient; replicate that here so
+    // the local path keeps identical file-inlining behavior.
+    final localResolver = localClientResolver;
+    final inner =
+        source.providerType == ProviderType.localLlama && localResolver != null
+        ? TextFileInliningChatClient(
+            localResolver(source: source, model: model, scope: scope),
+          )
+        : super.createChatClient(
+            source: source,
+            model: model,
+            apiKey: apiKey,
+            httpClient: httpClient,
+            scope: scope,
+          );
     final logged = source.providerType == ProviderType.localLlama
         ? inner
         : LoggingChatClient(

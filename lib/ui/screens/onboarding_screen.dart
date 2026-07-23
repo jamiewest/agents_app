@@ -5,7 +5,7 @@
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// First-run screen shown while the app has no usable agent.
 ///
@@ -46,7 +46,7 @@ class OnboardingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 32),
                 _OnboardingAction(
-                  icon: Symbols.cloud,
+                  icon: LucideIcons.cloud300,
                   title: 'API agent',
                   subtitle:
                       'Anthropic, Google, or any OpenAI-compatible endpoint. '
@@ -55,7 +55,7 @@ class OnboardingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 _OnboardingAction(
-                  icon: Symbols.memory,
+                  icon: LucideIcons.cpu300,
                   title: 'Local agent',
                   subtitle:
                       'Runs a downloaded model on this device. No key '
@@ -64,7 +64,7 @@ class OnboardingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 _OnboardingAction(
-                  icon: Symbols.lan,
+                  icon: LucideIcons.network300,
                   title: 'Network agent',
                   subtitle:
                       'Use an agent shared by another device on your '
@@ -102,7 +102,7 @@ class _OnboardingAction extends StatelessWidget {
         leading: Icon(icon, size: 32),
         title: Text(title),
         subtitle: Text(subtitle),
-        trailing: enabled ? const Icon(Symbols.chevron_right) : null,
+        trailing: enabled ? const Icon(LucideIcons.chevronRight300) : null,
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       ),

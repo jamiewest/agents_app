@@ -11,6 +11,7 @@ import 'package:agents/agents.dart'
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:llama_cpp_flutter/chat.dart' as llama;
 import 'package:llama_cpp_flutter/llama_cpp_flutter.dart' as llama;
+import 'package:llama_cpp_flutter/orchestration.dart' as llama;
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/foundation.dart';
@@ -20,7 +21,7 @@ import 'package:flutter/services.dart'
 
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sqflite;
 
@@ -30,6 +31,8 @@ import 'data/chat_transcript_store.dart';
 import 'data/conversation_service.dart';
 import 'data/conversation_store.dart';
 import 'data/embedding_settings.dart';
+import 'data/local_llama_context_planner.dart';
+import 'data/local_llama_lease_client.dart';
 import 'data/local_llama_model_host.dart';
 import 'data/prompt_log.dart';
 import 'data/prompt_logging.dart';
@@ -148,8 +151,13 @@ final _builder = Host.createApplicationBuilder()
         log: sp.getRequiredService<PromptLog>(),
         usageSink: sp.getRequiredService<UsageStore>(),
         toolActivity: sp.getRequiredService<ToolActivity>(),
-        customClientResolver: ({required source, required model, httpClient}) =>
-            _createLocalLlamaClient(sp, source: source, model: model),
+        localClientResolver: ({required source, required model, scope}) =>
+            _createLocalLlamaClient(
+              sp,
+              source: source,
+              model: model,
+              scope: scope,
+            ),
       ),
       configureHarnessForScope: (sp) => (agent, options, scope) {
         // The shared inventory is app-wide, not conversation-scoped, so
@@ -291,6 +299,13 @@ final _localLlamaProgress = _LocalLlamaProgressRegistry();
 final Map<String, llama.ChatFormat?> _resolvedLlamaFormats =
     <String, llama.ChatFormat?>{};
 
+// Memory-planned context sizes, keyed by the same load key. Recorded by the
+// loader when the planner shrank the context below the configured size, so
+// session-bound chat clients — including ones built later against a resident
+// session whose loader never re-ran — budget prompts against the context the
+// session actually has rather than the configured maximum.
+final Map<String, int> _plannedLocalContextTokens = <String, int>{};
+
 @immutable
 class _LocalLlamaModelLocation {
   const _LocalLlamaModelLocation({
@@ -331,10 +346,15 @@ ai.ChatClient? _residentTitleClient(ServiceProvider services) {
   );
 }
 
+/// Monotonic id for scope-less local clients, so unrelated internal calls
+/// never share a KV owner key accidentally.
+int _internalLocalOwnerSeq = 0;
+
 ai.ChatClient _createLocalLlamaClient(
   ServiceProvider services, {
   required ModelSourceConfig source,
   required ModelConfig model,
+  AgentScope? scope,
   bool forTitle = false,
 }) {
   final location = _localLlamaModelLocation(model);
@@ -402,123 +422,240 @@ ai.ChatClient _createLocalLlamaClient(
   // otherwise disposes it before running this loader, so at most one local
   // model is ever loaded. The loader runs only on a miss, so its progress,
   // download, and format-sniff work is skipped when the model is reused.
-  Future<llama.LlamaSession> sessionProvider() {
-    // Background titling must never trigger a load or eviction: it only ever
-    // reuses the already-resident session. If the resident model changed out
-    // from under us (e.g. a scheduled task swapped models), bail rather than
-    // reload — the summarizer catches this and moves on.
-    if (forTitle) {
-      final session = host.currentSession;
-      if (session == null || host.currentKey != loadKey) {
-        throw StateError(
-          'Local model is no longer resident; skipping background title.',
+  Future<llama.LlamaSession> loader(llama.LlamaRuntime runtime) async {
+    try {
+      final llama.LlamaSession loaded;
+      // A fresh load re-plans from scratch; a stale entry from an earlier
+      // residency must not describe a session it no longer matches.
+      _plannedLocalContextTokens.remove(loadKey);
+      final selectedLocalPath = location.localPath;
+      if (selectedLocalPath != null) {
+        _localLlamaProgress.update(
+          model.id,
+          const _LocalLlamaStatus(
+            phase: _LocalLlamaPhase.loading,
+            message: 'Loading selected local model...',
+          ),
+        );
+        await resolveFormatFromGguf(selectedLocalPath);
+        loaded = await runtime.loadModel(
+          await _memoryPlannedLocalSpec(
+            spec,
+            loadKey: loadKey,
+            modelId: model.id,
+            modelPath: selectedLocalPath,
+            mmprojPath: location.mmprojLocalPath,
+            draftPath: location.draftLocalPath,
+          ),
+          localPath: selectedLocalPath,
+          localMmprojPath: location.mmprojLocalPath,
+          localDraftPath: location.draftLocalPath,
+        );
+      } else if (kIsWeb) {
+        _localLlamaProgress.update(
+          model.id,
+          _LocalLlamaStatus(
+            phase: _LocalLlamaPhase.loading,
+            message: location.isSelectedFile
+                ? 'Loading selected local model...'
+                : 'Loading local model from browser cache...',
+          ),
+        );
+        await resolveFormatFromGguf(location.modelUrl.toString());
+        loaded = await runtime.loadModel(
+          spec,
+          onProgress: (progress) {
+            _localLlamaProgress.update(
+              model.id,
+              _LocalLlamaStatus(
+                phase: _LocalLlamaPhase.downloading,
+                message: 'Downloading local model to browser cache...',
+                progress: progress.clamp(0, 1).toDouble(),
+              ),
+            );
+          },
+        );
+      } else {
+        final paths = await _downloadLocalModel(services, spec, model.id);
+        _localLlamaProgress.update(
+          model.id,
+          const _LocalLlamaStatus(
+            phase: _LocalLlamaPhase.loading,
+            message: 'Loading local model...',
+          ),
+        );
+        await resolveFormatFromGguf(paths.modelPath);
+        loaded = await runtime.loadModel(
+          await _memoryPlannedLocalSpec(
+            spec,
+            loadKey: loadKey,
+            modelId: model.id,
+            modelPath: paths.modelPath,
+            mmprojPath: paths.mmprojPath,
+            draftPath: paths.draftPath,
+          ),
+          localPath: paths.modelPath,
+          localMmprojPath: paths.mmprojPath,
+          localDraftPath: paths.draftPath,
         );
       }
-      return Future<llama.LlamaSession>.value(session);
+      final plannedTokens = _plannedLocalContextTokens[loadKey];
+      final contextNote = plannedTokens == null
+          ? ''
+          : ' Context sized to $plannedTokens of the configured '
+                '${spec.contextSize} tokens for available memory.';
+      _localLlamaProgress.update(
+        model.id,
+        _LocalLlamaStatus(
+          phase: _LocalLlamaPhase.ready,
+          message: runtime.supportsMultiThreading
+              ? 'Local model ready.$contextNote'
+              : 'Local model ready (single-threaded: this page is not '
+                    'cross-origin isolated, so larger models may take '
+                    'minutes per reply — reload once so the isolation '
+                    'service worker can enable multithreading).'
+                    '$contextNote',
+          progress: 1,
+        ),
+      );
+      return loaded;
+    } on Object catch (error) {
+      _localLlamaProgress.update(
+        model.id,
+        _LocalLlamaStatus(
+          phase: _LocalLlamaPhase.error,
+          message: 'Local model failed: $error',
+        ),
+      );
+      rethrow;
     }
-    return host.acquire(loadKey, (runtime) async {
-      try {
-        final llama.LlamaSession loaded;
-        final selectedLocalPath = location.localPath;
-        if (selectedLocalPath != null) {
-          _localLlamaProgress.update(
-            model.id,
-            const _LocalLlamaStatus(
-              phase: _LocalLlamaPhase.loading,
-              message: 'Loading selected local model...',
-            ),
-          );
-          await resolveFormatFromGguf(selectedLocalPath);
-          loaded = await runtime.loadModel(
-            spec,
-            localPath: selectedLocalPath,
-            localMmprojPath: location.mmprojLocalPath,
-            localDraftPath: location.draftLocalPath,
-          );
-        } else if (kIsWeb) {
-          _localLlamaProgress.update(
-            model.id,
-            _LocalLlamaStatus(
-              phase: _LocalLlamaPhase.loading,
-              message: location.isSelectedFile
-                  ? 'Loading selected local model...'
-                  : 'Loading local model from browser cache...',
-            ),
-          );
-          await resolveFormatFromGguf(location.modelUrl.toString());
-          loaded = await runtime.loadModel(
-            spec,
-            onProgress: (progress) {
-              _localLlamaProgress.update(
-                model.id,
-                _LocalLlamaStatus(
-                  phase: _LocalLlamaPhase.downloading,
-                  message: 'Downloading local model to browser cache...',
-                  progress: progress.clamp(0, 1).toDouble(),
-                ),
-              );
-            },
-          );
-        } else {
-          final paths = await _downloadLocalModel(services, spec, model.id);
-          _localLlamaProgress.update(
-            model.id,
-            const _LocalLlamaStatus(
-              phase: _LocalLlamaPhase.loading,
-              message: 'Loading local model...',
-            ),
-          );
-          await resolveFormatFromGguf(paths.modelPath);
-          loaded = await runtime.loadModel(
-            spec,
-            localPath: paths.modelPath,
-            localMmprojPath: paths.mmprojPath,
-            localDraftPath: paths.draftPath,
-          );
-        }
-        _localLlamaProgress.update(
-          model.id,
-          _LocalLlamaStatus(
-            phase: _LocalLlamaPhase.ready,
-            message: runtime.supportsMultiThreading
-                ? 'Local model ready.'
-                : 'Local model ready (single-threaded: this page is not '
-                      'cross-origin isolated, so larger models may take '
-                      'minutes per reply — reload once so the isolation '
-                      'service worker can enable multithreading).',
-            progress: 1,
-          ),
-        );
-        return loaded;
-      } on Object catch (error) {
-        _localLlamaProgress.update(
-          model.id,
-          _LocalLlamaStatus(
-            phase: _LocalLlamaPhase.error,
-            message: 'Local model failed: $error',
-          ),
-        );
-        rethrow;
-      }
-    });
+  }
+
+  // KV ownership: each conversation (delegates included, via their derived
+  // scope ids) keeps its own KV-cache lineage in the shared session, so
+  // returning to a warm chat restores its prefix instead of re-prefilling.
+  // Title generation and scope-less internal callers are transient owners:
+  // they may use sequence 0 for their one-shot work, but their state is
+  // never stashed and they never collide with a conversation's owner key.
+  final String kvOwnerKey;
+  final bool retainKvState;
+  if (forTitle) {
+    kvOwnerKey = 'background:title';
+    retainKvState = false;
+  } else if (scope != null) {
+    kvOwnerKey = 'conversation:${scope.conversationId}';
+    retainKvState = true;
+  } else {
+    kvOwnerKey = 'internal:${_internalLocalOwnerSeq++}';
+    retainKvState = false;
   }
 
   final thinking = services.getService<ThinkingSettings>();
-  return llama.createLlamaChatClient(
-    spec: spec,
-    sessionProvider: sessionProvider,
-    // On a session cache hit this client's loader never runs, so read a format
-    // recorded by whichever client first loaded this model before falling back
-    // to the spec's file-name guess.
-    formatResolver: () => ggufFormat ?? _resolvedLlamaFormats[loadKey],
-    inspector: forTitle ? null : services.getService<llama.PromptInspector>(),
-    // Evaluated per request, so the chat toggle applies mid-conversation.
-    // Title generation forces thinking off: a reasoning block would consume the
-    // tiny output budget and leave no room for the title itself.
-    isThinkingEnabled: forTitle
-        ? () => false
-        : () => thinking?.enabledFor(model.id) ?? spec.enableThinking,
+  ai.ChatClient buildSessionClient(llama.LlamaSession session) =>
+      llama.createLlamaChatClient(
+        spec: spec,
+        // Evaluated per request: when the loader shrank the context to fit
+        // memory, prompt budgeting must target what the session actually
+        // allocated, not the configured maximum.
+        contextSizeOverride: _plannedLocalContextTokens[loadKey],
+        sessionProvider: () async => session,
+        // On a session cache hit this client's loader never runs, so read a
+        // format recorded by whichever client first loaded this model before
+        // falling back to the spec's file-name guess.
+        formatResolver: () => ggufFormat ?? _resolvedLlamaFormats[loadKey],
+        inspector: forTitle
+            ? null
+            : services.getService<llama.PromptInspector>(),
+        // Evaluated per request, so the chat toggle applies
+        // mid-conversation. Title generation forces thinking off: a
+        // reasoning block would consume the tiny output budget and leave no
+        // room for the title itself.
+        isThinkingEnabled: forTitle
+            ? () => false
+            : () => thinking?.enabledFor(model.id) ?? spec.enableThinking,
+      );
+
+  return LeasedLocalLlamaChatClient(
+    host: host,
+    loadKey: loadKey,
+    ownerKey: kvOwnerKey,
+    retainKvState: retainKvState,
+    // Background titling must never trigger a load or eviction: a null
+    // loader makes every lease resident-only, so it throws instead of
+    // reloading when the resident model changed out from under it (e.g. a
+    // scheduled task swapped models) — the summarizer catches this and
+    // moves on.
+    load: forTitle ? null : loader,
+    buildClient: buildSessionClient,
   );
+}
+
+/// Applies memory-aware context sizing to [spec] before a native load.
+///
+/// The configured `llama.contextSize` is the desired maximum; the returned
+/// spec carries the largest context that fits the device's current memory
+/// budget (see [planLocalLlamaContext]). Shrunk sizes are recorded in
+/// [_plannedLocalContextTokens] under [loadKey] so chat clients budget
+/// prompts against the real allocation.
+///
+/// Best-effort by design: when the GGUF header lacks the needed
+/// hyperparameters or the platform has no honest memory measurements
+/// (web, non-Apple native), [spec] loads unchanged — exactly today's
+/// behavior.
+Future<llama.ModelSpec> _memoryPlannedLocalSpec(
+  llama.ModelSpec spec, {
+  required String loadKey,
+  required String modelId,
+  required String modelPath,
+  String? mmprojPath,
+  String? draftPath,
+}) async {
+  final estimate = await readLocalLlamaMemoryEstimate(
+    modelPath: modelPath,
+    mmprojPath: mmprojPath,
+    draftPath: draftPath,
+  );
+  if (estimate == null) return spec;
+  final memory = await llama.createSystemMemoryMonitor().sample();
+  // Fixed fallback numbers (4 GB assumed) would mis-size real machines in
+  // both directions; only plan against actual measurements.
+  if (memory.isEstimated) return spec;
+
+  final plan = planLocalLlamaContext(
+    estimate: estimate,
+    memory: memory,
+    desiredContextTokens: spec.contextSize,
+  );
+  if (plan.memoryCritical) {
+    developer.log(
+      'Local model "$modelId" barely fits: a ${plan.contextTokens}-token '
+      'context needs ~${estimate.bytesForContext(plan.contextTokens)} bytes '
+      'with ${memory.availableBytes} available; loading at the floor '
+      'anyway.',
+      name: 'local_llama.memory',
+      level: 900,
+    );
+  }
+  if (!plan.isReduced) {
+    developer.log(
+      'Local model "$modelId" fits: keeping the configured '
+      '${spec.contextSize}-token context '
+      '(~${estimate.bytesForContext(plan.contextTokens)} bytes of '
+      '${memory.availableBytes} available).',
+      name: 'local_llama.memory',
+    );
+    return spec;
+  }
+  developer.log(
+    'Context for "$modelId" sized to ${plan.contextTokens} of the '
+    'configured ${spec.contextSize} tokens '
+    '(~${estimate.bytesForContext(plan.contextTokens)} bytes of '
+    '${memory.availableBytes} available, ${estimate.kvBytesPerToken} '
+    'KV bytes/token).',
+    name: 'local_llama.memory',
+  );
+  _plannedLocalContextTokens[loadKey] = plan.contextTokens;
+  return spec.copyWith(contextSize: plan.contextTokens);
 }
 
 _LocalLlamaModelLocation _localLlamaModelLocation(ModelConfig model) {
@@ -1792,7 +1929,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Tooltip(
               message: 'Private chat — nothing is saved',
               child: Icon(
-                Symbols.visibility_off,
+                LucideIcons.eyeOff300,
                 size: 18,
                 color: Theme.of(context).colorScheme.outline,
               ),
@@ -1809,7 +1946,7 @@ class _ChatScreenState extends State<ChatScreen> {
             if (log == null) return const SizedBox.shrink();
             return IconButton(
               tooltip: 'Inspect prompts sent to models',
-              icon: const Icon(Symbols.data_object_rounded),
+              icon: const Icon(LucideIcons.braces300),
               onPressed: () => showPromptInspector(context, log),
             );
           },
@@ -1821,7 +1958,7 @@ class _ChatScreenState extends State<ChatScreen> {
               if (usage == null) return const SizedBox.shrink();
               return IconButton(
                 tooltip: 'Token usage per model',
-                icon: const Icon(Symbols.data_usage_rounded),
+                icon: const Icon(LucideIcons.chartPie300),
                 onPressed: () => showUsageStats(
                   context,
                   usage: usage,
@@ -1837,7 +1974,7 @@ class _ChatScreenState extends State<ChatScreen> {
           PopupMenuButton<String?>(
             tooltip: 'View a session',
             icon: Icon(
-              Symbols.history,
+              LucideIcons.history300,
               color: _viewSessionId == null
                   ? null
                   : Theme.of(context).colorScheme.primary,
@@ -1903,8 +2040,8 @@ class _ChatScreenState extends State<ChatScreen> {
               tooltip: panel.isOpen ? 'Hide panel' : 'Show panel',
               icon: Icon(
                 panel.isOpen
-                    ? Symbols.right_panel_close
-                    : Symbols.right_panel_open,
+                    ? LucideIcons.panelRightClose300
+                    : LucideIcons.panelRightOpen300,
               ),
               onPressed: () => panel.toggle(
                 (context) => ChatSidePanel(onClose: panel.close),
@@ -1974,7 +2111,11 @@ class _AgentStartError extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Symbols.error, size: 48, color: theme.colorScheme.error),
+              Icon(
+                LucideIcons.circleAlert300,
+                size: 48,
+                color: theme.colorScheme.error,
+              ),
               const SizedBox(height: 16),
               Text(
                 'Could not start this agent',
@@ -1997,12 +2138,12 @@ class _AgentStartError extends StatelessWidget {
                 children: [
                   FilledButton.icon(
                     onPressed: onRetry,
-                    icon: const Icon(Symbols.refresh),
+                    icon: const Icon(LucideIcons.refreshCw300),
                     label: const Text('Retry'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => context.go('/settings/agents'),
-                    icon: const Icon(Symbols.settings),
+                    icon: const Icon(LucideIcons.settings300),
                     label: const Text('Check configuration'),
                   ),
                 ],
@@ -2039,7 +2180,7 @@ class _ThinkingToggleState extends State<_ThinkingToggle> {
     return IconButton(
       tooltip: enabled ? 'Thinking on' : 'Thinking off',
       icon: Icon(
-        Symbols.psychology,
+        LucideIcons.brain300,
         color: enabled ? Theme.of(context).colorScheme.primary : null,
       ),
       onPressed: () async {
@@ -2094,8 +2235,8 @@ class _LocalLlamaProgressBanner extends StatelessWidget {
                   ] else
                     Icon(
                       status.phase == _LocalLlamaPhase.error
-                          ? Symbols.error
-                          : Symbols.check_circle,
+                          ? LucideIcons.circleAlert300
+                          : LucideIcons.circleCheck300,
                       size: 18,
                       color: status.phase == _LocalLlamaPhase.error
                           ? colorScheme.onErrorContainer
