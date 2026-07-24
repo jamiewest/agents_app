@@ -20,6 +20,7 @@ import '../ui/screens/agent_editor_page.dart';
 import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/hosting_screen.dart';
 import '../ui/screens/logging_screen.dart';
+import '../ui/widgets/settings_section_shell.dart';
 import '../ui/screens/network_pairing_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../data/task_scheduler_service.dart';
@@ -160,11 +161,6 @@ GoRouter createAppRouter({
                   builder: (context, state) =>
                       HostingScreen(services: services),
                 ),
-                GoRoute(
-                  path: 'logging',
-                  builder: (context, state) =>
-                      LoggingScreen(services: services),
-                ),
               ],
             ),
             // The Agent Center is its own nested stateful shell, a sibling of
@@ -175,6 +171,9 @@ GoRouter createAppRouter({
             // item's page in place with the nav still visible. Branch order
             // matches [AgentCenterTab.values] so the shell maps its index.
             _agentCenterShell(services),
+            // Logs & diagnostics uses the same section-shell design: a
+            // persistent Events/Prompts nav around a swapping content branch.
+            _loggingShell(services),
           ],
         ),
       ],
@@ -191,122 +190,151 @@ GoRouter createAppRouter({
 /// create/edit. Every nested route hangs off its branch root with no
 /// `parentNavigatorKey`, so a pushed page renders in the content area beside
 /// the persistent nav rather than covering it.
-StatefulShellRoute _agentCenterShell(ServiceProvider services) =>
+/// The Logs & diagnostics section shell: a persistent Events/Prompts nav
+/// around a swapping content branch, in [loggingDestinations] order. Same
+/// design as the Agent Center, built on the shared [SettingsSectionShell].
+StatefulShellRoute _loggingShell(ServiceProvider services) =>
     StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) =>
-          AgentCenterShell(services: services, shell: navigationShell),
+      builder: (context, state, navigationShell) => SettingsSectionShell(
+        title: 'Logs & diagnostics',
+        destinations: loggingDestinations,
+        shell: navigationShell,
+      ),
       branches: [
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/settings/agents/overview',
+              path: '/settings/logging',
               builder: (context, state) =>
-                  AgentCenterOverviewBody(services: services),
+                  LoggingEventsBody(services: services),
             ),
           ],
         ),
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: '/settings/agents',
-              builder: (context, state) => AgentCatalogView(
-                services: services,
-                kind: AgentCenterTab.agents,
-              ),
-              routes: [
-                GoRoute(
-                  path: 'add',
-                  builder: (context, state) => AddAgentWizard(
-                    services: services,
-                    initialKind: agentSetupKindFromName(
-                      state.uri.queryParameters['type'],
-                    ),
-                  ),
-                ),
-                GoRoute(
-                  path: 'new',
-                  builder: (context, state) => AgentEditorPage(
-                    services: services,
-                    kind: AgentCenterTab.agents,
-                  ),
-                ),
-                GoRoute(
-                  path: 'view/:id',
-                  builder: (context, state) => AgentDetailScreen(
-                    services: services,
-                    agentId: state.pathParameters['id']!,
-                  ),
-                ),
-                GoRoute(
-                  path: 'edit/:id',
-                  builder: (context, state) => AgentEditorPage(
-                    services: services,
-                    kind: AgentCenterTab.agents,
-                    editingId: state.pathParameters['id'],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/settings/agents/models',
-              builder: (context, state) => AgentCatalogView(
-                services: services,
-                kind: AgentCenterTab.models,
-              ),
-              routes: [
-                GoRoute(
-                  path: 'new',
-                  builder: (context, state) => AgentEditorPage(
-                    services: services,
-                    kind: AgentCenterTab.models,
-                  ),
-                ),
-                GoRoute(
-                  path: 'edit/:id',
-                  builder: (context, state) => AgentEditorPage(
-                    services: services,
-                    kind: AgentCenterTab.models,
-                    editingId: state.pathParameters['id'],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/settings/agents/sources',
-              builder: (context, state) => AgentCatalogView(
-                services: services,
-                kind: AgentCenterTab.sources,
-              ),
-              routes: [
-                GoRoute(
-                  path: 'new',
-                  builder: (context, state) => AgentEditorPage(
-                    services: services,
-                    kind: AgentCenterTab.sources,
-                  ),
-                ),
-                GoRoute(
-                  path: 'edit/:id',
-                  builder: (context, state) => AgentEditorPage(
-                    services: services,
-                    kind: AgentCenterTab.sources,
-                    editingId: state.pathParameters['id'],
-                  ),
-                ),
-              ],
+              path: '/settings/logging/prompts',
+              builder: (context, state) =>
+                  LoggingPromptsBody(services: services),
             ),
           ],
         ),
       ],
     );
+
+StatefulShellRoute _agentCenterShell(
+  ServiceProvider services,
+) => StatefulShellRoute.indexedStack(
+  builder: (context, state, navigationShell) =>
+      AgentCenterShell(services: services, shell: navigationShell),
+  branches: [
+    StatefulShellBranch(
+      routes: [
+        GoRoute(
+          path: '/settings/agents/overview',
+          builder: (context, state) =>
+              AgentCenterOverviewBody(services: services),
+        ),
+      ],
+    ),
+    StatefulShellBranch(
+      routes: [
+        GoRoute(
+          path: '/settings/agents',
+          builder: (context, state) =>
+              AgentCatalogView(services: services, kind: AgentCenterTab.agents),
+          routes: [
+            GoRoute(
+              path: 'add',
+              builder: (context, state) => AddAgentWizard(
+                services: services,
+                initialKind: agentSetupKindFromName(
+                  state.uri.queryParameters['type'],
+                ),
+              ),
+            ),
+            GoRoute(
+              path: 'new',
+              builder: (context, state) => AgentEditorPage(
+                services: services,
+                kind: AgentCenterTab.agents,
+              ),
+            ),
+            GoRoute(
+              path: 'view/:id',
+              builder: (context, state) => AgentDetailScreen(
+                services: services,
+                agentId: state.pathParameters['id']!,
+              ),
+            ),
+            GoRoute(
+              path: 'edit/:id',
+              builder: (context, state) => AgentEditorPage(
+                services: services,
+                kind: AgentCenterTab.agents,
+                editingId: state.pathParameters['id'],
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+    StatefulShellBranch(
+      routes: [
+        GoRoute(
+          path: '/settings/agents/models',
+          builder: (context, state) =>
+              AgentCatalogView(services: services, kind: AgentCenterTab.models),
+          routes: [
+            GoRoute(
+              path: 'new',
+              builder: (context, state) => AgentEditorPage(
+                services: services,
+                kind: AgentCenterTab.models,
+              ),
+            ),
+            GoRoute(
+              path: 'edit/:id',
+              builder: (context, state) => AgentEditorPage(
+                services: services,
+                kind: AgentCenterTab.models,
+                editingId: state.pathParameters['id'],
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+    StatefulShellBranch(
+      routes: [
+        GoRoute(
+          path: '/settings/agents/sources',
+          builder: (context, state) => AgentCatalogView(
+            services: services,
+            kind: AgentCenterTab.sources,
+          ),
+          routes: [
+            GoRoute(
+              path: 'new',
+              builder: (context, state) => AgentEditorPage(
+                services: services,
+                kind: AgentCenterTab.sources,
+              ),
+            ),
+            GoRoute(
+              path: 'edit/:id',
+              builder: (context, state) => AgentEditorPage(
+                services: services,
+                kind: AgentCenterTab.sources,
+                editingId: state.pathParameters['id'],
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  ],
+);
 
 /// Wraps [child] in a fade-through page transition, used for content
 /// changes within a section (for example switching conversations).

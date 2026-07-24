@@ -9,6 +9,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../data/agent_center_overview.dart';
 import '../../data/agent_run_store.dart';
 import 'charts.dart';
+import 'dashboard_card.dart';
+
+export 'dashboard_card.dart';
 
 /// Shared dashboard building blocks for the Agent Center Overview and the
 /// per-agent detail page, so both render KPIs, charts, and recent runs one
@@ -300,40 +303,6 @@ class RunStatusDot extends StatelessWidget {
     return Semantics(
       label: status.name,
       child: Icon(Icons.circle, size: 12, color: color),
-    );
-  }
-}
-
-/// A titled surface the dashboards group content in.
-class DashboardCard extends StatelessWidget {
-  /// Creates a [DashboardCard].
-  const DashboardCard({required this.title, required this.child, super.key});
-
-  /// The card heading.
-  final String title;
-
-  /// The card body.
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // A Material ancestor so ListTile children paint their ink on it rather
-    // than warning about the colored container above them.
-    return Material(
-      color: theme.colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(title, style: theme.textTheme.titleSmall),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
-      ),
     );
   }
 }

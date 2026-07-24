@@ -10,18 +10,24 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/prompt_log.dart';
 import '../widgets/prompt_inspector_panel.dart';
+import '../widgets/settings_section_shell.dart';
 
-/// Live in-app logs with runtime level controls.
+/// The tabs of the Logs & diagnostics section, in branch order.
 ///
-/// The Events tab shows every captured log record with display filters
-/// (level, category, text search) plus the capture controls that decide what
-/// gets recorded in the first place: the global minimum level and
-/// per-category overrides from [LoggingSettings]. The Prompts tab embeds the
-/// existing prompt inspector so raw model requests live alongside the event
-/// log.
-class LoggingScreen extends StatelessWidget {
-  /// Creates a [LoggingScreen].
-  const LoggingScreen({required this.services, super.key});
+/// Events shows captured log records with display filters plus the capture
+/// controls that decide what is recorded; Prompts embeds the prompt
+/// inspector so raw model requests live alongside the event log.
+const List<SectionDestination> loggingDestinations = [
+  (label: 'Events', icon: LucideIcons.receiptText300),
+  (label: 'Prompts', icon: LucideIcons.messageSquareCode300),
+];
+
+/// The Events tab body: capture controls, display filters, and the record
+/// list. Renders inside the section shell, so it provides no chrome of its
+/// own.
+class LoggingEventsBody extends StatelessWidget {
+  /// Creates a [LoggingEventsBody].
+  const LoggingEventsBody({required this.services, super.key});
 
   /// The application service provider.
   final ServiceProvider services;
@@ -30,35 +36,29 @@ class LoggingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = services.getService<AppLogStore>();
     final settings = services.getService<LoggingSettings>();
+    if (store == null || settings == null) {
+      return const _Unavailable(
+        'In-app logging is not registered for this build.',
+      );
+    }
+    return _EventsTab(store: store, settings: settings);
+  }
+}
+
+/// The Prompts tab body: the prompt inspector, or an unavailable notice.
+class LoggingPromptsBody extends StatelessWidget {
+  /// Creates a [LoggingPromptsBody].
+  const LoggingPromptsBody({required this.services, super.key});
+
+  /// The application service provider.
+  final ServiceProvider services;
+
+  @override
+  Widget build(BuildContext context) {
     final promptLog = services.getService<PromptLog>();
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Logs & diagnostics'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Events'),
-              Tab(text: 'Prompts'),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            if (store == null || settings == null)
-              const _Unavailable(
-                'In-app logging is not registered for this build.',
-              )
-            else
-              _EventsTab(store: store, settings: settings),
-            if (promptLog == null)
-              const _Unavailable('Prompt capture is not registered.')
-            else
-              PromptInspectorPanel(log: promptLog),
-          ],
-        ),
-      ),
-    );
+    return promptLog == null
+        ? const _Unavailable('Prompt capture is not registered.')
+        : PromptInspectorPanel(log: promptLog);
   }
 }
 
@@ -150,23 +150,32 @@ class _EventsTabState extends State<_EventsTab> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CaptureControls(store: widget.store, settings: widget.settings),
-          const Divider(height: 1),
-          _FilterBar(
-            categories: widget.store.categories,
-            displayLevel: _displayLevel,
-            displayCategory: _displayCategory,
-            onLevelChanged: (level) => setState(() => _displayLevel = level),
-            onCategoryChanged: (category) =>
-                setState(() => _displayCategory = category),
-            onQueryChanged: (query) => setState(() => _query = query),
-            onClear: widget.store.clear,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: _CaptureControls(
+              store: widget.store,
+              settings: widget.settings,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: _FilterBar(
+              categories: widget.store.categories,
+              displayLevel: _displayLevel,
+              displayCategory: _displayCategory,
+              onLevelChanged: (level) => setState(() => _displayLevel = level),
+              onCategoryChanged: (category) =>
+                  setState(() => _displayCategory = category),
+              onQueryChanged: (query) => setState(() => _query = query),
+              onClear: widget.store.clear,
+            ),
           ),
           const Divider(height: 1),
           Expanded(
             child: records.isEmpty
                 ? const _Unavailable('No log records match.')
                 : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     itemCount: records.length,
                     itemBuilder: (context, index) =>
                         _RecordTile(record: records[index]),
@@ -193,59 +202,67 @@ class _CaptureControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final overrides = settings.categoryLevels;
     final theme = Theme.of(context);
-    return ExpansionTile(
-      leading: const Icon(LucideIcons.slidersHorizontal300),
-      title: const Text('Capture levels'),
-      subtitle: Text(
-        'Default ${_levelLabel(settings.minimumLevel)}'
-        '${overrides.isEmpty ? '' : ' · ${overrides.length} overrides'}',
-        style: theme.textTheme.bodySmall,
+    // A card surface with a collapsible body: same visual language as the
+    // dashboard, while keeping the log list the focus by default.
+    return Material(
+      color: theme.colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        leading: const Icon(LucideIcons.slidersHorizontal300),
+        title: const Text('Capture levels'),
+        subtitle: Text(
+          'Default ${_levelLabel(settings.minimumLevel)}'
+          '${overrides.isEmpty ? '' : ' · ${overrides.length} overrides'}',
+          style: theme.textTheme.bodySmall,
+        ),
+        shape: const Border(),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          Row(
+            children: [
+              const Expanded(child: Text('Default level')),
+              DropdownButton<LogLevel>(
+                value: settings.minimumLevel,
+                isDense: true,
+                items: [
+                  for (final level in _pickableLevels)
+                    DropdownMenuItem(
+                      value: level,
+                      child: Text(_levelLabel(level)),
+                    ),
+                ],
+                onChanged: (level) {
+                  if (level != null) settings.setMinimumLevel(level);
+                },
+              ),
+              // Balances the trailing delete button on override rows so the
+              // dropdowns line up.
+              const SizedBox(width: 48),
+            ],
+          ),
+          for (final entry in overrides.entries)
+            _OverrideRow(
+              category: entry.key,
+              level: entry.value,
+              settings: settings,
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _AddOverrideButton(store: store, settings: settings),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Trace includes full request and response payloads and can be '
+              'noisy; overrides also match dotted sub-categories.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ),
-      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      children: [
-        Row(
-          children: [
-            const Expanded(child: Text('Default level')),
-            DropdownButton<LogLevel>(
-              value: settings.minimumLevel,
-              isDense: true,
-              items: [
-                for (final level in _pickableLevels)
-                  DropdownMenuItem(
-                    value: level,
-                    child: Text(_levelLabel(level)),
-                  ),
-              ],
-              onChanged: (level) {
-                if (level != null) settings.setMinimumLevel(level);
-              },
-            ),
-            // Balances the trailing delete button on override rows so the
-            // dropdowns line up.
-            const SizedBox(width: 48),
-          ],
-        ),
-        for (final entry in overrides.entries)
-          _OverrideRow(
-            category: entry.key,
-            level: entry.value,
-            settings: settings,
-          ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: _AddOverrideButton(store: store, settings: settings),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            'Trace includes full request and response payloads and can be '
-            'noisy; overrides also match dotted sub-categories.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
