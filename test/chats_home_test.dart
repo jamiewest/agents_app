@@ -475,6 +475,47 @@ void main() {
       expect(find.byIcon(LucideIcons.panelRightOpen300), findsOneWidget);
     });
 
+    testWidgets('New menu offers a message and a channel', (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final records = InMemoryRecordStore();
+      final services = buildTestServices(records);
+      await seedTestAgent(services);
+      await ConversationStore(records).save(
+        testConversation(
+          id: 'open-one',
+          title: 'Open conversation',
+          updatedAt: DateTime.utc(2026, 6, 30, 9),
+        ),
+      );
+
+      await tester.pumpWidget(_host(_buildRouter(services)));
+      await tester.pumpAndSettle();
+
+      // The standalone new-conversation button is gone; creating anything
+      // starts from the New menu.
+      expect(find.text('New Conversation'), findsNothing);
+
+      await tester.tap(find.byTooltip('New'));
+      await tester.pumpAndSettle();
+      expect(find.text('New message'), findsOneWidget);
+      expect(find.text('New channel'), findsOneWidget);
+
+      await tester.tap(find.text('New channel'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AlertDialog, 'New channel'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('New'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New message'));
+      await tester.pumpAndSettle();
+      expect(find.text('Test Agent'), findsAtLeastNWidgets(1));
+    });
+
     testWidgets(
       'medium single-pane chat pairs back with the conversations drawer',
       (tester) async {

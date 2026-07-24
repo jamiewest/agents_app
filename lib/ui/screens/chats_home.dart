@@ -582,13 +582,8 @@ class _ChatsListViewState extends State<ChatsListView> {
     Scaffold.maybeOf(context)?.closeDrawer();
   }
 
-  /// The compact-width Chats page: app bar, list, and a new-chat FAB.
+  /// The compact-width Chats page: app bar and list.
   Widget _buildPage(BuildContext context) => Scaffold(
-    floatingActionButton: FloatingActionButton(
-      tooltip: 'New chat',
-      onPressed: _startNewChat,
-      child: const Icon(LucideIcons.messageSquarePlus300),
-    ),
     body: _buildStreamed(context, (channels, conversations) {
       final hasData =
           channels.isNotEmpty || (conversations?.isNotEmpty ?? false);
@@ -600,10 +595,13 @@ class _ChatsListViewState extends State<ChatsListView> {
           AppSliverHeader(
             title: 'Chats',
             actions: [
-              IconButton(
-                tooltip: 'New channel',
-                icon: const Icon(LucideIcons.hash300),
-                onPressed: _createChannel,
+              ChatsFilterButton(
+                query: _filters.query,
+                onOpenFilters: _openFilterSheet,
+              ),
+              _NewMenuButton(
+                onNewChat: _startNewChat,
+                onNewChannel: _createChannel,
               ),
             ],
           ),
@@ -653,7 +651,12 @@ class _ChatsListViewState extends State<ChatsListView> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SidebarHeader(onNewChat: _startNewChat, onNewChannel: _createChannel),
+        _SidebarHeader(
+          onNewChat: _startNewChat,
+          onNewChannel: _createChannel,
+          query: _filters.query,
+          onOpenFilters: _openFilterSheet,
+        ),
         Expanded(
           child: _buildStreamed(context, (channels, conversations) {
             if (conversations == null) {
@@ -713,7 +716,6 @@ class _ChatsListViewState extends State<ChatsListView> {
     query: _filters.query,
     agentNameOf: (agentId) => _agentsById[agentId]?.name ?? 'Unknown agent',
     onQueryChanged: (query) => _filters.query = query,
-    onOpenFilters: _openFilterSheet,
   );
 
   Future<void> _openFilterSheet() async {
@@ -1155,12 +1157,69 @@ class _ChatDetailPaneState extends State<ChatDetailPane> {
   }
 }
 
-/// The sidebar's brand header and New Conversation button.
-class _SidebarHeader extends StatelessWidget {
-  const _SidebarHeader({required this.onNewChat, required this.onNewChannel});
+/// What the New menu can create.
+enum _NewEntry { message, channel }
+
+/// The icon button that opens the New menu (message or channel).
+///
+/// Replaces the separate new-chat button and new-channel button: creating
+/// either starts from the same affordance.
+class _NewMenuButton extends StatelessWidget {
+  const _NewMenuButton({
+    required this.onNewChat,
+    required this.onNewChannel,
+    this.iconSize,
+  });
 
   final VoidCallback onNewChat;
   final VoidCallback onNewChannel;
+  final double? iconSize;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<_NewEntry>(
+    tooltip: 'New',
+    icon: Icon(LucideIcons.squarePen300, size: iconSize),
+    position: PopupMenuPosition.under,
+    onSelected: (entry) => switch (entry) {
+      _NewEntry.message => onNewChat(),
+      _NewEntry.channel => onNewChannel(),
+    },
+    itemBuilder: (context) => const [
+      PopupMenuItem(
+        value: _NewEntry.message,
+        child: ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(LucideIcons.messageSquarePlus300, size: 20),
+          title: Text('New message'),
+        ),
+      ),
+      PopupMenuItem(
+        value: _NewEntry.channel,
+        child: ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(LucideIcons.hash300, size: 20),
+          title: Text('New channel'),
+        ),
+      ),
+    ],
+  );
+}
+
+/// The sidebar's brand header, filter button, and New menu.
+class _SidebarHeader extends StatelessWidget {
+  const _SidebarHeader({
+    required this.onNewChat,
+    required this.onNewChannel,
+    required this.query,
+    required this.onOpenFilters,
+  });
+
+  final VoidCallback onNewChat;
+  final VoidCallback onNewChannel;
+  final ChatsQuery query;
+  final VoidCallback onOpenFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -1170,52 +1229,30 @@ class _SidebarHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
         AppSpacing.lg,
-        AppSpacing.lg,
+        AppSpacing.sm,
         AppSpacing.sm,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(
-                LucideIcons.circleDotDashed300,
-                color: scheme.primary,
-                size: 24,
+          Icon(LucideIcons.circleDotDashed300, color: scheme.primary, size: 24),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              'AGENT TEAMS',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+                color: scheme.onSurface,
               ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Text(
-                  'AGENT TEAMS',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'New channel',
-                icon: const Icon(LucideIcons.hash300, size: 20),
-                visualDensity: VisualDensity.compact,
-                onPressed: onNewChannel,
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(44),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppShape.small),
-              ),
-            ),
-            onPressed: onNewChat,
-            icon: const Icon(LucideIcons.plus300, size: 18),
-            label: const Text(
-              'New Conversation',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
+          ChatsFilterButton(query: query, onOpenFilters: onOpenFilters),
+          _NewMenuButton(
+            onNewChat: onNewChat,
+            onNewChannel: onNewChannel,
+            iconSize: 20,
           ),
         ],
       ),

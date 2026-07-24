@@ -26,17 +26,48 @@ class ChatsFilterController extends ChangeNotifier {
   }
 }
 
-/// The compact search field, filter button with an active-filter badge,
-/// and the horizontally scrollable row of removable active-filter chips.
+/// The filter/sort button, badged with the number of active filters.
 ///
-/// Sized to fit the ~300px desktop sidebar as well as full-width pages.
+/// Lives apart from [ChatsFilterBar] because the chats list hosts it in its
+/// header row beside the New menu, not next to the search field.
+class ChatsFilterButton extends StatelessWidget {
+  /// Creates a [ChatsFilterButton].
+  const ChatsFilterButton({
+    required this.query,
+    required this.onOpenFilters,
+    super.key,
+  });
+
+  /// The query whose active-filter count drives the badge.
+  final ChatsQuery query;
+
+  /// Opens the filter/sort sheet.
+  final VoidCallback onOpenFilters;
+
+  @override
+  Widget build(BuildContext context) => Badge.count(
+    count: query.filterCount,
+    isLabelVisible: query.filterCount > 0,
+    child: IconButton(
+      tooltip: 'Filter and sort',
+      icon: const Icon(LucideIcons.slidersHorizontal300),
+      visualDensity: VisualDensity.compact,
+      onPressed: onOpenFilters,
+    ),
+  );
+}
+
+/// The compact search field and the horizontally scrollable row of removable
+/// active-filter chips.
+///
+/// Sized to fit the ~300px desktop sidebar as well as full-width pages. The
+/// filter button itself is [ChatsFilterButton], hosted in the list header.
 class ChatsFilterBar extends StatelessWidget {
   /// Creates a [ChatsFilterBar].
   const ChatsFilterBar({
     required this.searchController,
     required this.query,
     required this.onQueryChanged,
-    required this.onOpenFilters,
     required this.agentNameOf,
     super.key,
   });
@@ -50,9 +81,6 @@ class ChatsFilterBar extends StatelessWidget {
   /// Called with the updated query when search text or a chip changes.
   final ValueChanged<ChatsQuery> onQueryChanged;
 
-  /// Opens the filter/sort sheet.
-  final VoidCallback onOpenFilters;
-
   /// Resolves an agent id to its display name for chips.
   final String Function(String agentId) agentNameOf;
 
@@ -62,13 +90,7 @@ class ChatsFilterBar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: _buildSearchField(context)),
-            const SizedBox(width: AppSpacing.xs),
-            _buildFilterButton(context),
-          ],
-        ),
+        _buildSearchField(context),
         if (chips.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.sm),
@@ -116,17 +138,6 @@ class ChatsFilterBar extends StatelessWidget {
           onChanged: (text) => onQueryChanged(query.copyWith(searchText: text)),
         ),
       );
-
-  Widget _buildFilterButton(BuildContext context) => Badge.count(
-    count: query.filterCount,
-    isLabelVisible: query.filterCount > 0,
-    child: IconButton(
-      tooltip: 'Filter and sort',
-      icon: const Icon(LucideIcons.slidersHorizontal300),
-      visualDensity: VisualDensity.compact,
-      onPressed: onOpenFilters,
-    ),
-  );
 
   Widget _chip(String label, VoidCallback onRemoved) => InputChip(
     label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
