@@ -5,6 +5,7 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 
+import '../data/agent_run_store.dart';
 import '../data/demo_seed.dart';
 import '../data/embedding_settings.dart';
 import '../data/legacy_chat_migration.dart';
@@ -39,6 +40,10 @@ class AppBootstrap {
     await _services.getService<EmbeddingSettings>()?.reload();
     await _services.getService<ThinkingSettings>()?.load();
     await _services.getService<ThemeSettings>()?.load();
+    // Runs left `running` by a crash or force-quit are recovered before any
+    // new run can start; a sweep after that point would mark a legitimately
+    // in-flight run as interrupted.
+    await _services.getService<AgentRunTelemetryStore>()?.recoverInterrupted();
     await _restoreLocalModelFiles();
   }
 

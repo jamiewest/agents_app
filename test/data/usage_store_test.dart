@@ -117,5 +117,77 @@ void main() {
       expect(session1['model-a']!.calls, 2);
       expect(session1['model-a']!.inputTokens, 30);
     });
+
+    test('tokenPointsSince returns attributed rows in time order', () async {
+      final store = UsageStore(InMemoryRecordStore());
+      final base = DateTime.utc(2026, 7, 23, 12);
+      store.recordAttributed(
+        record(input: 20, output: 6, timestamp: base),
+        agentId: 'agent-1',
+        runId: 'run-a',
+      );
+      store.recordAttributed(
+        record(
+          input: 10,
+          output: 4,
+          timestamp: base.subtract(const Duration(hours: 1)),
+        ),
+        agentId: 'agent-1',
+        runId: 'run-a',
+      );
+      // An unattributed row (hosting internals) must be excluded.
+      store.record(record(input: 999, output: 999));
+      await settle();
+
+      final points = await store.tokenPointsSince(
+        base.subtract(const Duration(hours: 2)),
+      );
+
+      expect(points, hasLength(2));
+      expect(points.first.input, 10);
+      expect(points.last.input, 20);
+      expect(points.first.at.isBefore(points.last.at), isTrue);
+    });
+
+    test('tokenPointsSince can restrict to one agent', () async {
+      final store = UsageStore(InMemoryRecordStore());
+      final base = DateTime.utc(2026, 7, 23, 12);
+      store.recordAttributed(
+        record(input: 10, timestamp: base),
+        agentId: 'agent-1',
+        runId: 'r1',
+      );
+      store.recordAttributed(
+        record(input: 99, timestamp: base),
+        agentId: 'agent-2',
+        runId: 'r2',
+      );
+      await settle();
+
+      final points = await store.tokenPointsSince(
+        base.subtract(const Duration(hours: 1)),
+        agentId: 'agent-1',
+      );
+
+      expect(points, hasLength(1));
+      expect(points.single.input, 10);
+    });
+
+    test('tokenPointsSince drops rows before the cutoff', () async {
+      final store = UsageStore(InMemoryRecordStore());
+      final base = DateTime.utc(2026, 7, 23, 12);
+      store.recordAttributed(
+        record(timestamp: base.subtract(const Duration(days: 2))),
+        agentId: 'agent-1',
+        runId: 'run-a',
+      );
+      await settle();
+
+      final points = await store.tokenPointsSince(
+        base.subtract(const Duration(hours: 6)),
+      );
+
+      expect(points, isEmpty);
+    });
   });
 }

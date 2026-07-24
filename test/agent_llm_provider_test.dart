@@ -3,7 +3,9 @@
 import 'dart:typed_data';
 
 import 'package:agents/agents.dart';
+import 'package:agents_app/data/agent_run_store.dart';
 import 'package:agents_app/ui/providers/providers.dart';
+import 'package:agents_flutter/agents_flutter.dart' show InMemoryRecordStore;
 import 'package:agents_app/ui/providers/interface/chat_message.dart'
     as ui_messages;
 import 'package:extensions/ai.dart' as ai;
@@ -270,8 +272,166 @@ void main() {
       expect(agent.capturedSession, same(session));
       expect(agent.capturedOptions, same(options));
     });
+
+    group('run telemetry', () {
+      AgentLlmProvider providerWith(
+        AIAgent agent,
+        AgentRunTelemetryStore runs,
+      ) => AgentLlmProvider(
+        agent: agent,
+        runs: runs,
+        beginRun: (ledger) => ledger.begin(
+          agentId: 'agent-1',
+          agentName: 'Researcher',
+          origin: AgentRunOrigin.chat,
+          conversationId: 'conv-1',
+        ),
+      );
+
+      test('records one succeeded run per turn', () async {
+        final runs = AgentRunTelemetryStore(InMemoryRecordStore());
+        final provider = providerWith(
+          _FakeAgent(updates: [_textUpdate('hi')]),
+          runs,
+        );
+
+        await provider.sendMessageStream('hello').toList();
+
+        final run = (await runs.list()).single;
+        expect(run.status, AgentRunStatus.succeeded);
+        expect(run.origin, AgentRunOrigin.chat);
+        expect(run.conversationId, 'conv-1');
+        expect(run.endedAt, isNotNull);
+      });
+
+      test('exposes the run id only while the turn is in flight', () async {
+        final runs = AgentRunTelemetryStore(InMemoryRecordStore());
+        final provider = providerWith(
+          _FakeAgent(updates: [_textUpdate('hi')]),
+          runs,
+        );
+
+        expect(provider.currentRunId, isNull);
+        final seen = <String?>[];
+        await provider.sendMessageStream('hello').map((chunk) {
+          seen.add(provider.currentRunId);
+          return chunk;
+        }).toList();
+
+        expect(seen.every((id) => id != null), isTrue);
+        expect(seen.toSet(), hasLength(1));
+        expect(provider.currentRunId, isNull);
+      });
+
+      test('counts every model call of the turn', () async {
+        final runs = AgentRunTelemetryStore(InMemoryRecordStore());
+        final provider = providerWith(
+          _FakeAgent(updates: [_usageUpdate(), _usageUpdate()]),
+          runs,
+        );
+
+        await provider.sendMessageStream('hello').toList();
+
+        expect((await runs.list()).single.modelCalls, 2);
+      });
+
+      test('a failed turn records a failed run', () async {
+        final runs = AgentRunTelemetryStore(InMemoryRecordStore());
+        final provider = providerWith(
+          _FakeAgent(error: StateError('boom')),
+          runs,
+        );
+
+        await expectLater(
+          provider.sendMessageStream('hello').toList(),
+          throwsA(isA<StateError>()),
+        );
+
+        expect((await runs.list()).single.status, AgentRunStatus.failed);
+      });
+
+      test(
+        'a tool-approval pause keeps one run across the whole turn',
+        () async {
+          // The middleware ends the agent run at the approval request and the
+          // provider is re-entered to resume it. That is one turn, so it must
+          // be one run — the same reasoning behind `turnStartedAt ??=`.
+          final runs = AgentRunTelemetryStore(InMemoryRecordStore());
+          final provider = providerWith(
+            _FakeAgent(
+              runs: [
+                [_approvalUpdate('r1', 'Search', null)],
+                [_textUpdate('found it')],
+              ],
+            ),
+            runs,
+          );
+
+          await provider.sendMessageStream('search').toList();
+          final paused = await runs.list();
+          expect(paused.single.status, AgentRunStatus.running);
+          final pausedRunId = paused.single.id;
+
+          await provider
+              .sendToolApprovalStream(ToolApprovalDecision.allowOnce)
+              .toList();
+
+          final finished = await runs.list();
+          expect(finished, hasLength(1));
+          expect(finished.single.id, pausedRunId);
+          expect(finished.single.status, AgentRunStatus.succeeded);
+        },
+      );
+
+      test('a new turn during an approval pause opens its own run', () async {
+        // The composer stays live while an approval is pending, so the user
+        // can type instead of answering. That abandons the paused turn; it
+        // must not merge into the new one.
+        final runs = AgentRunTelemetryStore(InMemoryRecordStore());
+        final provider = providerWith(
+          _FakeAgent(
+            runs: [
+              [_approvalUpdate('r1', 'Search', null)],
+              [_textUpdate('never mind')],
+            ],
+          ),
+          runs,
+        );
+
+        await provider.sendMessageStream('search').toList();
+        final pausedRunId = (await runs.list()).single.id;
+        await provider.sendMessageStream('actually, do this').toList();
+
+        final all = await runs.list();
+        expect(all, hasLength(2));
+        expect(all.map((run) => run.id), contains(pausedRunId));
+        expect(
+          all.every((run) => run.status == AgentRunStatus.succeeded),
+          isTrue,
+        );
+      });
+
+      test('records nothing when telemetry is disabled', () async {
+        final runs = AgentRunTelemetryStore(InMemoryRecordStore());
+        final provider = AgentLlmProvider(
+          agent: _FakeAgent(updates: [_textUpdate('hi')]),
+        );
+
+        await provider.sendMessageStream('hello').toList();
+
+        expect(await runs.list(), isEmpty);
+        expect(provider.currentRunId, isNull);
+      });
+    });
   });
 }
+
+AgentResponseUpdate _usageUpdate() => AgentResponseUpdate(
+  role: ai.ChatRole.assistant,
+  contents: [
+    ai.UsageContent(ai.UsageDetails(inputTokenCount: 10, outputTokenCount: 4)),
+  ],
+);
 
 AgentResponseUpdate _textUpdate(String text) =>
     AgentResponseUpdate(role: ai.ChatRole.assistant, content: text);

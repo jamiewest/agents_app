@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
@@ -34,8 +36,18 @@ class SettingsHomeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Agent Center leads: managing agents is the reason people
+                // open Settings, so it gets a card rather than a row buried
+                // among appearance and diagnostics.
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: _AgentCenterCard(
+                    manager: services
+                        .getRequiredService<ConfiguredAgentsManager>(),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   child: Text(
                     'Appearance',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -51,15 +63,6 @@ class SettingsHomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const Divider(),
-                ListTile(
-                  leading: const Icon(LucideIcons.bot300),
-                  title: const Text('Agents & providers'),
-                  subtitle: const Text(
-                    'Model sources, API keys, models, and saved agents',
-                  ),
-                  trailing: const Icon(LucideIcons.chevronRight300),
-                  onTap: () => context.go('/settings/agents'),
-                ),
                 ListTile(
                   leading: const Icon(LucideIcons.radioTower300),
                   title: const Text('Share agents on the network'),
@@ -301,6 +304,134 @@ class _SeedSwatch extends StatelessWidget {
               : null,
         ),
       ),
+    );
+  }
+}
+
+/// The Settings entry point into the Agent Center.
+///
+/// Summarizes state rather than describing the destination: how many agents
+/// exist, and whether anything needs setup before it can run. A count of
+/// zero, or an agent whose model or source has gone missing, is the reason
+/// most people open this screen at all.
+class _AgentCenterCard extends StatelessWidget {
+  const _AgentCenterCard({required this.manager});
+
+  final ConfiguredAgentsManager manager;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card.filled(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.go('/settings/agents'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(LucideIcons.bot300, size: 28, color: scheme.primary),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Agent Center',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    _AgentCenterSummary(manager: manager),
+                  ],
+                ),
+              ),
+              const Icon(LucideIcons.chevronRight300),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One line of live configuration state under the Agent Center title.
+class _AgentCenterSummary extends StatefulWidget {
+  const _AgentCenterSummary({required this.manager});
+
+  final ConfiguredAgentsManager manager;
+
+  @override
+  State<_AgentCenterSummary> createState() => _AgentCenterSummaryState();
+}
+
+class _AgentCenterSummaryState extends State<_AgentCenterSummary> {
+  late Future<({int agents, int needsSetup})> _summary;
+  StreamSubscription<void>? _changes;
+
+  @override
+  void initState() {
+    super.initState();
+    _summary = _load();
+    _changes = widget.manager.configurationChanges.listen((_) {
+      if (!mounted) return;
+      // Start the reload outside setState: an arrow body would hand the
+      // framework a Future as the callback's return value.
+      final reloaded = _load();
+      setState(() {
+        _summary = reloaded;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    unawaited(_changes?.cancel());
+    super.dispose();
+  }
+
+  /// Counts saved agents, and those whose model or source no longer
+  /// resolves. Configuration only — this makes no network call, so it never
+  /// implies a provider is reachable.
+  Future<({int agents, int needsSetup})> _load() async {
+    final agents = await widget.manager.agents.listAgents();
+    final models = await widget.manager.sources.listModels();
+    final sources = await widget.manager.sources.listSources();
+    final modelsById = {for (final model in models) model.id: model};
+    final sourceIds = {for (final source in sources) source.id};
+    var needsSetup = 0;
+    for (final agent in agents) {
+      final model = modelsById[agent.modelId];
+      if (model == null || !sourceIds.contains(model.sourceId)) needsSetup++;
+    }
+    return (agents: agents.length, needsSetup: needsSetup);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return FutureBuilder<({int agents, int needsSetup})>(
+      future: _summary,
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        if (data == null) {
+          return Text(
+            'Agents, models, and sources',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          );
+        }
+        final agents = data.agents == 1 ? '1 agent' : '${data.agents} agents';
+        final needsSetup = data.needsSetup;
+        return Text(
+          needsSetup == 0
+              ? '$agents · models and sources'
+              : '$agents · $needsSetup need setup',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: needsSetup == 0 ? scheme.onSurfaceVariant : scheme.error,
+          ),
+        );
+      },
     );
   }
 }

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:agents/agents.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:flutter/foundation.dart';
 
+import '../../../data/agent_run_store.dart';
 import '../../../data/app_activity_monitor.dart';
 import '../interface/attachments.dart';
 import '../interface/chat_message.dart';
@@ -27,6 +30,8 @@ class AgentLlmProvider extends LlmProvider
     this.optionsBuilder,
     this.toolActivity,
     this.activity,
+    this.runs,
+    this.beginRun,
     Iterable<ChatMessage>? history,
   }) : _history = List<ChatMessage>.from(history ?? const []);
 
@@ -49,11 +54,33 @@ class AgentLlmProvider extends LlmProvider
   /// view can show which tool the model is invoking.
   final ValueListenable<String?>? toolActivity;
 
+  /// The run ledger, when telemetry is enabled for this conversation.
+  ///
+  /// Null for private conversations, which publish live status but persist
+  /// nothing — the same rule the usage ledger already follows.
+  final AgentRunTelemetryStore? runs;
+
+  /// Opens a run record for a turn about to start.
+  ///
+  /// Supplied by the owner because only it knows the agent, model, and
+  /// source labels to snapshot.
+  final Future<AgentRunHandle> Function(AgentRunTelemetryStore runs)? beginRun;
+
   final List<ChatMessage> _history;
 
   bool _disposed = false;
 
   int _activeRuns = 0;
+
+  AgentRunHandle? _currentRun;
+
+  /// The id of the run in flight, or null between turns.
+  ///
+  /// Read lazily by [AgentRunScope.runIdResolver] so each model call — the
+  /// tool loop and delegated agents included — is stamped with the turn it
+  /// belongs to. One scope serves every turn of a conversation, so this
+  /// cannot be captured when the scope is built.
+  String? get currentRunId => _currentRun?.id;
 
   ai.ToolApprovalRequestContent? _pendingApprovalContent;
 
@@ -93,8 +120,9 @@ class AgentLlmProvider extends LlmProvider
 
   Stream<String> _appendResponseTo(
     ChatMessage llmMessage,
-    ai.ChatMessage message,
-  ) async* {
+    ai.ChatMessage message, {
+    bool resuming = false,
+  }) async* {
     final activity = toolActivity;
     // Per-bubble UI state: the message's own notification reaches the one
     // live bubble, so no provider-wide notify (which would also re-trigger
@@ -110,19 +138,64 @@ class AgentLlmProvider extends LlmProvider
       ..isGenerating = true;
     if (!_disposed) notifyListeners();
 
+    // One run spans the whole turn, including an approval pause: the
+    // middleware ends the agent run at the request and this method is
+    // re-entered ([resuming]) to continue it, so the open run is kept
+    // rather than a second one started. Same reasoning as
+    // `turnStartedAt ??=` above.
+    //
+    // A *new* turn arriving while a run is open means the user typed a
+    // message instead of answering the pending approval — the composer
+    // stays live during a pause, and `_runMessage` drops the pending
+    // request. That turn is abandoned, not failed, so its run is closed
+    // before a fresh one opens; merging the two would produce one run
+    // with both turns' model calls.
+    final ledger = runs;
+    final opener = beginRun;
+    if (!resuming) {
+      final abandoned = _currentRun;
+      _currentRun = null;
+      if (abandoned != null) unawaited(abandoned.succeed());
+    }
+    if (_currentRun == null && ledger != null && opener != null) {
+      _currentRun = await opener(ledger);
+    }
+
     activity?.addListener(onToolActivity);
+    var failed = false;
     try {
       yield* _runMessage(
-        message,
-        // Each model call of the turn (tool-loop sub-calls included)
-        // contributes one UsageContent; summing them makes the bubble's
-        // badge cover the whole turn.
-        onUsage: llmMessage.addUsage,
-      ).smoothed().map((chunk) {
-        llmMessage.append(chunk);
-        return chunk;
-      });
+            message,
+            // Each model call of the turn (tool-loop sub-calls included)
+            // contributes one UsageContent; summing them makes the bubble's
+            // badge cover the whole turn.
+            onUsage: (details) {
+              llmMessage.addUsage(details);
+              _currentRun?.countModelCall();
+            },
+          )
+          .smoothed()
+          .map((chunk) {
+            llmMessage.append(chunk);
+            return chunk;
+          })
+          .handleError((Object error, StackTrace stackTrace) {
+            // `yield*` forwards a source error straight to the output stream
+            // rather than throwing it into this body, so a surrounding catch
+            // would never see it. Flag the failure on the way past instead.
+            failed = true;
+            Error.throwWithStackTrace(error, stackTrace);
+          });
     } finally {
+      // A turn paused for tool approval is not over — leave its run open so
+      // the resumed half is counted against the same record. A cancelled
+      // stream completes normally and counts as a success: the user
+      // stopping a reply is not an agent failure.
+      final run = _currentRun;
+      if (run != null && (failed || _pendingApprovalContent == null)) {
+        _currentRun = null;
+        unawaited(failed ? run.fail() : run.succeed());
+      }
       activity?.removeListener(onToolActivity);
       final startedAt = llmMessage.turnStartedAt;
       llmMessage
@@ -172,7 +245,11 @@ class AgentLlmProvider extends LlmProvider
     }
     if (!_disposed) notifyListeners();
 
-    return _appendResponseTo(llmMessage, _toApprovalMessage(request, decision));
+    return _appendResponseTo(
+      llmMessage,
+      _toApprovalMessage(request, decision),
+      resuming: true,
+    );
   }
 
   ai.ChatMessage _toApprovalMessage(

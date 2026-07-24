@@ -11,7 +11,9 @@ import '../ui/screens/add_agent_wizard.dart';
 import '../ui/screens/channel_screen.dart';
 import '../ui/screens/chats_home.dart'
     show ChatDetailPane, ChatsHome, ChatsRootPane;
-import '../ui/screens/manage_agents_screen.dart';
+import '../ui/screens/agent_center_overview_screen.dart';
+import '../ui/screens/agent_center_screen.dart';
+import '../ui/screens/agent_detail_screen.dart';
 import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/hosting_screen.dart';
 import '../ui/screens/logging_screen.dart';
@@ -145,10 +147,15 @@ GoRouter createAppRouter({
               builder: (context, state) =>
                   SettingsHomeScreen(services: services),
               routes: [
+                // The Agent Center opens on Agents: people come here to add
+                // or fix an agent, not to browse the catalogs behind it.
+                // Section literals ('models', 'sources', 'add', 'new') are
+                // declared as their own segments so no parameterized route
+                // ever sits at the same level as one of them.
                 GoRoute(
                   path: 'agents',
                   builder: (context, state) =>
-                      ManageAgentsScreen(services: services),
+                      AgentCenterScreen(services: services),
                   routes: [
                     GoRoute(
                       path: 'add',
@@ -157,6 +164,41 @@ GoRouter createAppRouter({
                         initialKind: agentSetupKindFromName(
                           state.uri.queryParameters['type'],
                         ),
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'overview',
+                      builder: (context, state) =>
+                          AgentCenterOverviewScreen(services: services),
+                    ),
+                    GoRoute(
+                      path: 'view/:id',
+                      builder: (context, state) => AgentDetailScreen(
+                        services: services,
+                        agentId: state.pathParameters['id']!,
+                      ),
+                    ),
+                    ..._agentCenterRoutes(services, AgentCenterSection.agents),
+                    GoRoute(
+                      path: 'models',
+                      builder: (context, state) => AgentCenterScreen(
+                        services: services,
+                        section: AgentCenterSection.models,
+                      ),
+                      routes: _agentCenterRoutes(
+                        services,
+                        AgentCenterSection.models,
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'sources',
+                      builder: (context, state) => AgentCenterScreen(
+                        services: services,
+                        section: AgentCenterSection.sources,
+                      ),
+                      routes: _agentCenterRoutes(
+                        services,
+                        AgentCenterSection.sources,
                       ),
                     ),
                   ],
@@ -184,6 +226,29 @@ GoRouter createAppRouter({
     ),
   ],
 );
+
+/// The create and edit routes shared by every Agent Center section.
+///
+/// Below the master-detail width these are the pages the list navigates to;
+/// at wider widths the same routes still deep-link into the pane.
+List<GoRoute> _agentCenterRoutes(
+  ServiceProvider services,
+  AgentCenterSection section,
+) => [
+  GoRoute(
+    path: 'new',
+    builder: (context, state) =>
+        AgentCenterScreen(services: services, section: section, creating: true),
+  ),
+  GoRoute(
+    path: 'edit/:id',
+    builder: (context, state) => AgentCenterScreen(
+      services: services,
+      section: section,
+      editingId: state.pathParameters['id'],
+    ),
+  ),
+];
 
 /// Wraps [child] in a fade-through page transition, used for content
 /// changes within a section (for example switching conversations).

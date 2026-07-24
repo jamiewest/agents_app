@@ -11,6 +11,8 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 
 import '../domain/agent_task.dart';
 import '../domain/conversation.dart';
+import 'agent_run_scope.dart';
+import 'agent_run_store.dart';
 import 'agent_task_store.dart';
 import 'conversation_store.dart';
 
@@ -197,24 +199,52 @@ class TaskSchedulerService {
           ),
     );
 
-    final agent = await factory.createAgent(
-      agentConfig,
-      scope: AgentScope(
-        conversationId: task.taskConversationId,
-        channelId: task.channelId,
-        sessionIdResolver: () => 'task-run',
-      ),
-    );
     final model = await manager.sources.getModel(agentConfig.modelId);
-    final session = await agent.createSession();
-    final response = await agent.run(
-      session,
-      null,
-      messages: [taskPromptMessage(task.prompt, model)],
+    final source = model == null
+        ? null
+        : await manager.sources.getSource(model.sourceId);
+
+    // Unlike a chat, a scheduled execution is one run from start to finish,
+    // so the run opens before the agent is built and its id is fixed for
+    // the whole invocation.
+    final runs = _services.getService<AgentRunTelemetryStore>();
+    final run = await runs?.begin(
+      agentId: agentConfig.id,
+      agentName: agentConfig.name,
+      origin: AgentRunOrigin.scheduledTask,
+      modelId: model?.id ?? agentConfig.modelId,
+      modelName: model?.label,
+      sourceId: source?.id,
+      sourceName: source?.displayName,
+      conversationId: task.taskConversationId,
+      taskId: task.id,
     );
 
-    await _markConversationUnread(conversations, task, response.text);
-    return response.text;
+    try {
+      final agent = await factory.createAgent(
+        agentConfig,
+        scope: AgentRunScope(
+          conversationId: task.taskConversationId,
+          channelId: task.channelId,
+          sessionIdResolver: () => 'task-run',
+          agentId: agentConfig.id,
+          runIdResolver: () => run?.id,
+        ),
+      );
+      final session = await agent.createSession();
+      final response = await agent.run(
+        session,
+        null,
+        messages: [taskPromptMessage(task.prompt, model)],
+      );
+
+      await _markConversationUnread(conversations, task, response.text);
+      await run?.succeed();
+      return response.text;
+    } catch (_) {
+      await run?.fail();
+      rethrow;
+    }
   }
 
   /// Flags the task conversation as unread and refreshes its list preview so

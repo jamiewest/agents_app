@@ -25,6 +25,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sqflite;
 
+import 'data/agent_run_scope.dart';
+import 'data/agent_run_store.dart';
 import 'data/app_activity_monitor.dart';
 import 'data/chat_title_summarizer.dart';
 import 'data/chat_transcript_store.dart';
@@ -88,6 +90,12 @@ final _builder = Host.createApplicationBuilder()
     // Durable ledger of every model call's token usage, per conversation.
     flutter.services.tryAddSingleton<UsageStore>(
       (sp) => UsageStore(sp.getRequiredService<RecordStore>()),
+    );
+    // Durable ledger of agent runs — one record per chat turn, scheduled
+    // execution, or hosted request. Carries no token counts of its own:
+    // those live in the usage ledger above and are joined on the run id.
+    flutter.services.tryAddSingleton<AgentRunTelemetryStore>(
+      (sp) => AgentRunTelemetryStore(sp.getRequiredService<RecordStore>()),
     );
     // The local llama render seam writes its exact wire-format prompt through
     // a PromptInspector; the bridging subclass mirrors those into the shared
@@ -1168,11 +1176,18 @@ class _ChatScreenState extends State<ChatScreen> {
     // The scope routes the agent's chat history through the durable
     // transcript, so the model resumes with full-fidelity context and no
     // replay step. Private scopes keep the default in-memory history.
+    // An AgentRunScope stamps each usage record with the agent and the turn
+    // in flight, so tokens can be rolled up per agent and joined back to a
+    // run. The run id is resolved lazily through the provider because one
+    // scope serves every turn of this conversation, and the provider does
+    // not exist yet.
     final agent = await factory.createAgent(
       widget.agent,
-      scope: AgentScope(
+      scope: AgentRunScope(
         conversationId: _conversationId,
         sessionIdResolver: () => _sessionId,
+        agentId: widget.agent.id,
+        runIdResolver: () => _provider?.currentRunId,
         isPrivate: widget.isPrivate,
         channelId: record?.channelId ?? widget.channelId,
       ),
@@ -1190,6 +1205,12 @@ class _ChatScreenState extends State<ChatScreen> {
       session: session,
       toolActivity: _listenToolActivity(),
       activity: widget.services.getService<AppActivityMonitor>(),
+      // Private conversations publish live status but persist no run
+      // history, matching the usage ledger's existing rule.
+      runs: widget.isPrivate
+          ? null
+          : widget.services.getService<AgentRunTelemetryStore>(),
+      beginRun: (runs) => _beginRun(runs, widget.agent),
       history: displayHistory,
     );
     // Attach after restore so persistence reflects ongoing turns only.
@@ -1199,6 +1220,32 @@ class _ChatScreenState extends State<ChatScreen> {
     _provider = provider;
     _refreshTitle();
     return provider;
+  }
+
+  /// Opens a run record for a turn, snapshotting the agent, model, and
+  /// source labels as they read right now.
+  ///
+  /// The labels are copied rather than referenced so a run stays readable
+  /// after the agent is renamed or the model deleted.
+  Future<AgentRunHandle> _beginRun(
+    AgentRunTelemetryStore runs,
+    SavedAgentConfig agent,
+  ) async {
+    final manager = widget.services.getService<ConfiguredAgentsManager>();
+    final model = await manager?.sources.getModel(agent.modelId);
+    final source = model == null
+        ? null
+        : await manager?.sources.getSource(model.sourceId);
+    return runs.begin(
+      agentId: agent.id,
+      agentName: agent.name,
+      origin: AgentRunOrigin.chat,
+      modelId: model?.id ?? agent.modelId,
+      modelName: model?.label,
+      sourceId: source?.id,
+      sourceName: source?.displayName,
+      conversationId: _conversationId,
+    );
   }
 
   /// The set of configured-agent ids whose edits should refresh this chat:
@@ -1291,9 +1338,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final agent = await factory.createAgent(
         config,
-        scope: AgentScope(
+        scope: AgentRunScope(
           conversationId: _conversationId,
           sessionIdResolver: () => _sessionId,
+          agentId: config.id,
+          runIdResolver: () => _provider?.currentRunId,
           isPrivate: widget.isPrivate,
           channelId: record?.channelId ?? widget.channelId,
         ),

@@ -110,6 +110,7 @@ class ModelEditor extends StatefulWidget {
     required this.onSubmit,
     required this.onCancel,
     this.initial,
+    this.onDirty,
     this.pickLlamaModelFile = pickDefaultLlamaModelFile,
     this.sniffGguf = sniffGgufMetadata,
     super.key,
@@ -133,6 +134,14 @@ class ModelEditor extends StatefulWidget {
   /// Called when the user cancels.
   final VoidCallback onCancel;
 
+  /// Called the first time the user modifies any field.
+  ///
+  /// Hosts use this to protect unsaved work: the Agent Center prompts
+  /// before discarding a dirty editor, and stays silent for an untouched
+  /// one (confirming a no-op change is exactly the kind of prompt the
+  /// app's UI rules forbid).
+  final VoidCallback? onDirty;
+
   /// Selects a local GGUF model file for local llama models.
   final LlamaModelFilePicker pickLlamaModelFile;
 
@@ -144,6 +153,26 @@ class ModelEditor extends StatefulWidget {
 }
 
 class _ModelEditorState extends State<ModelEditor> {
+  bool _dirty = false;
+
+  /// Reports the first user edit to the host.
+  ///
+  /// Every non-text control in this form mutates through [setState], and
+  /// text fields report through [Form.onChanged], so together these two
+  /// hooks cover the whole editor without threading a callback through
+  /// each individual field.
+  void _markDirty() {
+    if (_dirty) return;
+    _dirty = true;
+    widget.onDirty?.call();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _markDirty();
+  }
+
   final _formKey = GlobalKey<FormState>();
 
   /// Fixed for the editor's lifetime: repeated submits (e.g. after a
@@ -630,6 +659,7 @@ class _ModelEditorState extends State<ModelEditor> {
     final style = widget.style;
     return Form(
       key: _formKey,
+      onChanged: _markDirty,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -7,6 +7,7 @@ import 'package:extensions/ai.dart';
 import 'package:extensions/system.dart';
 import 'package:http/http.dart' as http;
 
+import 'agent_run_scope.dart';
 import 'prompt_log.dart';
 import 'tool_activity.dart';
 import 'usage_store.dart';
@@ -102,9 +103,7 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
         ? logged
         : UsageTrackingChatClient(
             logged,
-            sink: scope?.isPrivate ?? false
-                ? const DiscardingUsageRecordSink()
-                : sink,
+            sink: _sinkFor(sink, scope),
             modelId: model.modelId,
             sourceId: source.id,
             provider: source.providerType.name,
@@ -121,6 +120,22 @@ class LoggingConfiguredChatClientFactory extends ConfiguredChatClientFactory {
       registry: activity,
       conversationId: conversationId,
     );
+  }
+
+  /// Chooses the usage sink for [scope].
+  ///
+  /// Private conversations discard, exactly as before. Otherwise, when the
+  /// caller supplied an [AgentRunScope] and the sink is the app's own
+  /// [UsageStore], records are attributed to the scope's agent and to the
+  /// run in flight. Any other combination falls through to the plain sink,
+  /// so a test double or a scope-less internal caller still records usage —
+  /// just without agent attribution.
+  static UsageRecordSink _sinkFor(UsageRecordSink sink, AgentScope? scope) {
+    if (scope?.isPrivate ?? false) return const DiscardingUsageRecordSink();
+    if (scope is AgentRunScope && sink is UsageStore) {
+      return sink.attributedTo(scope);
+    }
+    return sink;
   }
 }
 

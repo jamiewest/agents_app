@@ -8,6 +8,8 @@ import 'dart:math';
 
 import 'package:agents_flutter/agents_flutter.dart';
 
+import 'agent_run_scope.dart';
+
 /// Field names for the durable per-model-call usage ledger.
 abstract final class UsageRecords {
   /// The [RecordStore] collection holding usage records.
@@ -45,6 +47,20 @@ abstract final class UsageRecords {
 
   /// Tokens spent on reasoning/thinking.
   static const String reasoningField = 'reasoning';
+
+  /// The saved agent whose run made the call, when the call was scoped to
+  /// an [AgentRunScope].
+  ///
+  /// Absent on rows written by scope-less callers (hosting internals, the
+  /// title summarizer), which belong to no agent.
+  static const String agentIdField = 'agentId';
+
+  /// The [AgentRunRecord] the call belonged to, when a run was in flight.
+  ///
+  /// This is the join key: run-level token totals are the sum of the usage
+  /// rows carrying the run's id. Tokens are deliberately not duplicated
+  /// onto the run record itself.
+  static const String runIdField = 'runId';
 }
 
 /// Accumulated token totals for one model within a set of usage records.
@@ -93,10 +109,28 @@ class UsageStore implements UsageRecordSink {
   final RecordStore _records;
 
   @override
-  void record(ChatUsageRecord record) {
+  void record(ChatUsageRecord record) => recordAttributed(record);
+
+  /// Returns a sink that stamps [scope]'s agent and current run onto every
+  /// record it forwards here.
+  ///
+  /// The package builds [ChatUsageRecord] itself with a fixed field set, so
+  /// the attribution cannot ride along on the record — it is applied at the
+  /// sink, which is the last app-owned point before the write.
+  UsageRecordSink attributedTo(AgentRunScope scope) =>
+      _RunAttributingUsageSink(this, scope);
+
+  /// Writes [record], optionally attributed to [agentId] and [runId].
+  void recordAttributed(
+    ChatUsageRecord record, {
+    String? agentId,
+    String? runId,
+  }) {
     unawaited(
       _records
           .put(UsageRecords.collection, _newRecordId(), {
+            UsageRecords.agentIdField: ?agentId,
+            UsageRecords.runIdField: ?runId,
             if (record.conversationId != null)
               UsageRecords.conversationIdField: record.conversationId,
             if (record.sessionId != null)
@@ -168,6 +202,80 @@ class UsageStore implements UsageRecordSink {
     return totals;
   }
 
+  /// Sums the tokens of every model call made during [runId].
+  ///
+  /// This is the run's token total. It is computed rather than stored so
+  /// there is exactly one place tokens are counted.
+  Future<TokenTotals> totalsForRun(String runId) async {
+    final records = await _records.query(
+      UsageRecords.collection,
+      query: RecordQuery(equals: {UsageRecords.runIdField: runId}),
+    );
+    return TokenTotals._sum(records.map((record) => record.value));
+  }
+
+  /// Sums tokens per agent across every attributed usage record.
+  ///
+  /// Rows written by scope-less callers carry no agent id and are skipped,
+  /// so hosting internals and the title summarizer do not skew per-agent
+  /// rollups.
+  Future<Map<String, TokenTotals>> totalsByAgent({DateTime? since}) async {
+    final records = await _records.query(UsageRecords.collection);
+    final cutoff = since?.toUtc();
+    final grouped = <String, List<Map<String, Object?>>>{};
+    for (final record in records) {
+      final agentId = record.value[UsageRecords.agentIdField] as String?;
+      if (agentId == null) continue;
+      if (cutoff != null) {
+        final at = DateTime.tryParse(
+          record.value[UsageRecords.timestampField] as String? ?? '',
+        );
+        if (at == null || at.isBefore(cutoff)) continue;
+      }
+      grouped.putIfAbsent(agentId, () => []).add(record.value);
+    }
+    return {
+      for (final entry in grouped.entries)
+        entry.key: TokenTotals._sum(entry.value),
+    };
+  }
+
+  /// Returns attributed usage rows at or after [since], in call order, as
+  /// bare `(timestamp, input, output)` points.
+  ///
+  /// The token time series on the Overview needs a slice across all
+  /// conversations, which neither the per-conversation readers nor the
+  /// per-agent rollup provides. Rows without an agent id (hosting
+  /// internals, the title summarizer) are excluded so the series matches
+  /// the per-agent charts beside it. Pass [agentId] to restrict the slice
+  /// to one agent — a per-agent chart must not sum in everyone's tokens.
+  Future<List<UsageTokenPoint>> tokenPointsSince(
+    DateTime since, {
+    String? agentId,
+  }) async {
+    final records = await _records.query(UsageRecords.collection);
+    final cutoff = since.toUtc();
+    final points = <UsageTokenPoint>[];
+    for (final record in records) {
+      final rowAgent = record.value[UsageRecords.agentIdField] as String?;
+      if (rowAgent == null) continue;
+      if (agentId != null && rowAgent != agentId) continue;
+      final at = DateTime.tryParse(
+        record.value[UsageRecords.timestampField] as String? ?? '',
+      );
+      if (at == null || at.isBefore(cutoff)) continue;
+      points.add(
+        UsageTokenPoint(
+          at: at.toLocal(),
+          input: record.value[UsageRecords.inputField] as int? ?? 0,
+          output: record.value[UsageRecords.outputField] as int? ?? 0,
+        ),
+      );
+    }
+    points.sort((a, b) => a.at.compareTo(b.at));
+    return points;
+  }
+
   static RecordQuery _forConversation(String conversationId) => RecordQuery(
     equals: {UsageRecords.conversationIdField: conversationId},
     orderBy: UsageRecords.timestampField,
@@ -200,6 +308,100 @@ class UsageStore implements UsageRecordSink {
     ).join();
     return '${DateTime.now().microsecondsSinceEpoch}-$suffix';
   }
+}
+
+/// One model call's token counts at a point in time.
+///
+/// The timestamp is local, ready to bucket for the token time series.
+class UsageTokenPoint {
+  /// Creates a [UsageTokenPoint].
+  const UsageTokenPoint({
+    required this.at,
+    required this.input,
+    required this.output,
+  });
+
+  /// When the call completed, in local time.
+  final DateTime at;
+
+  /// Prompt tokens.
+  final int input;
+
+  /// Completion tokens.
+  final int output;
+}
+
+/// Accumulated token counts over a set of usage records.
+class TokenTotals {
+  /// Creates [TokenTotals].
+  const TokenTotals({
+    this.calls = 0,
+    this.inputTokens = 0,
+    this.outputTokens = 0,
+    this.cachedTokens = 0,
+    this.reasoningTokens = 0,
+  });
+
+  /// Model calls contributing to these totals.
+  final int calls;
+
+  /// Summed prompt tokens.
+  final int inputTokens;
+
+  /// Summed completion tokens.
+  final int outputTokens;
+
+  /// Summed cache-served prompt tokens.
+  final int cachedTokens;
+
+  /// Summed reasoning tokens.
+  final int reasoningTokens;
+
+  /// Prompt plus completion tokens.
+  int get totalTokens => inputTokens + outputTokens;
+
+  static TokenTotals _sum(Iterable<Map<String, Object?>> values) {
+    var calls = 0;
+    var input = 0;
+    var output = 0;
+    var cached = 0;
+    var reasoning = 0;
+    for (final value in values) {
+      calls++;
+      input += value[UsageRecords.inputField] as int? ?? 0;
+      output += value[UsageRecords.outputField] as int? ?? 0;
+      cached += value[UsageRecords.cachedField] as int? ?? 0;
+      reasoning += value[UsageRecords.reasoningField] as int? ?? 0;
+    }
+    return TokenTotals(
+      calls: calls,
+      inputTokens: input,
+      outputTokens: output,
+      cachedTokens: cached,
+      reasoningTokens: reasoning,
+    );
+  }
+}
+
+/// Forwards records to a [UsageStore], stamping the scope's agent and the
+/// run in flight at the moment each record is written.
+///
+/// The run id is read through [AgentRunScope.runIdResolver] rather than
+/// captured at construction because one scope serves many runs: a chat
+/// scope is built when the conversation opens and then handles every
+/// subsequent turn.
+class _RunAttributingUsageSink implements UsageRecordSink {
+  _RunAttributingUsageSink(this._store, this._scope);
+
+  final UsageStore _store;
+  final AgentRunScope _scope;
+
+  @override
+  void record(ChatUsageRecord record) => _store.recordAttributed(
+    record,
+    agentId: _scope.agentId,
+    runId: _scope.runIdResolver(),
+  );
 }
 
 /// A [UsageRecordSink] that discards records.

@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:agents_app/data/agent_run_store.dart';
 import 'package:agents_app/data/agent_task_store.dart';
+import 'package:agents_app/data/usage_store.dart';
 import 'package:agents_app/data/task_scheduler_service.dart';
 import 'package:agents_app/domain/agent_task.dart';
 import 'package:agents_flutter/agents_flutter.dart';
@@ -116,31 +118,34 @@ void main() {
       expect(ran, ['later']);
     });
 
-    test('failed recurring tasks become due again on their next cycle', () async {
-      final ran = <String>[];
-      final now = DateTime.utc(2026, 7, 2, 10);
-      final scheduler = TaskSchedulerService(
-        services,
-        runner: (task) async {
-          ran.add(task.id);
-          return 'ok';
-        },
-        now: () => now,
-      );
-      await store.save(
-        task(
-          id: 'retry',
-          intervalMinutes: 15,
-          status: AgentTaskStatus.failed,
-          nextRunAt: DateTime.utc(2026, 7, 2, 9, 45),
-        ),
-      );
+    test(
+      'failed recurring tasks become due again on their next cycle',
+      () async {
+        final ran = <String>[];
+        final now = DateTime.utc(2026, 7, 2, 10);
+        final scheduler = TaskSchedulerService(
+          services,
+          runner: (task) async {
+            ran.add(task.id);
+            return 'ok';
+          },
+          now: () => now,
+        );
+        await store.save(
+          task(
+            id: 'retry',
+            intervalMinutes: 15,
+            status: AgentTaskStatus.failed,
+            nextRunAt: DateTime.utc(2026, 7, 2, 9, 45),
+          ),
+        );
 
-      await scheduler.tick();
+        await scheduler.tick();
 
-      expect(ran, ['retry']);
-      expect((await store.get('retry'))!.status, AgentTaskStatus.scheduled);
-    });
+        expect(ran, ['retry']);
+        expect((await store.get('retry'))!.status, AgentTaskStatus.scheduled);
+      },
+    );
 
     test('failed one-shot tasks never auto-retry but runNow works', () async {
       final ran = <String>[];
@@ -253,6 +258,73 @@ void main() {
     });
   });
 
+  group('default runner telemetry', () {
+    test('a scheduled execution writes a run record', () async {
+      // The other tests inject a runner and bypass the real agent path; this
+      // one drives the default runner end to end so the telemetry wiring is
+      // actually exercised, not just the scheduling around it.
+      final kv = InMemoryKeyValueStore();
+      final full =
+          (ServiceCollection()
+                ..addRecordStore(recordStore: (_) => records)
+                ..addSingleton<UsageStore>(
+                  (sp) => UsageStore(sp.getRequiredService<RecordStore>()),
+                )
+                ..addSingleton<AgentRunTelemetryStore>(
+                  (sp) => AgentRunTelemetryStore(
+                    sp.getRequiredService<RecordStore>(),
+                  ),
+                )
+                ..addConfiguredAgents(
+                  keyValueStore: (_) => kv,
+                  secretStore: (_) => InMemorySecretStore(),
+                  chatClientFactory: (_) => ConfiguredChatClientFactory(
+                    customClientResolver:
+                        ({required source, required model, httpClient}) =>
+                            _OkChatClient(),
+                  ),
+                  configureHarness: (options) => options
+                    ..disableAgentSkillsProvider = true
+                    ..enableConnectivity = false
+                    ..enableTemporal = false
+                    ..enableAppInfo = false
+                    ..enableDeviceInfo = false,
+                ))
+              .buildServiceProvider();
+      final manager = full.getRequiredService<ConfiguredAgentsManager>();
+      await manager.saveSource(
+        const ModelSourceConfig(
+          id: 's1',
+          providerType: ProviderType.localLlama,
+          displayName: 'Local',
+        ),
+      );
+      await manager.saveModel(
+        const ModelConfig(id: 'm1', sourceId: 's1', modelId: 'fake'),
+      );
+      await manager.saveAgent(
+        const SavedAgentConfig(id: 'agent-1', name: 'Scheduler', modelId: 'm1'),
+      );
+
+      final scheduler = TaskSchedulerService(
+        full,
+        now: () => DateTime.utc(2026, 7, 2, 10),
+      );
+      await store.save(task(id: 'due'));
+
+      await scheduler.tick();
+
+      final runs = await full
+          .getRequiredService<AgentRunTelemetryStore>()
+          .list();
+      expect(runs, hasLength(1));
+      expect(runs.single.origin, AgentRunOrigin.scheduledTask);
+      expect(runs.single.status, AgentRunStatus.succeeded);
+      expect(runs.single.taskId, 'due');
+      expect(runs.single.agentId, 'agent-1');
+    });
+  });
+
   group('taskPromptMessage', () {
     ModelConfig model(Map<String, String> settings) => ModelConfig(
       id: 'm1',
@@ -287,4 +359,32 @@ void main() {
       expect(message.text, 'Do the thing.');
     });
   });
+}
+
+final class _OkChatClient extends ai.ChatClient {
+  @override
+  Future<ai.ChatResponse> getResponse({
+    required Iterable<ai.ChatMessage> messages,
+    ai.ChatOptions? options,
+    CancellationToken? cancellationToken,
+  }) async => ai.ChatResponse(
+    messages: <ai.ChatMessage>[
+      ai.ChatMessage.fromText(ai.ChatRole.assistant, 'ok'),
+    ],
+  );
+
+  @override
+  Stream<ai.ChatResponseUpdate> getStreamingResponse({
+    required Iterable<ai.ChatMessage> messages,
+    ai.ChatOptions? options,
+    CancellationToken? cancellationToken,
+  }) => Stream<ai.ChatResponseUpdate>.value(
+    ai.ChatResponseUpdate.fromText(ai.ChatRole.assistant, 'ok'),
+  );
+
+  @override
+  T? getService<T>({Object? key}) => null;
+
+  @override
+  void dispose() {}
 }
