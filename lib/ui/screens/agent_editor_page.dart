@@ -74,7 +74,10 @@ class _AgentEditorPageState extends State<AgentEditorPage> {
   bool get _creating => widget.editingId == null;
 
   void _markDirty() {
-    if (!_dirty && mounted) setState(() => _dirty = true);
+    // The editors only report dirty after their first frame, so this is a
+    // genuine user edit and never fires during build.
+    if (_dirty || !mounted) return;
+    setState(() => _dirty = true);
   }
 
   Future<void> _finish(String? error) async {

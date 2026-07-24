@@ -76,8 +76,13 @@ class _AgentEditorState extends State<AgentEditor> {
   /// text fields report through [Form.onChanged], so together these two
   /// hooks cover the whole editor without threading a callback through
   /// each individual field.
+  /// Set one frame after the first build; internal setup — controllers,
+  /// format detection — happens before it, so those changes are not user
+  /// edits and must not mark the form dirty.
+  bool _interactive = false;
+
   void _markDirty() {
-    if (_dirty) return;
+    if (!_interactive || _dirty) return;
     _dirty = true;
     widget.onDirty?.call();
   }
@@ -107,6 +112,9 @@ class _AgentEditorState extends State<AgentEditor> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _interactive = true;
+    });
     final initial = widget.initial;
     _delegateCandidates = [
       for (final agent in widget.agents)
