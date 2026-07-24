@@ -50,10 +50,13 @@ class _TasksScreenState extends State<TasksScreen> {
     _tasks = AgentTaskStore(widget.services.getRequiredService<RecordStore>());
   }
 
+  Future<List<SavedAgentConfig>> _agents() => widget.services
+      .getRequiredService<ConfiguredAgentsManager>()
+      .agents
+      .listAgents();
+
   Future<void> _createTask() async {
-    final manager = widget.services
-        .getRequiredService<ConfiguredAgentsManager>();
-    final agents = await manager.agents.listAgents();
+    final agents = await _agents();
     if (!mounted) return;
     if (agents.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,9 +74,28 @@ class _TasksScreenState extends State<TasksScreen> {
     final created = await showDialog<AgentTask>(
       context: context,
       builder: (context) =>
-          _CreateTaskDialog(agents: agents, newId: _tasks.newTaskId),
+          _TaskDialog(agents: agents, newId: _tasks.newTaskId),
     );
     if (created != null) await _tasks.save(created);
+  }
+
+  Future<void> _editTask(AgentTask task) async {
+    final agents = await _agents();
+    if (!mounted) return;
+    if (agents.isEmpty) {
+      // Editing needs the agent list for the picker; without any agents the
+      // task cannot run anyway.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tasks need an agent to run.')),
+      );
+      return;
+    }
+    final edited = await showDialog<AgentTask>(
+      context: context,
+      builder: (context) =>
+          _TaskDialog(agents: agents, newId: _tasks.newTaskId, initial: task),
+    );
+    if (edited != null) await _tasks.save(edited);
   }
 
   Future<void> _togglePause(AgentTask task) => _tasks.save(
@@ -163,6 +185,8 @@ class _TasksScreenState extends State<TasksScreen> {
         tooltip: 'Task actions',
         onSelected: (action) async {
           switch (action) {
+            case 'edit':
+              await _editTask(task);
             case 'run':
               await widget.scheduler.runNow(task.id);
             case 'pause':
@@ -181,6 +205,11 @@ class _TasksScreenState extends State<TasksScreen> {
         },
         itemBuilder: (context) => [
           PopupMenuItem(
+            value: 'edit',
+            enabled: task.status != AgentTaskStatus.running,
+            child: const Text('Edit'),
+          ),
+          PopupMenuItem(
             value: 'run',
             enabled: task.status != AgentTaskStatus.running,
             child: const Text('Run now'),
@@ -196,24 +225,43 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 }
 
-class _CreateTaskDialog extends StatefulWidget {
-  const _CreateTaskDialog({required this.agents, required this.newId});
+class _TaskDialog extends StatefulWidget {
+  const _TaskDialog({required this.agents, required this.newId, this.initial});
 
   final List<SavedAgentConfig> agents;
   final String Function() newId;
 
+  /// The task being edited, or null to create a new one.
+  final AgentTask? initial;
+
   @override
-  State<_CreateTaskDialog> createState() => _CreateTaskDialogState();
+  State<_TaskDialog> createState() => _TaskDialogState();
 }
 
-class _CreateTaskDialogState extends State<_CreateTaskDialog> {
+class _TaskDialogState extends State<_TaskDialog> {
   /// Sentinel for "run once" so [SegmentedButton] gets a non-null value.
   static const int _runOnce = 0;
 
-  final _titleController = TextEditingController();
-  final _promptController = TextEditingController();
-  late String _agentId = widget.agents.first.id;
-  int _repeatMinutes = _runOnce;
+  late final _titleController = TextEditingController(
+    text: widget.initial?.title ?? '',
+  );
+  late final _promptController = TextEditingController(
+    text: widget.initial?.prompt ?? '',
+  );
+  late String _agentId = _initialAgentId();
+  late int _repeatMinutes = widget.initial?.intervalMinutes ?? _runOnce;
+
+  bool get _editing => widget.initial != null;
+
+  /// The initial agent, falling back to the first when the task's agent has
+  /// since been deleted.
+  String _initialAgentId() {
+    final wanted = widget.initial?.agentId;
+    if (wanted != null && widget.agents.any((a) => a.id == wanted)) {
+      return wanted;
+    }
+    return widget.agents.first.id;
+  }
 
   bool get _valid =>
       _titleController.text.trim().isNotEmpty &&
@@ -235,16 +283,23 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
 
   void _submit() {
     if (!_valid) return;
+    final initial = widget.initial;
+    final interval = _repeatMinutes == _runOnce ? null : _repeatMinutes;
+    // Editing preserves the task's id (and so its conversation), creation
+    // time, and current schedule; only the editable fields change. A new
+    // task starts scheduled to run right away.
     Navigator.of(context).pop(
       AgentTask(
-        id: widget.newId(),
+        id: initial?.id ?? widget.newId(),
         title: _titleController.text.trim(),
         prompt: _promptController.text.trim(),
         agentId: _agentId,
-        intervalMinutes: _repeatMinutes == _runOnce ? null : _repeatMinutes,
-        status: AgentTaskStatus.scheduled,
-        nextRunAt: DateTime.now(),
-        createdAt: DateTime.now(),
+        channelId: initial?.channelId,
+        intervalMinutes: interval,
+        status: initial?.status ?? AgentTaskStatus.scheduled,
+        nextRunAt: initial?.nextRunAt ?? DateTime.now(),
+        lastRunAt: initial?.lastRunAt,
+        createdAt: initial?.createdAt ?? DateTime.now(),
       ),
     );
   }
@@ -256,7 +311,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
       color: theme.colorScheme.onSurfaceVariant,
     );
     return AlertDialog(
-      title: const Text('New task'),
+      title: Text(_editing ? 'Edit task' : 'New task'),
       content: SizedBox(
         width: 440,
         child: SingleChildScrollView(
@@ -341,7 +396,7 @@ class _CreateTaskDialogState extends State<_CreateTaskDialog> {
         ),
         FilledButton(
           onPressed: _valid ? _submit : null,
-          child: const Text('Create'),
+          child: Text(_editing ? 'Save' : 'Create'),
         ),
       ],
     );
