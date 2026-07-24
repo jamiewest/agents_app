@@ -108,6 +108,7 @@ Conversation testConversation({
   String agentId = 'agent-1',
   String? preview,
   String? channelId,
+  bool archived = false,
 }) => Conversation(
   id: id,
   kind: ConversationKind.direct,
@@ -118,6 +119,7 @@ Conversation testConversation({
   createdAt: DateTime.utc(2026, 6, 30, 9),
   updatedAt: updatedAt,
   lastMessagePreview: preview,
+  archived: archived,
 );
 
 /// Mocks the connectivity_plus channels.

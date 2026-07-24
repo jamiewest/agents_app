@@ -613,4 +613,126 @@ void main() {
       expect(find.text('Channel chat'), findsOneWidget);
     });
   });
+
+  group('archive', () {
+    testWidgets('the conversation menu archives, moving it to Archived', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final records = InMemoryRecordStore();
+      final services = buildTestServices(records);
+      await seedTestAgent(services);
+      await ConversationStore(records).save(
+        testConversation(
+          id: 'c1',
+          title: 'Keep me tidy',
+          updatedAt: DateTime.utc(2026, 7, 20),
+        ),
+      );
+
+      await tester.pumpWidget(_host(_buildRouter(services)));
+      await tester.pumpAndSettle();
+      await _expandSection(tester, 'Test Agent');
+      expect(find.text('Keep me tidy'), findsOneWidget);
+      expect(find.text('Archived'), findsNothing);
+
+      await tester.tap(find.byTooltip('Conversation actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Archive'));
+      await tester.pumpAndSettle();
+
+      expect((await ConversationStore(records).get('c1'))!.archived, isTrue);
+      // An Archived section now exists; the conversation left its agent
+      // section.
+      expect(find.text('Archived'), findsOneWidget);
+    });
+
+    testWidgets('an archived conversation offers Unarchive', (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final records = InMemoryRecordStore();
+      final services = buildTestServices(records);
+      await seedTestAgent(services);
+      await ConversationStore(records).save(
+        testConversation(
+          id: 'c1',
+          title: 'Old chat',
+          updatedAt: DateTime.utc(2026, 7, 20),
+          archived: true,
+        ),
+      );
+
+      await tester.pumpWidget(_host(_buildRouter(services)));
+      await tester.pumpAndSettle();
+      await _expandSection(tester, 'Archived');
+
+      await tester.tap(find.byTooltip('Conversation actions'));
+      await tester.pumpAndSettle();
+      expect(find.text('Unarchive'), findsOneWidget);
+      await tester.tap(find.text('Unarchive'));
+      await tester.pumpAndSettle();
+
+      expect((await ConversationStore(records).get('c1'))!.archived, isFalse);
+    });
+  });
+
+  group('expand/collapse all', () {
+    testWidgets('one button collapses and expands every section', (
+      tester,
+    ) async {
+      // Single-pane width: one list header hosts the button, no ambiguity.
+      tester.view.physicalSize = const Size(500, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final records = InMemoryRecordStore();
+      final services = buildTestServices(records);
+      await seedTestAgent(services);
+      await services.getRequiredService<ConfiguredAgentsManager>().saveAgent(
+        SavedAgentConfig(
+          id: 'agent-2',
+          name: 'Second Agent',
+          modelId: testModel.id,
+        ),
+      );
+      final store = ConversationStore(records);
+      await store.save(
+        testConversation(
+          id: 'c1',
+          title: 'First chat',
+          updatedAt: DateTime.utc(2026, 7, 20),
+        ),
+      );
+      await store.save(
+        testConversation(
+          id: 'c2',
+          title: 'Second chat',
+          updatedAt: DateTime.utc(2026, 7, 21),
+          agentId: 'agent-2',
+        ),
+      );
+
+      await tester.pumpWidget(_host(_buildRouter(services)));
+      await tester.pumpAndSettle();
+
+      // Two agent sections, both collapsed at first (no open conversation).
+      expect(find.text('First chat'), findsNothing);
+      expect(find.text('Second chat'), findsNothing);
+
+      await tester.tap(find.byIcon(LucideIcons.chevronsUpDown300));
+      await tester.pumpAndSettle();
+      expect(find.text('First chat'), findsOneWidget);
+      expect(find.text('Second chat'), findsOneWidget);
+
+      await tester.tap(find.byIcon(LucideIcons.chevronsDownUp300));
+      await tester.pumpAndSettle();
+      expect(find.text('First chat'), findsNothing);
+      expect(find.text('Second chat'), findsNothing);
+    });
+  });
 }

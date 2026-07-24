@@ -622,6 +622,59 @@ So Phase 4 delivered the per-agent detail page instead.
 - Goldens, chart hover, and keyboard traversal, per the scope correction
   above.
 
+## Navigation rebuild (supersedes parts of Phases 2 and 4)
+
+After the phased build, the user's feedback was that the catalog/detail/
+editor surfaces looked and navigated worse than the Overview — the
+secondary nav re-animated on every tab change because each page was a
+separate full screen embedding its own copy of the nav. The Agent Center
+was rebuilt as a **nested `StatefulShellRoute.indexedStack`**, mirroring
+the Chats sidebar shell, and restyled to the Overview's card language.
+`dart analyze` clean, 414 tests passing.
+
+- `lib/ui/screens/agent_center_shell.dart` — the persistent chrome
+  (secondary nav + content area). Built once; only the branch navigator
+  swaps, so changing tabs no longer animates the menu.
+- Router: the `agents` subtree is now a `StatefulShellRoute` with four
+  branches (overview / agents / models / sources), a sibling of the
+  `/settings` page inside the Settings branch. Nested `view`/`edit`/`new`
+  routes hang off each branch root, so a pushed page renders in the
+  content area with the nav still visible. Tabs switch via `goBranch`, so
+  each branch keeps its own stack.
+- `lib/ui/screens/agent_catalog_view.dart` — the lists are now cards in
+  the Overview's language, with a per-agent metric row (runs, success,
+  tokens) so they read like dashboard panels.
+- `lib/ui/screens/agent_editor_page.dart` — editors are pushed pages on a
+  card surface. The editor widgets themselves are untouched (validation,
+  `onDirty`, llama file-picking all intact).
+- `AgentCenterOverviewScreen` became `AgentCenterOverviewBody`; the
+  dashboard widgets it shares with the detail page stay in
+  `agent_dashboard.dart`.
+
+### Superseded decisions (were current through Phase 4)
+
+- **Phase 2's "two rendering mechanics" / inline master-detail pane on
+  wide layouts / width-conditional `PopScope`** — gone. Every editor is
+  now a pushed page at all widths, so there is one uniform per-page
+  `PopScope` dirty guard. Selecting an item always pushes to its page (the
+  user's requested model), so the wide-layout inline pane and its
+  route-pop guard no longer exist.
+- **Phase 2's "lists, not cards"** — reversed; cards now carry the
+  per-item metrics that were deferred, which is what makes them read like
+  the Overview.
+- **Phase 4's "tap opens detail with Edit inside" for agents** — kept, and
+  now consistent: models/sources tap straight to their editor page (they
+  have no telemetry to show first).
+
+### Verification note
+
+Verified structurally, including the two behaviors the feedback targeted:
+switching tabs keeps one shell mounted with the nav in place (no rebuild),
+and a pushed detail renders with the nav still visible — at both wide
+(1200) and compact (420) widths. The compact path (horizontal segmented
+nav, detail pushing below) is covered, closing the phone-path gap. Not
+yet eyeballed in a running app; worth a visual pass at two widths.
+
 ## Test plan adjustments
 
 Keep the original plan's unit and widget coverage, with these changes:

@@ -11,9 +11,12 @@ import '../ui/screens/add_agent_wizard.dart';
 import '../ui/screens/channel_screen.dart';
 import '../ui/screens/chats_home.dart'
     show ChatDetailPane, ChatsHome, ChatsRootPane;
+import '../ui/screens/agent_catalog_view.dart';
+import '../ui/screens/agent_center_nav.dart';
 import '../ui/screens/agent_center_overview_screen.dart';
-import '../ui/screens/agent_center_screen.dart';
+import '../ui/screens/agent_center_shell.dart';
 import '../ui/screens/agent_detail_screen.dart';
+import '../ui/screens/agent_editor_page.dart';
 import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/hosting_screen.dart';
 import '../ui/screens/logging_screen.dart';
@@ -147,62 +150,6 @@ GoRouter createAppRouter({
               builder: (context, state) =>
                   SettingsHomeScreen(services: services),
               routes: [
-                // The Agent Center opens on Agents: people come here to add
-                // or fix an agent, not to browse the catalogs behind it.
-                // Section literals ('models', 'sources', 'add', 'new') are
-                // declared as their own segments so no parameterized route
-                // ever sits at the same level as one of them.
-                GoRoute(
-                  path: 'agents',
-                  builder: (context, state) =>
-                      AgentCenterScreen(services: services),
-                  routes: [
-                    GoRoute(
-                      path: 'add',
-                      builder: (context, state) => AddAgentWizard(
-                        services: services,
-                        initialKind: agentSetupKindFromName(
-                          state.uri.queryParameters['type'],
-                        ),
-                      ),
-                    ),
-                    GoRoute(
-                      path: 'overview',
-                      builder: (context, state) =>
-                          AgentCenterOverviewScreen(services: services),
-                    ),
-                    GoRoute(
-                      path: 'view/:id',
-                      builder: (context, state) => AgentDetailScreen(
-                        services: services,
-                        agentId: state.pathParameters['id']!,
-                      ),
-                    ),
-                    ..._agentCenterRoutes(services, AgentCenterSection.agents),
-                    GoRoute(
-                      path: 'models',
-                      builder: (context, state) => AgentCenterScreen(
-                        services: services,
-                        section: AgentCenterSection.models,
-                      ),
-                      routes: _agentCenterRoutes(
-                        services,
-                        AgentCenterSection.models,
-                      ),
-                    ),
-                    GoRoute(
-                      path: 'sources',
-                      builder: (context, state) => AgentCenterScreen(
-                        services: services,
-                        section: AgentCenterSection.sources,
-                      ),
-                      routes: _agentCenterRoutes(
-                        services,
-                        AgentCenterSection.sources,
-                      ),
-                    ),
-                  ],
-                ),
                 GoRoute(
                   path: 'network/pair',
                   builder: (context, state) =>
@@ -220,6 +167,14 @@ GoRouter createAppRouter({
                 ),
               ],
             ),
+            // The Agent Center is its own nested stateful shell, a sibling of
+            // the /settings page (mirroring how the Chats sidebar shell sits
+            // in the Chats branch). The secondary nav is built once and only
+            // the content branch swaps, so changing tabs never re-animates
+            // the menu; each branch is a navigator, so a list pushes to an
+            // item's page in place with the nav still visible. Branch order
+            // matches [AgentCenterTab.values] so the shell maps its index.
+            _agentCenterShell(services),
           ],
         ),
       ],
@@ -227,28 +182,131 @@ GoRouter createAppRouter({
   ],
 );
 
-/// The create and edit routes shared by every Agent Center section.
+/// The Agent Center's nested stateful shell.
 ///
-/// Below the master-detail width these are the pages the list navigates to;
-/// at wider widths the same routes still deep-link into the pane.
-List<GoRoute> _agentCenterRoutes(
-  ServiceProvider services,
-  AgentCenterSection section,
-) => [
-  GoRoute(
-    path: 'new',
-    builder: (context, state) =>
-        AgentCenterScreen(services: services, section: section, creating: true),
-  ),
-  GoRoute(
-    path: 'edit/:id',
-    builder: (context, state) => AgentCenterScreen(
-      services: services,
-      section: section,
-      editingId: state.pathParameters['id'],
-    ),
-  ),
-];
+/// Four branches — overview, agents, models, sources, in
+/// [AgentCenterTab.values] order so [AgentCenterShell] maps the active index
+/// straight to a tab. The agents branch owns the create/edit/detail and the
+/// guided-setup wizard as pushed routes; models and sources own their own
+/// create/edit. Every nested route hangs off its branch root with no
+/// `parentNavigatorKey`, so a pushed page renders in the content area beside
+/// the persistent nav rather than covering it.
+StatefulShellRoute _agentCenterShell(ServiceProvider services) =>
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          AgentCenterShell(services: services, shell: navigationShell),
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/settings/agents/overview',
+              builder: (context, state) =>
+                  AgentCenterOverviewBody(services: services),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/settings/agents',
+              builder: (context, state) => AgentCatalogView(
+                services: services,
+                kind: AgentCenterTab.agents,
+              ),
+              routes: [
+                GoRoute(
+                  path: 'add',
+                  builder: (context, state) => AddAgentWizard(
+                    services: services,
+                    initialKind: agentSetupKindFromName(
+                      state.uri.queryParameters['type'],
+                    ),
+                  ),
+                ),
+                GoRoute(
+                  path: 'new',
+                  builder: (context, state) => AgentEditorPage(
+                    services: services,
+                    kind: AgentCenterTab.agents,
+                  ),
+                ),
+                GoRoute(
+                  path: 'view/:id',
+                  builder: (context, state) => AgentDetailScreen(
+                    services: services,
+                    agentId: state.pathParameters['id']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'edit/:id',
+                  builder: (context, state) => AgentEditorPage(
+                    services: services,
+                    kind: AgentCenterTab.agents,
+                    editingId: state.pathParameters['id'],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/settings/agents/models',
+              builder: (context, state) => AgentCatalogView(
+                services: services,
+                kind: AgentCenterTab.models,
+              ),
+              routes: [
+                GoRoute(
+                  path: 'new',
+                  builder: (context, state) => AgentEditorPage(
+                    services: services,
+                    kind: AgentCenterTab.models,
+                  ),
+                ),
+                GoRoute(
+                  path: 'edit/:id',
+                  builder: (context, state) => AgentEditorPage(
+                    services: services,
+                    kind: AgentCenterTab.models,
+                    editingId: state.pathParameters['id'],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/settings/agents/sources',
+              builder: (context, state) => AgentCatalogView(
+                services: services,
+                kind: AgentCenterTab.sources,
+              ),
+              routes: [
+                GoRoute(
+                  path: 'new',
+                  builder: (context, state) => AgentEditorPage(
+                    services: services,
+                    kind: AgentCenterTab.sources,
+                  ),
+                ),
+                GoRoute(
+                  path: 'edit/:id',
+                  builder: (context, state) => AgentEditorPage(
+                    services: services,
+                    kind: AgentCenterTab.sources,
+                    editingId: state.pathParameters['id'],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
 
 /// Wraps [child] in a fade-through page transition, used for content
 /// changes within a section (for example switching conversations).

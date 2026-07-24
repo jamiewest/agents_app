@@ -14,8 +14,6 @@ import '../../data/agent_center_overview.dart';
 import '../../data/agent_run_store.dart';
 import '../../data/usage_store.dart';
 import '../widgets/agent_dashboard.dart';
-import '../widgets/app_sliver_header.dart';
-import 'agent_center_nav.dart';
 
 /// The Agent Center's operational dashboard.
 ///
@@ -24,9 +22,9 @@ import 'agent_center_nav.dart';
 /// is the common one, because operational history only begins after this
 /// feature ships. Time-series charts appear once there is enough completed
 /// work to be worth plotting.
-class AgentCenterOverviewScreen extends StatefulWidget {
-  /// Creates an [AgentCenterOverviewScreen].
-  const AgentCenterOverviewScreen({
+class AgentCenterOverviewBody extends StatefulWidget {
+  /// Creates an [AgentCenterOverviewBody].
+  const AgentCenterOverviewBody({
     required this.services,
     this.now,
     super.key,
@@ -39,11 +37,11 @@ class AgentCenterOverviewScreen extends StatefulWidget {
   final DateTime Function()? now;
 
   @override
-  State<AgentCenterOverviewScreen> createState() =>
-      _AgentCenterOverviewScreenState();
+  State<AgentCenterOverviewBody> createState() =>
+      _AgentCenterOverviewBodyState();
 }
 
-class _AgentCenterOverviewScreenState extends State<AgentCenterOverviewScreen> {
+class _AgentCenterOverviewBodyState extends State<AgentCenterOverviewBody> {
   late final AgentRunTelemetryStore _runs;
   late final UsageStore _usage;
   late final ConfiguredAgentsManager _manager;
@@ -131,66 +129,20 @@ class _AgentCenterOverviewScreenState extends State<AgentCenterOverviewScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: CustomScrollView(
-      slivers: [
-        const AppSliverHeader(title: 'Agent Center'),
-        SliverToBoxAdapter(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final sideNav = constraints.maxWidth >= 600;
-              final nav = AgentCenterNav(
-                current: AgentCenterTab.overview,
-                vertical: sideNav,
-                onSelected: (tab) {
-                  if (tab != AgentCenterTab.overview) context.go(tab.path);
-                },
-              );
-              final content = _loading
-                  ? const Padding(
-                      padding: EdgeInsets.all(48),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : _content(context);
-              if (!sideNav) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                      child: nav,
-                    ),
-                    content,
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 168,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8, top: 4),
-                      child: nav,
-                    ),
-                  ),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: content),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Center(child: _content(context)),
+    );
+  }
 
   Widget _content(BuildContext context) {
     final overview = _overview!;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 1000),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.zero,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

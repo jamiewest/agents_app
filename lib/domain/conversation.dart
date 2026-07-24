@@ -49,6 +49,7 @@ class Conversation {
     this.isPrivate = false,
     this.lastMessagePreview,
     this.hasUnread = false,
+    this.archived = false,
   });
 
   /// Stable conversation id.
@@ -90,6 +91,12 @@ class Conversation {
   /// the conversation is opened. Surfaced as an unread dot in the chats list.
   final bool hasUnread;
 
+  /// Whether the user has archived the conversation.
+  ///
+  /// Archived conversations drop out of the main list into a collapsed
+  /// "Archived" section; the transcript is untouched and can be unarchived.
+  final bool archived;
+
   /// The primary agent of a direct conversation.
   String get primaryAgentId => participantAgentIds.first;
 
@@ -100,6 +107,7 @@ class Conversation {
     DateTime? updatedAt,
     String? lastMessagePreview,
     bool? hasUnread,
+    bool? archived,
   }) => Conversation(
     id: id,
     kind: kind,
@@ -113,6 +121,7 @@ class Conversation {
     updatedAt: updatedAt ?? this.updatedAt,
     lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
     hasUnread: hasUnread ?? this.hasUnread,
+    archived: archived ?? this.archived,
   );
 
   /// Serializes to a [RecordStore]-compatible map.
@@ -132,6 +141,7 @@ class Conversation {
     'updatedAt': updatedAt.toUtc().toIso8601String(),
     if (lastMessagePreview != null) 'lastMessagePreview': lastMessagePreview,
     if (hasUnread) 'hasUnread': true,
+    if (archived) 'archived': true,
   };
 
   /// Reconstructs a [Conversation] from a stored record.
@@ -153,6 +163,7 @@ class Conversation {
         updatedAt: DateTime.parse(record['updatedAt']! as String),
         lastMessagePreview: record['lastMessagePreview'] as String?,
         hasUnread: record['hasUnread'] as bool? ?? false,
+        archived: record['archived'] as bool? ?? false,
       );
 }
 

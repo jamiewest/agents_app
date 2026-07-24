@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -590,11 +591,19 @@ class _ChatsListViewState extends State<ChatsListView> {
       final filtered = conversations == null
           ? null
           : _applyQuery(channels, conversations);
+      // Derive the section keys before the header builds, so the
+      // expand/collapse-all button's visibility is right this frame.
+      if (filtered != null) {
+        _syncVisibleSectionKeys(
+          _deriveSectionKeys(filtered.channels, filtered.conversations),
+        );
+      }
       return CustomScrollView(
         slivers: [
           AppSliverHeader(
             title: 'Chats',
             actions: [
+              ?_expandCollapseButton(),
               ChatsFilterButton(
                 query: _filters.query,
                 onOpenFilters: _openFilterSheet,
@@ -656,6 +665,7 @@ class _ChatsListViewState extends State<ChatsListView> {
           onNewChannel: _createChannel,
           query: _filters.query,
           onOpenFilters: _openFilterSheet,
+          expandCollapseButton: _expandCollapseButton(),
         ),
         Expanded(
           child: _buildStreamed(context, (channels, conversations) {
@@ -798,6 +808,96 @@ class _ChatsListViewState extends State<ChatsListView> {
     }
   });
 
+  /// The section keys shown by the most recent build, in order, and their
+  /// resolved expanded state — captured so the header's expand/collapse-all
+  /// button can read and flip every section at once.
+  List<String> _visibleSectionKeys = const [];
+
+  /// The ordered section keys for [channels] and [conversations], matching
+  /// the grouping [_listChildren] renders. Kept as one derivation so the
+  /// expand/collapse-all button and the sections never disagree.
+  List<String> _deriveSectionKeys(
+    List<Channel> channels,
+    List<Conversation> conversations,
+  ) {
+    final order = _filters.query.sortOrder;
+    final byAgent = <String, List<Conversation>>{};
+    var hasGroups = false;
+    var hasArchived = false;
+    for (final conversation in conversations) {
+      if (conversation.archived) {
+        hasArchived = true;
+      } else if (conversation.kind == ConversationKind.group) {
+        hasGroups = true;
+      } else {
+        byAgent
+            .putIfAbsent(conversation.primaryAgentId, () => [])
+            .add(conversation);
+      }
+    }
+    return [
+      if (channels.isNotEmpty) 'channels',
+      if (hasGroups) 'group-chats',
+      for (final agentId in orderAgentSections(byAgent, order, _index))
+        'agent:$agentId',
+      if (hasArchived) 'archived',
+    ];
+  }
+
+  /// Records the section keys the current build produced. The sidebar header
+  /// that hosts the expand/collapse-all button is built outside the list's
+  /// stream, so when the set changes — most importantly on first data load —
+  /// a post-frame rebuild lets the header pick the keys up.
+  void _syncVisibleSectionKeys(List<String> keys) {
+    if (listEquals(keys, _visibleSectionKeys)) return;
+    _visibleSectionKeys = keys;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// Whether every visible section has been explicitly expanded.
+  ///
+  /// Reads the expansion maps directly rather than the per-build resolved
+  /// state, so the button's icon is right in the same frame a toggle-all
+  /// runs (the sections build after the header that hosts the button). A
+  /// section auto-expanded only by holding the open conversation counts as
+  /// not-yet-expanded here, which just means the first press expands the
+  /// rest — harmless.
+  bool get _allSectionsExpanded {
+    if (_visibleSectionKeys.isEmpty) return false;
+    final map = _filters.query.isActive
+        ? _filteredSectionExpanded
+        : _sectionExpanded;
+    return _visibleSectionKeys.every((key) => map[key] ?? false);
+  }
+
+  /// Opens or closes every visible section in one action.
+  void _setAllSections(bool expanded) => setState(() {
+    final target = _filters.query.isActive
+        ? _filteredSectionExpanded
+        : _sectionExpanded;
+    for (final key in _visibleSectionKeys) {
+      target[key] = expanded;
+    }
+  });
+
+  /// The header button that expands or collapses all sections. Hidden until
+  /// there is more than one section to be worth the control.
+  Widget? _expandCollapseButton() {
+    if (_visibleSectionKeys.length < 2) return null;
+    final expanded = _allSectionsExpanded;
+    return IconButton(
+      tooltip: expanded ? 'Collapse all' : 'Expand all',
+      icon: Icon(
+        expanded
+            ? LucideIcons.chevronsDownUp300
+            : LucideIcons.chevronsUpDown300,
+      ),
+      onPressed: () => _setAllSections(!expanded),
+    );
+  }
+
   /// Builds the grouped, collapsible list. Currently the only grouping is
   /// channels / group chats / by-agent; future view types (e.g. all agents
   /// grouped by date) become alternate section builders feeding the same
@@ -810,8 +910,13 @@ class _ChatsListViewState extends State<ChatsListView> {
     final order = _filters.query.sortOrder;
     final groupChats = <Conversation>[];
     final byAgent = <String, List<Conversation>>{};
+    // Archived conversations leave the main grouping for a single section at
+    // the bottom, so an archive tidies the list without losing the chat.
+    final archived = <Conversation>[];
     for (final conversation in conversations) {
-      if (conversation.kind == ConversationKind.group) {
+      if (conversation.archived) {
+        archived.add(conversation);
+      } else if (conversation.kind == ConversationKind.group) {
         groupChats.add(conversation);
       } else {
         byAgent
@@ -821,6 +926,7 @@ class _ChatsListViewState extends State<ChatsListView> {
     }
     final sortedChannels = sortChannels(channels, order);
     final sortedGroups = sortGroupConversations(groupChats, order, _index);
+    _syncVisibleSectionKeys(_deriveSectionKeys(channels, conversations));
     return [
       if (sortedChannels.isNotEmpty)
         _section(
@@ -851,6 +957,13 @@ class _ChatsListViewState extends State<ChatsListView> {
             order,
             _index,
           ),
+        ),
+      if (archived.isNotEmpty)
+        _conversationSection(
+          context,
+          key: 'archived',
+          title: 'Archived',
+          conversations: sortSectionConversations(archived, order, _index),
         ),
     ];
   }
@@ -1053,6 +1166,10 @@ class _ChatsListViewState extends State<ChatsListView> {
       menuTooltip: 'Conversation actions',
       onRename: () => unawaited(_renameConversation(conversation)),
       onDelete: () => unawaited(_deleteConversation(conversation)),
+      archived: conversation.archived,
+      onArchive: () => unawaited(
+        _conversations.setArchived(conversation.id, !conversation.archived),
+      ),
     );
   }
 }
@@ -1214,12 +1331,16 @@ class _SidebarHeader extends StatelessWidget {
     required this.onNewChannel,
     required this.query,
     required this.onOpenFilters,
+    this.expandCollapseButton,
   });
 
   final VoidCallback onNewChat;
   final VoidCallback onNewChannel;
   final ChatsQuery query;
   final VoidCallback onOpenFilters;
+
+  /// The expand/collapse-all control, when there is more than one section.
+  final Widget? expandCollapseButton;
 
   @override
   Widget build(BuildContext context) {
@@ -1248,6 +1369,7 @@ class _SidebarHeader extends StatelessWidget {
               ),
             ),
           ),
+          ?expandCollapseButton,
           ChatsFilterButton(query: query, onOpenFilters: onOpenFilters),
           _NewMenuButton(
             onNewChat: onNewChat,
@@ -1273,6 +1395,8 @@ class _EntryTile extends StatelessWidget {
     required this.onDelete,
     this.subtitle,
     this.unread = false,
+    this.onArchive,
+    this.archived = false,
   });
 
   final Widget leading;
@@ -1283,6 +1407,13 @@ class _EntryTile extends StatelessWidget {
   final String menuTooltip;
   final VoidCallback onRename;
   final VoidCallback onDelete;
+
+  /// Archives or unarchives the entry, when the entry supports it (channels
+  /// do not).
+  final VoidCallback? onArchive;
+
+  /// Whether the entry is currently archived, so the menu offers "Unarchive".
+  final bool archived;
 
   /// Whether to show an unread dot and emphasize the title.
   final bool unread;
@@ -1378,6 +1509,22 @@ class _EntryTile extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (onArchive != null)
+                      PopupMenuItem(
+                        value: onArchive,
+                        child: Row(
+                          children: [
+                            Icon(
+                              archived
+                                  ? LucideIcons.archiveRestore300
+                                  : LucideIcons.archive300,
+                              size: 18,
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Text(archived ? 'Unarchive' : 'Archive'),
+                          ],
+                        ),
+                      ),
                     PopupMenuItem(
                       value: onDelete,
                       child: Row(

@@ -43,6 +43,16 @@ class ConversationStore {
   /// Deletes the conversation with [id].
   Future<void> delete(String id) => _records.delete(collection, id);
 
+  /// Archives or unarchives the conversation with [id].
+  ///
+  /// A no-op when the conversation is missing. The transcript is untouched —
+  /// this only moves it in and out of the archived list.
+  Future<void> setArchived(String id, bool archived) async {
+    final conversation = await get(id);
+    if (conversation == null) return;
+    await save(conversation.copyWith(archived: archived));
+  }
+
   /// Lists conversations whose primary agent is [agentId], newest first.
   Future<List<Conversation>> listForAgent(String agentId) async {
     final records = await _records.query(

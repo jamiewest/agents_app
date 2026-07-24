@@ -78,14 +78,16 @@ Future<void> _seedRuns(
 }
 
 Widget _host(ServiceProvider services) => MaterialApp(
-  home: AgentCenterOverviewScreen(
-    services: services,
-    now: () => DateTime(2026, 7, 23, 12),
+  home: Scaffold(
+    body: AgentCenterOverviewBody(
+      services: services,
+      now: () => DateTime(2026, 7, 23, 12),
+    ),
   ),
 );
 
 void main() {
-  group('AgentCenterOverviewScreen', () {
+  group('AgentCenterOverviewBody', () {
     testWidgets('shows KPI cards', (tester) async {
       final services = _services();
       await _seedConfig(services);
