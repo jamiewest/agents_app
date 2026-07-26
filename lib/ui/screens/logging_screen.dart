@@ -364,11 +364,59 @@ class _FilterBar extends StatelessWidget {
   /// phone-only fallback.
   static const double _singleRowMinWidth = 520;
 
-  /// The category dropdown's width. Bounded because category names come from
-  /// log records and would otherwise size the button to the longest one.
-  static const double _categoryWidth = 168;
+  @override
+  Widget build(BuildContext context) {
+    final search = _LogSearchField(onQueryChanged: onQueryChanged);
+    final level = _LevelFilter(
+      displayLevel: displayLevel,
+      onLevelChanged: onLevelChanged,
+    );
+    final category = _CategoryFilter(
+      categories: categories,
+      displayCategory: displayCategory,
+      onCategoryChanged: onCategoryChanged,
+    );
+    final clear = _ClearLogButton(onClear: onClear);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: LayoutBuilder(
+        builder: (context, constraints) =>
+            constraints.maxWidth >= _singleRowMinWidth
+            ? Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: 8),
+                  level,
+                  const SizedBox(width: 8),
+                  category,
+                  const SizedBox(width: 4),
+                  clear,
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  search,
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [level, category, clear],
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
 
-  Widget _search() => TextField(
+class _LogSearchField extends StatelessWidget {
+  const _LogSearchField({required this.onQueryChanged});
+
+  final ValueChanged<String> onQueryChanged;
+
+  @override
+  Widget build(BuildContext context) => TextField(
     decoration: const InputDecoration(
       hintText: 'Search logs',
       prefixIcon: Icon(LucideIcons.search300, size: 20),
@@ -377,8 +425,19 @@ class _FilterBar extends StatelessWidget {
     ),
     onChanged: onQueryChanged,
   );
+}
 
-  Widget _levelFilter() => DropdownButton<LogLevel?>(
+class _LevelFilter extends StatelessWidget {
+  const _LevelFilter({
+    required this.displayLevel,
+    required this.onLevelChanged,
+  });
+
+  final LogLevel? displayLevel;
+  final ValueChanged<LogLevel?> onLevelChanged;
+
+  @override
+  Widget build(BuildContext context) => DropdownButton<LogLevel?>(
     value: displayLevel,
     hint: const Text('Level'),
     isDense: true,
@@ -392,9 +451,26 @@ class _FilterBar extends StatelessWidget {
     ],
     onChanged: onLevelChanged,
   );
+}
 
-  Widget _categoryFilter() => SizedBox(
-    width: _categoryWidth,
+class _CategoryFilter extends StatelessWidget {
+  const _CategoryFilter({
+    required this.categories,
+    required this.displayCategory,
+    required this.onCategoryChanged,
+  });
+
+  final Set<String> categories;
+  final String? displayCategory;
+  final ValueChanged<String?> onCategoryChanged;
+
+  /// Bounded because category names come from log records and would
+  /// otherwise size the button to the longest one.
+  static const double _width = 168;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: _width,
     child: DropdownButton<String?>(
       value: displayCategory,
       hint: const Text('Category'),
@@ -411,47 +487,18 @@ class _FilterBar extends StatelessWidget {
       onChanged: onCategoryChanged,
     ),
   );
+}
 
-  Widget _clearButton() => IconButton(
+class _ClearLogButton extends StatelessWidget {
+  const _ClearLogButton({required this.onClear});
+
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
     tooltip: 'Clear log',
     icon: const Icon(LucideIcons.trash2300),
     onPressed: onClear,
-  );
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-    child: LayoutBuilder(
-      builder: (context, constraints) =>
-          constraints.maxWidth >= _singleRowMinWidth
-          ? Row(
-              children: [
-                Expanded(child: _search()),
-                const SizedBox(width: 8),
-                _levelFilter(),
-                const SizedBox(width: 8),
-                _categoryFilter(),
-                const SizedBox(width: 4),
-                _clearButton(),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _search(),
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    _levelFilter(),
-                    _categoryFilter(),
-                    _clearButton(),
-                  ],
-                ),
-              ],
-            ),
-    ),
   );
 }
 

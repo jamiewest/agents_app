@@ -201,7 +201,9 @@ class _SectionHeader extends StatelessWidget {
     // height; nothing here needs one, so match that height explicitly.
     child: SizedBox(
       height: 48,
-      child: Center(child: _SectionTitle(title: title, icon: icon)),
+      child: Center(
+        child: _SectionTitle(title: title, icon: icon),
+      ),
     ),
   );
 }

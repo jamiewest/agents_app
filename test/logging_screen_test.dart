@@ -3,6 +3,7 @@
 // the Events and Prompts tabs.
 
 import 'package:agents_app/data/prompt_log.dart';
+import 'package:agents_app/navigation/app_shell.dart';
 import 'package:agents_app/ui/screens/logging_screen.dart';
 import 'package:agents_app/ui/widgets/draggable_separator.dart';
 import 'package:agents_app/ui/widgets/prompt_inspector_panel.dart';
@@ -129,22 +130,36 @@ void main() {
 
       // The separator sits at the panel's trailing edge, so its offset is
       // the rendered panel width.
-      expect(
-        _panelWidth(tester),
-        SettingsSectionShell.defaultNavWidth,
-      );
+      expect(_panelWidth(tester), SettingsSectionShell.defaultNavWidth);
 
       await tester.drag(find.byType(DraggableSeparator), const Offset(60, 0));
       await tester.pumpAndSettle();
-      expect(
-        _panelWidth(tester),
-        SettingsSectionShell.defaultNavWidth + 60,
-      );
+      expect(_panelWidth(tester), SettingsSectionShell.defaultNavWidth + 60);
 
       // Past the maximum the panel stops growing.
       await tester.drag(find.byType(DraggableSeparator), const Offset(400, 0));
       await tester.pumpAndSettle();
       expect(_panelWidth(tester), SettingsSectionShell.maxNavWidth);
+    });
+
+    testWidgets('a dragged width survives switching tabs', (tester) async {
+      final services = _loggingServices();
+      tester.view.physicalSize = const Size(1200, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_loggingApp(services));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(DraggableSeparator), const Offset(60, 0));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Prompts'));
+      await tester.pumpAndSettle();
+
+      // The shell is built once and holds the width; a rebuilt shell would
+      // silently reset the drag to the default.
+      expect(find.byType(PromptInspectorPanel), findsOneWidget);
+      expect(_panelWidth(tester), SettingsSectionShell.defaultNavWidth + 60);
     });
 
     testWidgets('the panel falls back to its floor when the window cannot '
@@ -181,6 +196,31 @@ void main() {
       expect(find.text('LOGS & DIAGNOSTICS'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('the compact layout drops the glyph for the app drawer '
+        'button', (tester) async {
+      final services = _loggingServices();
+      tester.view.physicalSize = const Size(420, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      // How the section actually mounts on compact: inside the app shell,
+      // so the header leads with the hamburger and the heading loses its
+      // glyph — the narrowest the title ever gets.
+      var opened = 0;
+      await tester.pumpWidget(
+        _loggingApp(services, onOpenDrawer: () => opened++),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Menu'), findsOneWidget);
+      expect(find.text('LOGS & DIAGNOSTICS'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byTooltip('Menu'));
+      await tester.pumpAndSettle();
+      expect(opened, 1);
+    });
   });
 }
 
@@ -191,38 +231,45 @@ double _panelWidth(WidgetTester tester) =>
 
 /// A minimal router with just the Logs section shell — the same branch
 /// structure the app router uses, without the full app around it.
-Widget _loggingApp(ServiceProvider services) => MaterialApp.router(
-  routerConfig: GoRouter(
-    initialLocation: '/settings/logging',
-    routes: [
-      StatefulShellRoute.indexedStack(
-        builder: (context, state, shell) => SettingsSectionShell(
-          title: 'Logs & diagnostics',
-          icon: LucideIcons.receiptText300,
-          destinations: loggingDestinations,
-          shell: shell,
-        ),
-        branches: [
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/settings/logging',
-                builder: (context, state) =>
-                    LoggingEventsBody(services: services),
+///
+/// Pass [onOpenDrawer] to stand in for the app shell's drawer, which is what
+/// the section sees on compact widths in the real app.
+Widget _loggingApp(ServiceProvider services, {VoidCallback? onOpenDrawer}) =>
+    MaterialApp.router(
+      routerConfig: GoRouter(
+        initialLocation: '/settings/logging',
+        routes: [
+          StatefulShellRoute.indexedStack(
+            builder: (context, state, shell) => AppShellScope(
+              openDrawer: onOpenDrawer,
+              child: SettingsSectionShell(
+                title: 'Logs & diagnostics',
+                icon: LucideIcons.receiptText300,
+                destinations: loggingDestinations,
+                shell: shell,
               ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/settings/logging/prompts',
-                builder: (context, state) =>
-                    LoggingPromptsBody(services: services),
+            ),
+            branches: [
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/settings/logging',
+                    builder: (context, state) =>
+                        LoggingEventsBody(services: services),
+                  ),
+                ],
+              ),
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/settings/logging/prompts',
+                    builder: (context, state) =>
+                        LoggingPromptsBody(services: services),
+                  ),
+                ],
               ),
             ],
           ),
         ],
       ),
-    ],
-  ),
-);
+    );
