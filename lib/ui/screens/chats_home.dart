@@ -156,7 +156,7 @@ class ChatsHome extends StatefulWidget {
 class _ChatsHomeState extends State<ChatsHome> {
   final _drawerKey = GlobalKey<ScaffoldState>();
   final ChatsFilterController _filters = ChatsFilterController();
-  double _sidebarWidth = 300;
+  double _sidebarWidth = AppSidePanel.defaultWidth;
   bool _sidebarCollapsed = false;
 
   @override
@@ -216,8 +216,8 @@ class _ChatsHomeState extends State<ChatsHome> {
                       onDragUpdate: (deltaX) => setState(() {
                         // The floor keeps the brand + actions on one line.
                         _sidebarWidth = (_sidebarWidth + deltaX).clamp(
-                          248.0,
-                          480.0,
+                          AppSidePanel.minWidth,
+                          AppSidePanel.maxWidth,
                         );
                       }),
                     ),

@@ -11,6 +11,7 @@ import 'package:agents_app/data/theme_settings.dart';
 import 'package:agents_app/data/usage_store.dart';
 import 'package:agents_app/navigation/app_bootstrap.dart';
 import 'package:agents_app/navigation/app_router.dart';
+import 'package:agents_app/ui/app_theme.dart';
 import 'package:agents_app/ui/screens/agent_center_nav.dart';
 import 'package:agents_app/ui/screens/agent_catalog_view.dart';
 import 'package:agents_app/ui/screens/agent_center_shell.dart';
@@ -412,7 +413,7 @@ void main() {
       expect(find.byType(DraggableSeparator), findsOneWidget);
       expect(
         navPanelWidth(tester),
-        AgentCenterShell.defaultNavWidth,
+        AppSidePanel.defaultWidth,
         reason: 'starts at the chats sidebar width',
       );
 
@@ -424,12 +425,12 @@ void main() {
       // Past the far edge it stops at the shared maximum.
       await tester.drag(handle, const Offset(400, 0));
       await tester.pumpAndSettle();
-      expect(navPanelWidth(tester), AgentCenterShell.maxNavWidth);
+      expect(navPanelWidth(tester), AppSidePanel.maxWidth);
 
       // And at the near edge, the shared minimum.
       await tester.drag(handle, const Offset(-600, 0));
       await tester.pumpAndSettle();
-      expect(navPanelWidth(tester), AgentCenterShell.minNavWidth);
+      expect(navPanelWidth(tester), AppSidePanel.minWidth);
     });
 
     testWidgets('a narrow window borrows panel width back for the content', (
@@ -458,8 +459,8 @@ void main() {
       );
 
       final width = navPanelWidth(tester);
-      expect(width, lessThan(AgentCenterShell.defaultNavWidth));
-      expect(width, greaterThanOrEqualTo(AgentCenterShell.minNavWidth));
+      expect(width, lessThan(AppSidePanel.defaultWidth));
+      expect(width, greaterThanOrEqualTo(AppSidePanel.minWidth));
     });
 
     testWidgets('agent cards show run stats once there is history', (

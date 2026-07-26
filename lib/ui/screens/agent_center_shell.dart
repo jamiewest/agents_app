@@ -39,17 +39,6 @@ class AgentCenterShell extends StatefulWidget {
   /// The branch navigator for the active tab, and the state that drives it.
   final StatefulNavigationShell shell;
 
-  /// The side panel's starting width, matching the chats sidebar.
-  static const double defaultNavWidth = 300;
-
-  /// The narrowest the side panel can be dragged, matching the chats
-  /// sidebar; also the floor the panel falls back to when the window is too
-  /// narrow to honour the user's width.
-  static const double minNavWidth = 248;
-
-  /// The widest the side panel can be dragged, matching the chats sidebar.
-  static const double maxNavWidth = 480;
-
   /// The width the content area keeps before the side panel gives ground.
   static const double _minContentWidth = 360;
 
@@ -58,7 +47,7 @@ class AgentCenterShell extends StatefulWidget {
 }
 
 class _AgentCenterShellState extends State<AgentCenterShell> {
-  double _navWidth = AgentCenterShell.defaultNavWidth;
+  double _navWidth = AppSidePanel.defaultWidth;
 
   /// Switches to [index], resetting that branch to its root when the active
   /// tab is re-tapped — the same idiom the app's outer rail uses.
@@ -73,7 +62,7 @@ class _AgentCenterShellState extends State<AgentCenterShell> {
   double _renderedNavWidth(double available) => math.min(
     _navWidth,
     math.max(
-      AgentCenterShell.minNavWidth,
+      AppSidePanel.minWidth,
       available - AgentCenterShell._minContentWidth,
     ),
   );
@@ -119,8 +108,8 @@ class _AgentCenterShellState extends State<AgentCenterShell> {
                 DraggableSeparator(
                   onDragUpdate: (deltaX) => setState(() {
                     _navWidth = (_navWidth + deltaX).clamp(
-                      AgentCenterShell.minNavWidth,
-                      AgentCenterShell.maxNavWidth,
+                      AppSidePanel.minWidth,
+                      AppSidePanel.maxWidth,
                     );
                   }),
                 ),
@@ -202,7 +191,7 @@ class _AgentCenterTitle extends StatelessWidget {
     return Row(
       children: [
         if (showIcon) ...[
-          Icon(LucideIcons.bot300, color: scheme.primary, size: 24),
+          Icon(LucideIcons.blocks300, color: scheme.primary, size: 24),
           const SizedBox(width: AppSpacing.md),
         ],
         Expanded(

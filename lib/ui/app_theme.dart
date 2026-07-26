@@ -141,6 +141,24 @@ abstract final class AppSpacing {
   static const double xxxl = 32;
 }
 
+/// The shared geometry of the app's resizable side panels — the chats
+/// conversation list and the Agent Center's menu.
+///
+/// They are different contents in the same piece of furniture, so they start
+/// at one width and drag between one pair of bounds. Keeping the numbers
+/// here is what stops the two from drifting apart.
+abstract final class AppSidePanel {
+  /// The width a side panel opens at.
+  static const double defaultWidth = 300;
+
+  /// The narrowest a side panel can be dragged. Also the floor a panel falls
+  /// back to when the window cannot afford the user's width.
+  static const double minWidth = 248;
+
+  /// The widest a side panel can be dragged.
+  static const double maxWidth = 480;
+}
+
 /// Builds the app-wide Material 3 theme for one [brightness], seeded from
 /// the user-selected [seedColor].
 ///
