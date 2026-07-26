@@ -1324,6 +1324,40 @@ class _NewMenuButton extends StatelessWidget {
   );
 }
 
+/// The product mark: the app glyph beside the "AGENT TEAMS" wordmark.
+///
+/// Shared by the chats sidebar header and the compact shell drawer so the
+/// two never drift apart. Sizes to its parent; wrap it in an [Expanded] when
+/// it sits in a row beside actions.
+class AgentTeamsBrand extends StatelessWidget {
+  /// Creates an [AgentTeamsBrand].
+  const AgentTeamsBrand({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Row(
+      children: [
+        Icon(LucideIcons.circleDotDashed300, color: scheme.primary, size: 24),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Text(
+            'AGENT TEAMS',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+              color: scheme.onSurface,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// The sidebar's brand header, filter button, and New menu.
 class _SidebarHeader extends StatelessWidget {
   const _SidebarHeader({
@@ -1344,8 +1378,6 @@ class _SidebarHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
@@ -1355,20 +1387,7 @@ class _SidebarHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(LucideIcons.circleDotDashed300, color: scheme.primary, size: 24),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Text(
-              'AGENT TEAMS',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.5,
-                color: scheme.onSurface,
-              ),
-            ),
-          ),
+          const Expanded(child: AgentTeamsBrand()),
           ?expandCollapseButton,
           ChatsFilterButton(query: query, onOpenFilters: onOpenFilters),
           _NewMenuButton(

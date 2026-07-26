@@ -181,14 +181,28 @@ void main() {
       expect(find.byType(NavigationBar), findsNothing);
       expect(find.byType(NavigationRail), findsNothing);
 
-      // The page header's hamburger opens the drawer, which lists the
-      // top-level destinations above the conversations panel.
+      // The page header's hamburger opens the drawer: the brand mark at the
+      // top, the top-level destinations at the bottom, and — because the
+      // Chats screen already shows them on this width — no conversations.
       await tester.tap(find.byTooltip('Menu'));
       await tester.pumpAndSettle();
       expect(find.byType(Drawer), findsOneWidget);
       expect(find.text('Tasks'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
-      expect(find.text('AGENT TEAMS'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.byType(AgentTeamsBrand),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.byType(ChatsListView),
+        ),
+        findsNothing,
+      );
 
       // Picking a destination closes the drawer and switches branch.
       await tester.tap(find.text('Tasks'));
