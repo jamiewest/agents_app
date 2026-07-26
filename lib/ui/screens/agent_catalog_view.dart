@@ -28,8 +28,10 @@ import 'agent_editor_page.dart';
 /// shows it beside the list instead.
 ///
 /// Measured against the catalog's own constraints, not the window: the outer
-/// rail and the Agent Center's 184px nav are already spent by the time this
-/// view is laid out.
+/// rail and the Agent Center's nav panel — which the user can drag within the
+/// shared side-panel bounds — are already spent by the time this view is laid
+/// out. So a window wide enough for the split at one panel width may not be
+/// at another.
 const double catalogTwoPaneBreakpoint = 880;
 
 /// One of the three catalog pages of the Agent Center.
