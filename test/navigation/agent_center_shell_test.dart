@@ -198,11 +198,14 @@ void main() {
   });
 
   group('Agent Center flows', () {
+    // Wide enough that the catalog still clears its two-pane breakpoint once
+    // the sidebar-parity nav panel (300px, not the old 184px rail) and the
+    // outer rail have taken their share.
     Future<void> pumpAt(
       WidgetTester tester,
       ServiceProvider services,
       String location, {
-      Size size = const Size(1200, 1600),
+      Size size = const Size(1400, 1600),
     }) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
@@ -326,7 +329,12 @@ void main() {
       final services = _buildServices();
       await _seed(services);
 
-      await pumpAt(tester, services, '/settings/agents', size: const Size(1200, 2600));
+      await pumpAt(
+        tester,
+        services,
+        '/settings/agents',
+        size: const Size(1400, 2600),
+      );
       await tester.tap(find.text('Test Agent'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, 'Edit'));
@@ -359,7 +367,7 @@ void main() {
         tester,
         services,
         '/settings/agents/edit/agent-1',
-        size: const Size(1200, 2600),
+        size: const Size(1400, 2600),
       );
       expect(find.byType(AgentEditorPage), findsOneWidget);
 
@@ -389,7 +397,7 @@ void main() {
         tester,
         services,
         '/settings/agents/edit/agent-1',
-        size: const Size(1200, 2600),
+        size: const Size(1400, 2600),
       );
       final name = find.descendant(
         of: find.widgetWithText(ConfiguredAgentsFormField, 'Name'),
@@ -645,8 +653,13 @@ void main() {
     // The panel spans from the nav's leading edge to the drag handle. Read it
     // that way rather than from the window, since the app's outer rail sits
     // to its left.
+    // The catalog's own two-pane split carries a second handle inside the
+    // content area, so the nav panel's is the first in tree order — the
+    // shell's Row lays it out before the content it separates.
+    final navHandle = find.byType(DraggableSeparator).first;
+
     double navPanelWidth(WidgetTester tester) =>
-        tester.getTopLeft(find.byType(DraggableSeparator)).dx -
+        tester.getTopLeft(navHandle).dx -
         tester.getTopLeft(find.byType(AgentCenterNav)).dx;
 
     testWidgets('the nav panel is draggable within the chats sidebar bounds', (
@@ -657,14 +670,13 @@ void main() {
 
       await pumpAt(tester, services, '/settings/agents');
 
-      expect(find.byType(DraggableSeparator), findsOneWidget);
       expect(
         navPanelWidth(tester),
         AppSidePanel.defaultWidth,
         reason: 'starts at the chats sidebar width',
       );
 
-      final handle = find.byType(DraggableSeparator);
+      final handle = navHandle;
       await tester.drag(handle, const Offset(100, 0));
       await tester.pumpAndSettle();
       expect(navPanelWidth(tester), 400);
