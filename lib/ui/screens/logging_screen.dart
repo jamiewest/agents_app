@@ -358,59 +358,99 @@ class _FilterBar extends StatelessWidget {
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onClear;
 
+  /// Below this the search field and the filters no longer share a line.
+  /// The section's side panel leaves the content area narrow enough on a
+  /// laptop-width window to reach this, so it is a real layout, not a
+  /// phone-only fallback.
+  static const double _singleRowMinWidth = 520;
+
+  /// The category dropdown's width. Bounded because category names come from
+  /// log records and would otherwise size the button to the longest one.
+  static const double _categoryWidth = 168;
+
+  Widget _search() => TextField(
+    decoration: const InputDecoration(
+      hintText: 'Search logs',
+      prefixIcon: Icon(LucideIcons.search300, size: 20),
+      isDense: true,
+      border: OutlineInputBorder(),
+    ),
+    onChanged: onQueryChanged,
+  );
+
+  Widget _levelFilter() => DropdownButton<LogLevel?>(
+    value: displayLevel,
+    hint: const Text('Level'),
+    isDense: true,
+    items: [
+      const DropdownMenuItem<LogLevel?>(child: Text('All levels')),
+      for (final level in _pickableLevels)
+        DropdownMenuItem<LogLevel?>(
+          value: level,
+          child: Text('≥ ${_levelLabel(level)}'),
+        ),
+    ],
+    onChanged: onLevelChanged,
+  );
+
+  Widget _categoryFilter() => SizedBox(
+    width: _categoryWidth,
+    child: DropdownButton<String?>(
+      value: displayCategory,
+      hint: const Text('Category'),
+      isDense: true,
+      isExpanded: true,
+      items: [
+        const DropdownMenuItem<String?>(child: Text('All categories')),
+        for (final category in categories)
+          DropdownMenuItem<String?>(
+            value: category,
+            child: Text(category, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: onCategoryChanged,
+    ),
+  );
+
+  Widget _clearButton() => IconButton(
+    tooltip: 'Clear log',
+    icon: const Icon(LucideIcons.trash2300),
+    onPressed: onClear,
+  );
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-    child: Row(
-      children: [
-        Expanded(
-          child: TextField(
-            decoration: const InputDecoration(
-              hintText: 'Search logs',
-              prefixIcon: Icon(LucideIcons.search300, size: 20),
-              isDense: true,
-              border: OutlineInputBorder(),
+    child: LayoutBuilder(
+      builder: (context, constraints) =>
+          constraints.maxWidth >= _singleRowMinWidth
+          ? Row(
+              children: [
+                Expanded(child: _search()),
+                const SizedBox(width: 8),
+                _levelFilter(),
+                const SizedBox(width: 8),
+                _categoryFilter(),
+                const SizedBox(width: 4),
+                _clearButton(),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _search(),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _levelFilter(),
+                    _categoryFilter(),
+                    _clearButton(),
+                  ],
+                ),
+              ],
             ),
-            onChanged: onQueryChanged,
-          ),
-        ),
-        const SizedBox(width: 8),
-        DropdownButton<LogLevel?>(
-          value: displayLevel,
-          hint: const Text('Level'),
-          isDense: true,
-          items: [
-            const DropdownMenuItem<LogLevel?>(child: Text('All levels')),
-            for (final level in _pickableLevels)
-              DropdownMenuItem<LogLevel?>(
-                value: level,
-                child: Text('≥ ${_levelLabel(level)}'),
-              ),
-          ],
-          onChanged: onLevelChanged,
-        ),
-        const SizedBox(width: 8),
-        DropdownButton<String?>(
-          value: displayCategory,
-          hint: const Text('Category'),
-          isDense: true,
-          items: [
-            const DropdownMenuItem<String?>(child: Text('All categories')),
-            for (final category in categories)
-              DropdownMenuItem<String?>(
-                value: category,
-                child: Text(category, overflow: TextOverflow.ellipsis),
-              ),
-          ],
-          onChanged: onCategoryChanged,
-        ),
-        const SizedBox(width: 4),
-        IconButton(
-          tooltip: 'Clear log',
-          icon: const Icon(LucideIcons.trash2300),
-          onPressed: onClear,
-        ),
-      ],
     ),
   );
 }

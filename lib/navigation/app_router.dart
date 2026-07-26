@@ -6,6 +6,7 @@ import 'package:animations/animations.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../ui/screens/add_agent_wizard.dart';
 import '../ui/screens/channel_screen.dart';
@@ -197,6 +198,7 @@ StatefulShellRoute _loggingShell(ServiceProvider services) =>
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) => SettingsSectionShell(
         title: 'Logs & diagnostics',
+        icon: LucideIcons.receiptText300,
         destinations: loggingDestinations,
         shell: navigationShell,
       ),
