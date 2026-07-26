@@ -73,13 +73,6 @@ GoRouter _buildRouter(
 
 Widget _host(GoRouter router) => MaterialApp.router(routerConfig: router);
 
-/// Opens the collapsed conversations-list section titled [title] by tapping
-/// its header. Sections without the open conversation start collapsed.
-Future<void> _expandSection(WidgetTester tester, String title) async {
-  await tester.tap(find.text(title));
-  await tester.pumpAndSettle();
-}
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -141,7 +134,6 @@ void main() {
         ).listForAgent(testAgent.id);
         expect(conversations, hasLength(1));
         expect(conversations.single.title, 'Remember this chat');
-        await _expandSection(tester, 'Test Agent');
         expect(find.text('Remember this chat'), findsAtLeastNWidgets(1));
       },
     );
@@ -177,7 +169,6 @@ void main() {
       expect(conversations, hasLength(1));
       expect(conversations.single.title, 'Save before answering');
       expect(conversations.single.lastMessagePreview, 'Save before answering');
-      await _expandSection(tester, 'Test Agent');
       expect(find.text('Save before answering'), findsAtLeastNWidgets(1));
     });
 
@@ -240,7 +231,6 @@ void main() {
       ).listForAgent(testAgent.id);
       expect(conversations, hasLength(1));
       expect(conversations.single.title, 'Do not delete me');
-      await _expandSection(tester, 'Test Agent');
       expect(find.text('Do not delete me'), findsAtLeastNWidgets(1));
     });
 
@@ -271,7 +261,6 @@ void main() {
       await tester.pumpWidget(_host(_buildRouter(services)));
       await tester.pumpAndSettle();
 
-      await _expandSection(tester, 'Test Agent');
       expect(find.text('Newer chat'), findsOneWidget);
       expect(find.text('Older chat'), findsOneWidget);
       expect(find.textContaining('newer preview'), findsOneWidget);
@@ -329,7 +318,6 @@ void main() {
       await tester.pumpWidget(_host(_buildRouter(services)));
       await tester.pumpAndSettle();
 
-      await _expandSection(tester, 'Test Agent');
       await tester.tap(find.byTooltip('Conversation actions'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Rename'));
@@ -377,7 +365,6 @@ void main() {
         isNotEmpty,
       );
 
-      await _expandSection(tester, 'Test Agent');
       await tester.tap(find.byTooltip('Conversation actions'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete'));
@@ -588,7 +575,6 @@ void main() {
       await tester.pumpWidget(_host(_buildRouter(services)));
       await tester.pumpAndSettle();
 
-      await _expandSection(tester, 'Channels');
       await tester.tap(find.byTooltip('Channel actions'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Rename'));
@@ -609,7 +595,6 @@ void main() {
 
       expect(await channels.get('channel-1'), isNull);
       expect(await conversations.get('in-channel'), isNotNull);
-      await _expandSection(tester, 'Test Agent');
       expect(find.text('Channel chat'), findsOneWidget);
     });
   });
@@ -635,7 +620,6 @@ void main() {
 
       await tester.pumpWidget(_host(_buildRouter(services)));
       await tester.pumpAndSettle();
-      await _expandSection(tester, 'Test Agent');
       expect(find.text('Keep me tidy'), findsOneWidget);
       expect(find.text('Archived'), findsNothing);
 
@@ -669,7 +653,6 @@ void main() {
 
       await tester.pumpWidget(_host(_buildRouter(services)));
       await tester.pumpAndSettle();
-      await _expandSection(tester, 'Archived');
 
       await tester.tap(find.byTooltip('Conversation actions'));
       await tester.pumpAndSettle();
@@ -720,12 +703,7 @@ void main() {
       await tester.pumpWidget(_host(_buildRouter(services)));
       await tester.pumpAndSettle();
 
-      // Two agent sections, both collapsed at first (no open conversation).
-      expect(find.text('First chat'), findsNothing);
-      expect(find.text('Second chat'), findsNothing);
-
-      await tester.tap(find.byIcon(LucideIcons.chevronsUpDown300));
-      await tester.pumpAndSettle();
+      // Two agent sections, both expanded by default.
       expect(find.text('First chat'), findsOneWidget);
       expect(find.text('Second chat'), findsOneWidget);
 
@@ -733,6 +711,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('First chat'), findsNothing);
       expect(find.text('Second chat'), findsNothing);
+
+      await tester.tap(find.byIcon(LucideIcons.chevronsUpDown300));
+      await tester.pumpAndSettle();
+      expect(find.text('First chat'), findsOneWidget);
+      expect(find.text('Second chat'), findsOneWidget);
     });
   });
 }
