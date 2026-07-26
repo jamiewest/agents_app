@@ -783,21 +783,21 @@ class _ChatsListViewState extends State<ChatsListView> {
 
   /// Explicit user toggles, kept for this list's lifetime: the page and
   /// sidebar presentations stay mounted across navigation, while a freshly
-  /// opened drawer starts back at the collapsed defaults.
+  /// opened drawer starts back at the expanded defaults.
   final Map<String, bool> _sectionExpanded = {};
 
   /// Toggles made while a search/filter is active. Kept apart from
-  /// [_sectionExpanded] so auto-expanding matches never overwrites the
-  /// user's saved choices; cleared when the query goes inactive.
+  /// [_sectionExpanded] so a section collapsed to tidy the filtered view
+  /// never overwrites the user's saved choices; cleared when the query goes
+  /// inactive.
   final Map<String, bool> _filteredSectionExpanded = {};
 
-  /// Whether the section is open. While a query is active, sections with
-  /// matches auto-expand (transient toggles still win); otherwise an
-  /// explicit user toggle wins and sections start collapsed except the one
-  /// holding the open conversation.
-  bool _isExpanded(String key, {required bool containsSelection}) {
+  /// Whether the section is open. Sections start expanded so every
+  /// conversation is reachable without a tap; an explicit user toggle wins
+  /// from then on.
+  bool _isExpanded(String key) {
     if (_filters.query.isActive) return _filteredSectionExpanded[key] ?? true;
-    return _sectionExpanded[key] ?? containsSelection;
+    return _sectionExpanded[key] ?? true;
   }
 
   void _toggleSection(String key, {required bool expanded}) => setState(() {
@@ -856,20 +856,19 @@ class _ChatsListViewState extends State<ChatsListView> {
     });
   }
 
-  /// Whether every visible section has been explicitly expanded.
+  /// Whether every visible section is open.
   ///
   /// Reads the expansion maps directly rather than the per-build resolved
   /// state, so the button's icon is right in the same frame a toggle-all
-  /// runs (the sections build after the header that hosts the button). A
-  /// section auto-expanded only by holding the open conversation counts as
-  /// not-yet-expanded here, which just means the first press expands the
-  /// rest — harmless.
+  /// runs (the sections build after the header that hosts the button). The
+  /// `?? true` fallback matches [_isExpanded]'s default, so the button reads
+  /// "Collapse all" on a list nobody has touched yet.
   bool get _allSectionsExpanded {
     if (_visibleSectionKeys.isEmpty) return false;
     final map = _filters.query.isActive
         ? _filteredSectionExpanded
         : _sectionExpanded;
-    return _visibleSectionKeys.every((key) => map[key] ?? false);
+    return _visibleSectionKeys.every((key) => map[key] ?? true);
   }
 
   /// Opens or closes every visible section in one action.
@@ -933,7 +932,6 @@ class _ChatsListViewState extends State<ChatsListView> {
           key: 'channels',
           title: 'Channels',
           count: sortedChannels.length,
-          containsSelection: false,
           unread: false,
           children: [
             for (final channel in sortedChannels)
@@ -977,9 +975,6 @@ class _ChatsListViewState extends State<ChatsListView> {
     key: key,
     title: title,
     count: conversations.length,
-    containsSelection: conversations.any(
-      (conversation) => conversation.id == widget.selectedConversationId,
-    ),
     unread: conversations.any((conversation) => conversation.hasUnread),
     children: [
       for (final conversation in conversations)
@@ -991,11 +986,10 @@ class _ChatsListViewState extends State<ChatsListView> {
     required String key,
     required String title,
     required int count,
-    required bool containsSelection,
     required bool unread,
     required List<Widget> children,
   }) {
-    final expanded = _isExpanded(key, containsSelection: containsSelection);
+    final expanded = _isExpanded(key);
     return _CollapsibleSection(
       title: title,
       count: count,

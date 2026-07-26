@@ -173,9 +173,15 @@ void main() {
       await tester.pumpWidget(_host(_buildRouter(services)));
       await tester.pumpAndSettle();
 
-      // Sections start collapsed: headers visible, tiles hidden.
+      // Sections start expanded, so both tiles are visible up front.
       expect(find.text('Plain Agent'), findsOneWidget);
       expect(find.text('Vision Agent'), findsOneWidget);
+      expect(find.text('Alpha topic'), findsOneWidget);
+
+      // Collapsing the section that holds the match proves the filtered view
+      // auto-expands rather than inheriting the saved state.
+      await tester.tap(find.text('Plain Agent'));
+      await tester.pumpAndSettle();
       expect(find.text('Alpha topic'), findsNothing);
 
       await _search(tester, 'ALPHA');
@@ -194,10 +200,10 @@ void main() {
       await tester.pumpWidget(_host(_buildRouter(services)));
       await tester.pumpAndSettle();
 
-      // The user expands Vision Agent; Plain Agent stays collapsed.
+      // The user collapses Vision Agent; Plain Agent stays open.
       await tester.tap(find.text('Vision Agent'));
       await tester.pumpAndSettle();
-      expect(find.text('Beta topic'), findsOneWidget);
+      expect(find.text('Beta topic'), findsNothing);
 
       await _search(tester, 'alpha');
       expect(find.text('Beta topic'), findsNothing);
@@ -206,9 +212,9 @@ void main() {
       await tester.tap(find.byTooltip('Clear search'));
       await tester.pumpAndSettle();
 
-      // Previous choices return: Vision open, Plain still collapsed.
-      expect(find.text('Beta topic'), findsOneWidget);
-      expect(find.text('Alpha topic'), findsNothing);
+      // Previous choices return: Vision still collapsed, Plain still open.
+      expect(find.text('Beta topic'), findsNothing);
+      expect(find.text('Alpha topic'), findsOneWidget);
     });
 
     testWidgets('shows the no-match state with a working clear action', (
