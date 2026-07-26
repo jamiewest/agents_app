@@ -12,10 +12,11 @@ packages:
   agents:
     dependency: "direct main"
     description:
-      name: agents
-      sha256: "9cb0e4403ad6977909515553d65ab8c23f9ae598a04ccc69bca9f420e1002fa7"
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/agents"
+      ref: "65111a0e61e5f02f41a61a50a04d1baab4ac167c"
+      resolved-ref: "65111a0e61e5f02f41a61a50a04d1baab4ac167c"
+      url: "https://github.com/jamiewest/agents.git"
+    source: git
     version: "1.5.0"
   agents_flutter:
     dependency: "direct main"
@@ -853,10 +854,10 @@ packages:
     dependency: "direct main"
     description:
       name: llama_cpp_flutter
-      sha256: c3a7d07b47a858e101bbb4dc5014f4eee4e52f707e6251cba43d74aedd6e07d7
+      sha256: "41e833876b8abeba09ab7c3649b94ed65aa616d5739cccae30ad04cecc3bf14f"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.0"
+    version: "0.6.1"
   logging:
     dependency: transitive
     description:
