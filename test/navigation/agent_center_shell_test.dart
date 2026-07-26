@@ -279,7 +279,7 @@ void main() {
       expect(find.byType(AddAgentWizard), findsOneWidget);
     });
 
-    testWidgets('tapping an agent card opens its detail, Edit opens the form', (
+    testWidgets('wide: an agent card fills the detail pane beside the list', (
       tester,
     ) async {
       final services = _buildServices();
@@ -288,11 +288,65 @@ void main() {
       await pumpAt(tester, services, '/settings/agents');
       await tester.tap(find.text('Test Agent'));
       await tester.pumpAndSettle();
+      // The list is still there — the detail sits beside it, not over it.
+      expect(find.byType(AgentCatalogView), findsOneWidget);
       expect(find.byType(AgentDetailScreen), findsOneWidget);
+      expect(find.byType(AgentEditorPage), findsNothing);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Edit'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgentEditor), findsOneWidget);
+      expect(find.byType(AgentCatalogView), findsOneWidget);
+      expect(find.byType(AgentEditorPage), findsNothing);
+    });
+
+    testWidgets('narrow: an agent card still pushes its detail page', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      await pumpAt(
+        tester,
+        services,
+        '/settings/agents',
+        size: const Size(700, 1600),
+      );
+      await tester.tap(find.text('Test Agent'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgentDetailScreen), findsOneWidget);
+      expect(find.byType(AgentCatalogView), findsNothing);
 
       await tester.tap(find.widgetWithText(TextButton, 'Edit'));
       await tester.pumpAndSettle();
       expect(find.byType(AgentEditorPage), findsOneWidget);
+    });
+
+    testWidgets('wide: closing a dirty pane editor asks first', (tester) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      await pumpAt(tester, services, '/settings/agents', size: const Size(1200, 2600));
+      await tester.tap(find.text('Test Agent'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Edit'));
+      await tester.pumpAndSettle();
+
+      final name = find.descendant(
+        of: find.widgetWithText(ConfiguredAgentsFormField, 'Name'),
+        matching: find.byType(TextFormField),
+      );
+      await tester.enterText(name, 'Changed');
+      await tester.pumpAndSettle();
+
+      // Selection changes are not pops, so the pane owns this guard.
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard changes?'), findsOneWidget);
+
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgentEditor), findsOneWidget);
     });
 
     testWidgets('editing an agent from its route saves and returns', (
@@ -353,11 +407,158 @@ void main() {
       expect(find.byType(AgentEditorPage), findsOneWidget);
     });
 
-    testWidgets('a models card opens the model editor', (tester) async {
+    testWidgets('wide: a models card opens the editor in the pane', (
+      tester,
+    ) async {
       final services = _buildServices();
       await _seed(services);
 
       await pumpAt(tester, services, '/settings/agents/models');
+      await tester.tap(find.text('fake-model'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ModelEditor), findsOneWidget);
+      expect(find.byType(AgentCatalogView), findsOneWidget);
+      expect(find.byType(AgentEditorPage), findsNothing);
+    });
+
+    testWidgets('wide: sources show an empty pane until one is picked', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      await pumpAt(tester, services, '/settings/agents/sources');
+      expect(find.text('Nothing selected'), findsOneWidget);
+      expect(find.byType(SourceEditor), findsNothing);
+
+      await tester.tap(find.text('Local'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SourceEditor), findsOneWidget);
+      expect(find.text('Nothing selected'), findsNothing);
+      // The list it was picked from is still on screen.
+      expect(find.byType(AgentCatalogView), findsOneWidget);
+      expect(find.byType(AgentEditorPage), findsNothing);
+    });
+
+    testWidgets('wide: deleting the selected source empties the pane', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+      // A second source so the list survives the delete and the split stays.
+      await services.getRequiredService<ConfiguredAgentsManager>().saveSource(
+        const ModelSourceConfig(
+          id: 'source-2',
+          providerType: ProviderType.localLlama,
+          displayName: 'Spare',
+        ),
+      );
+
+      await pumpAt(tester, services, '/settings/agents/sources');
+      await tester.tap(find.text('Spare'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SourceEditor), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Spare'),
+            matching: find.byType(InkWell),
+          ),
+          matching: find.byTooltip('Delete'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // The pane let go of the row that left the list.
+      expect(find.byType(SourceEditor), findsNothing);
+      expect(find.text('Nothing selected'), findsOneWidget);
+      expect(find.text('Local'), findsOneWidget);
+    });
+
+    testWidgets('wide: deleting a dirty selection does not strand the guard', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+      await services.getRequiredService<ConfiguredAgentsManager>().saveSource(
+        const ModelSourceConfig(
+          id: 'source-2',
+          providerType: ProviderType.localLlama,
+          displayName: 'Spare',
+        ),
+      );
+
+      await pumpAt(tester, services, '/settings/agents/sources');
+      await tester.tap(find.text('Spare'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.widgetWithText(ConfiguredAgentsFormField, 'Display name'),
+          matching: find.byType(TextFormField),
+        ),
+        'Edited',
+      );
+      await tester.pumpAndSettle();
+
+      // Delete the very item being edited: the form goes with it, so the
+      // unsaved-edits flag must go too.
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Spare'),
+            matching: find.byType(InkWell),
+          ),
+          matching: find.byTooltip('Delete'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // Picking the next source must not ask about a form that is gone.
+      await tester.tap(find.text('Local'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard changes?'), findsNothing);
+      expect(find.byType(SourceEditor), findsOneWidget);
+    });
+
+    testWidgets('ultrawide: the split lays out without overflow', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      await pumpAt(
+        tester,
+        services,
+        '/settings/agents/sources',
+        size: const Size(3440, 1440),
+      );
+      await tester.tap(find.text('Local'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SourceEditor), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('narrow: a models card still pushes the editor page', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      await pumpAt(
+        tester,
+        services,
+        '/settings/agents/models',
+        size: const Size(700, 1600),
+      );
       await tester.tap(find.text('fake-model'));
       await tester.pumpAndSettle();
 

@@ -14,18 +14,34 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../data/agent_run_store.dart';
 import '../../data/usage_store.dart';
 import '../dialogs/adaptive_snack_bar/adaptive_snack_bar.dart';
+import '../dialogs/discard_changes.dart';
 import '../strings/configured_agents_strings.dart';
 import '../views/configured_agents/configured_agents.dart';
 import '../widgets/agent_dashboard.dart' show compactTokens;
+import '../widgets/draggable_separator.dart';
+import '../widgets/empty_state.dart';
 import 'agent_center_nav.dart';
+import 'agent_detail_screen.dart';
+import 'agent_editor_page.dart';
+
+/// Width at which a catalog stops pushing a page for the item you pick and
+/// shows it beside the list instead.
+///
+/// Measured against the catalog's own constraints, not the window: the outer
+/// rail and the Agent Center's 184px nav are already spent by the time this
+/// view is laid out.
+const double catalogTwoPaneBreakpoint = 880;
 
 /// One of the three catalog pages of the Agent Center.
 ///
 /// Renders a searchable list of cards for [kind] (agents, models, or
-/// sources) and hosts create/delete. Editing and per-agent detail are pushed
-/// routes, so this view never holds an inline editor. The cards echo the
-/// Overview's card language — a title, a supporting line, and a small metric
-/// row — so the catalogs no longer look unlike the dashboard.
+/// sources) and hosts create/delete. Wide layouts put what you pick in a
+/// detail pane beside the list — a stretched window has room for both, and
+/// paging away from the list to change one field is pure friction. Narrow
+/// layouts keep the pushed routes, which also serve deep links at any width.
+/// The cards echo the Overview's card language — a title, a supporting line,
+/// and a small metric row — so the catalogs no longer look unlike the
+/// dashboard.
 class AgentCatalogView extends StatefulWidget {
   /// Creates an [AgentCatalogView].
   const AgentCatalogView({required this.services, required this.kind, super.key});
@@ -43,6 +59,23 @@ class AgentCatalogView extends StatefulWidget {
 /// Lists shorter than this are faster to scan than to search.
 const int _searchThreshold = 6;
 
+/// What the detail pane shows.
+///
+/// Agents have a read-only detail page, so they get a viewing state as well;
+/// models and sources go straight to their form.
+@immutable
+class _Detail {
+  const _Detail.creating() : id = null, editing = true;
+  const _Detail.viewing(String this.id) : editing = false;
+  const _Detail.editing(String this.id) : editing = true;
+
+  /// The item shown, or null when creating a new one.
+  final String? id;
+
+  /// Whether the pane holds an editable form rather than a read-only view.
+  final bool editing;
+}
+
 class _AgentCatalogViewState extends State<AgentCatalogView> {
   late final ConfiguredAgentsController _controller;
   late final AgentRunTelemetryStore _runs;
@@ -55,6 +88,14 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
 
   final _searchController = TextEditingController();
   String _search = '';
+
+  /// What the detail pane shows, on layouts wide enough to have one.
+  _Detail? _detail;
+
+  /// Whether the form in the detail pane has edits worth guarding.
+  bool _editorDirty = false;
+
+  double _listWidth = 340;
 
   @override
   void initState() {
@@ -79,6 +120,17 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
 
   Future<void> _load() async {
     await _controller.load();
+    // Deleting the item in the pane leaves it pointing at nothing. Dropping
+    // it here rather than during build keeps the reload as the one thing that
+    // schedules the frame; the dirty flag goes with it, or the next selection
+    // would prompt about a form that no longer exists.
+    final id = _detail?.id;
+    if (mounted && id != null && _isStale(id)) {
+      setState(() {
+        _detail = null;
+        _editorDirty = false;
+      });
+    }
     await _loadStats();
   }
 
@@ -121,6 +173,51 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
     );
   }
 
+  // --- Detail pane ---------------------------------------------------------
+
+  /// Swaps the detail pane to [detail], first asking about unsaved edits.
+  ///
+  /// Changing selection is not a pop, so the editor's own `PopScope` guard
+  /// never sees it; without this the next click would drop a half-typed form.
+  Future<void> _show(_Detail? detail) async {
+    if (_editorDirty && !await confirmDiscardChanges(context)) return;
+    if (!mounted) return;
+    setState(() {
+      _detail = detail;
+      _editorDirty = false;
+    });
+  }
+
+  void _markEditorDirty() {
+    if (_editorDirty || !mounted) return;
+    setState(() => _editorDirty = true);
+  }
+
+  /// Closes the form after a save, reporting [error] if the save failed.
+  ///
+  /// Editing an agent lands back on its detail view — where the Edit button
+  /// was — and everything else falls back to the empty pane, the same place
+  /// the pushed editor pops to.
+  Future<void> _saved(String? error) async {
+    if (!mounted) return;
+    if (error != null) _showMessage(error);
+    final id = _detail?.id;
+    setState(() {
+      _editorDirty = false;
+      _detail = widget.kind == AgentCenterTab.agents && id != null
+          ? _Detail.viewing(id)
+          : null;
+    });
+  }
+
+  /// True when [id] is gone from the catalog, so the pane must let go of it.
+  bool _isStale(String id) => switch (widget.kind) {
+    AgentCenterTab.agents => _controller.agents.every((a) => a.id != id),
+    AgentCenterTab.models => _controller.models.every((m) => m.id != id),
+    AgentCenterTab.sources => _controller.sources.every((s) => s.id != id),
+    AgentCenterTab.overview => true,
+  };
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: _controller,
@@ -128,42 +225,141 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
       if (_controller.loading) {
         return const Center(child: CircularProgressIndicator());
       }
-      final items = _items;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Header(
-            title: widget.kind.label,
-            addLabel: _addLabel,
-            onAdd: _canAdd ? () => context.go(_newPath) : null,
-          ),
-          if (_count == 0)
-            Expanded(child: _emptyState())
-          else ...[
-            if (_count >= _searchThreshold) _searchField(),
-            Expanded(
-              child: items.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No ${widget.kind.label.toLowerCase()} match '
-                        '"$_search".',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                      itemCount: items.length,
-                      itemBuilder: (context, i) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: items[i],
-                      ),
-                    ),
-            ),
-          ],
-        ],
+      // The reload that removed an item clears [_detail] too, but it lands a
+      // frame later; ignore a stale selection now rather than render an
+      // editor for a row that has already left the list.
+      final selected = _detail;
+      final detail = selected?.id != null && _isStale(selected!.id!)
+          ? null
+          : selected;
+
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          // Nothing to sit beside an empty list, so the empty state keeps the
+          // full width at every size.
+          final twoPane =
+              constraints.maxWidth >= catalogTwoPaneBreakpoint && _count > 0;
+          if (!twoPane) return _list(twoPane: false, selectedId: null);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: _listWidth,
+                child: _list(twoPane: true, selectedId: detail?.id),
+              ),
+              DraggableSeparator(
+                onDragUpdate: (deltaX) => setState(() {
+                  // The floor keeps a card's title and metrics readable.
+                  _listWidth = (_listWidth + deltaX).clamp(280.0, 520.0);
+                }),
+              ),
+              Expanded(child: _detailPane(detail)),
+            ],
+          );
+        },
       );
     },
   );
+
+  Widget _list({required bool twoPane, required String? selectedId}) {
+    final items = _items(twoPane: twoPane, selectedId: selectedId);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Header(
+          title: widget.kind.label,
+          addLabel: _addLabel,
+          compact: twoPane,
+          onAdd: !_canAdd
+              ? null
+              : twoPane
+              ? () => unawaited(_show(const _Detail.creating()))
+              : () => context.go(_newPath),
+        ),
+        if (_count == 0)
+          Expanded(child: _emptyState())
+        else ...[
+          if (_count >= _searchThreshold) _searchField(),
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Text(
+                      'No ${widget.kind.label.toLowerCase()} match '
+                      '"$_search".',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                    itemCount: items.length,
+                    itemBuilder: (context, i) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: items[i],
+                    ),
+                  ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _detailPane(_Detail? detail) {
+    if (detail == null) {
+      return EmptyState(
+        icon: widget.kind.icon,
+        title: 'Nothing selected',
+        message: 'Pick $_article from the list to see it here, or add a '
+            'new one.',
+      );
+    }
+    if (widget.kind == AgentCenterTab.agents && !detail.editing) {
+      return AgentDetailScreen(
+        key: ValueKey('detail-${detail.id}'),
+        services: widget.services,
+        agentId: detail.id!,
+        onEdit: (id) => unawaited(_show(_Detail.editing(id))),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PaneHeader(
+          title: agentEditorTitle(widget.kind, creating: detail.id == null),
+          onClose: () => unawaited(
+            _show(
+              widget.kind == AgentCenterTab.agents && detail.id != null
+                  ? _Detail.viewing(detail.id!)
+                  : null,
+            ),
+          ),
+        ),
+        Expanded(
+          child: AgentEditorBody(
+            key: ValueKey('editor-${widget.kind.name}-${detail.id}'),
+            services: widget.services,
+            kind: widget.kind,
+            editingId: detail.id,
+            onDirty: _markEditorDirty,
+            onCancel: () => unawaited(
+              _show(
+                widget.kind == AgentCenterTab.agents && detail.id != null
+                    ? _Detail.viewing(detail.id!)
+                    : null,
+              ),
+            ),
+            onSaved: _saved,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String get _article => switch (widget.kind) {
+    AgentCenterTab.agents => 'an agent',
+    AgentCenterTab.models => 'a model',
+    AgentCenterTab.sources => 'a source',
+    AgentCenterTab.overview => 'an item',
+  };
 
   Widget _searchField() => Padding(
     padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -181,24 +377,33 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
 
   // --- Cards ---------------------------------------------------------------
 
-  List<Widget> get _items => switch (widget.kind) {
+  List<Widget> _items({
+    required bool twoPane,
+    required String? selectedId,
+  }) => switch (widget.kind) {
     AgentCenterTab.agents => [
       for (final agent in _controller.agents)
-        if (_matches(agent.name, agent.description)) _agentCard(agent),
+        if (_matches(agent.name, agent.description))
+          _agentCard(agent, twoPane: twoPane, selectedId: selectedId),
     ],
     AgentCenterTab.models => [
       for (final model in _controller.models)
-        if (_matches(model.label, model.modelId)) _modelCard(model),
+        if (_matches(model.label, model.modelId))
+          _modelCard(model, twoPane: twoPane, selectedId: selectedId),
     ],
     AgentCenterTab.sources => [
       for (final source in _controller.sources)
         if (_matches(source.displayName, source.providerType.wireName))
-          _sourceCard(source),
+          _sourceCard(source, twoPane: twoPane, selectedId: selectedId),
     ],
     AgentCenterTab.overview => const [],
   };
 
-  Widget _agentCard(SavedAgentConfig agent) {
+  Widget _agentCard(
+    SavedAgentConfig agent, {
+    required bool twoPane,
+    required String? selectedId,
+  }) {
     final model = _controller.models
         .where((m) => m.id == agent.modelId)
         .firstOrNull;
@@ -213,6 +418,7 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
           ? 'Needs setup'
           : '${model.label} · ${source.displayName}',
       subtitleIsWarning: broken,
+      selected: twoPane && selectedId == agent.id,
       metrics: stats == null || stats.completed == 0
           ? [const _Metric('No runs yet', '')]
           : [
@@ -220,7 +426,9 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
               _Metric('Success', '${stats.successPercent}%'),
               if (stats.tokens > 0) _Metric('Tokens', compactTokens(stats.tokens)),
             ],
-      onTap: () => context.go('/settings/agents/view/${agent.id}'),
+      onTap: twoPane
+          ? () => unawaited(_show(_Detail.viewing(agent.id)))
+          : () => context.go('/settings/agents/view/${agent.id}'),
       onDelete: () => _delete(
         agent.id,
         agent.name,
@@ -229,7 +437,11 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
     );
   }
 
-  Widget _modelCard(ModelConfig model) {
+  Widget _modelCard(
+    ModelConfig model, {
+    required bool twoPane,
+    required String? selectedId,
+  }) {
     final source = _controller.sources
         .where((s) => s.id == model.sourceId)
         .firstOrNull;
@@ -240,10 +452,13 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
       title: model.label,
       subtitle: source?.displayName ?? 'Source missing',
       subtitleIsWarning: source == null,
+      selected: twoPane && selectedId == model.id,
       metrics: [
         _Metric('Used by', consumers == 1 ? '1 agent' : '$consumers agents'),
       ],
-      onTap: () => context.go('/settings/agents/models/edit/${model.id}'),
+      onTap: twoPane
+          ? () => unawaited(_show(_Detail.editing(model.id)))
+          : () => context.go('/settings/agents/models/edit/${model.id}'),
       onDelete: () => _delete(
         model.id,
         model.label,
@@ -252,7 +467,11 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
     );
   }
 
-  Widget _sourceCard(ModelSourceConfig source) {
+  Widget _sourceCard(
+    ModelSourceConfig source, {
+    required bool twoPane,
+    required String? selectedId,
+  }) {
     final models = _controller.models
         .where((m) => m.sourceId == source.id)
         .length;
@@ -261,10 +480,13 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
       subtitle: source.endpoint == null
           ? source.providerType.wireName
           : '${source.providerType.wireName} · ${source.endpoint}',
+      selected: twoPane && selectedId == source.id,
       metrics: [
         _Metric('Models', '$models'),
       ],
-      onTap: () => context.go('/settings/agents/sources/edit/${source.id}'),
+      onTap: twoPane
+          ? () => unawaited(_show(_Detail.editing(source.id)))
+          : () => context.go('/settings/agents/sources/edit/${source.id}'),
       onDelete: () => _delete(
         source.id,
         source.displayName,
@@ -422,16 +644,21 @@ class _AgentStats {
 }
 
 /// The catalog header: title on the left, an add button on the right.
+///
+/// Beside a detail pane the list is narrow, so the add button drops to an
+/// icon rather than crowding the title out of the row.
 class _Header extends StatelessWidget {
   const _Header({
     required this.title,
     required this.addLabel,
     required this.onAdd,
+    this.compact = false,
   });
 
   final String title;
   final String addLabel;
   final VoidCallback? onAdd;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -441,10 +668,43 @@ class _Header extends StatelessWidget {
         Expanded(
           child: Text(title, style: Theme.of(context).textTheme.titleLarge),
         ),
-        FilledButton.icon(
-          onPressed: onAdd,
-          icon: const Icon(LucideIcons.plus300, size: 18),
-          label: Text(addLabel),
+        if (compact)
+          IconButton.filled(
+            tooltip: addLabel,
+            onPressed: onAdd,
+            icon: const Icon(LucideIcons.plus300, size: 18),
+          )
+        else
+          FilledButton.icon(
+            onPressed: onAdd,
+            icon: const Icon(LucideIcons.plus300, size: 18),
+            label: Text(addLabel),
+          ),
+      ],
+    ),
+  );
+}
+
+/// The detail pane's title bar, carrying the close affordance the pushed
+/// page gets from its app bar's back button.
+class _PaneHeader extends StatelessWidget {
+  const _PaneHeader({required this.title, required this.onClose});
+
+  final String title;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 16, 12, 4),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        ),
+        IconButton(
+          tooltip: 'Close',
+          icon: const Icon(LucideIcons.x300, size: 20),
+          onPressed: onClose,
         ),
       ],
     ),
@@ -460,6 +720,7 @@ class _CatalogCard extends StatelessWidget {
     required this.onTap,
     required this.onDelete,
     this.subtitleIsWarning = false,
+    this.selected = false,
   });
 
   final String title;
@@ -469,57 +730,67 @@ class _CatalogCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
+  /// Whether this card's item is the one in the detail pane.
+  final bool selected;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return Material(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, style: theme.textTheme.titleMedium),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: subtitleIsWarning
-                                ? scheme.error
-                                : scheme.onSurfaceVariant,
+    return Semantics(
+      selected: selected,
+      child: Material(
+        color: selected
+            ? scheme.secondaryContainer
+            : scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title, style: theme.textTheme.titleMedium),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: subtitleIsWarning
+                                  ? scheme.error
+                                  : selected
+                                  ? scheme.onSecondaryContainer
+                                  : scheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Delete',
-                    icon: const Icon(LucideIcons.trash2300, size: 18),
-                    onPressed: onDelete,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  for (final metric in metrics) ...[
-                    metric,
-                    const SizedBox(width: 24),
+                    IconButton(
+                      tooltip: 'Delete',
+                      icon: const Icon(LucideIcons.trash2300, size: 18),
+                      onPressed: onDelete,
+                    ),
                   ],
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    for (final metric in metrics) ...[
+                      metric,
+                      const SizedBox(width: 24),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
