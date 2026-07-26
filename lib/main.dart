@@ -32,10 +32,12 @@ import 'data/chat_title_summarizer.dart';
 import 'data/chat_transcript_store.dart';
 import 'data/conversation_service.dart';
 import 'data/conversation_store.dart';
+import 'data/downloaded_artifact_presence.dart';
 import 'data/embedding_settings.dart';
 import 'data/local_llama_context_planner.dart';
 import 'data/local_llama_lease_client.dart';
 import 'data/local_llama_model_host.dart';
+import 'data/local_model_warmup.dart';
 import 'data/prompt_log.dart';
 import 'data/prompt_logging.dart';
 import 'data/task_scheduler_service.dart';
@@ -358,12 +360,50 @@ ai.ChatClient? _residentTitleClient(ServiceProvider services) {
 /// never share a KV owner key accidentally.
 int _internalLocalOwnerSeq = 0;
 
-ai.ChatClient _createLocalLlamaClient(
+/// Resolves a residency miss on the shared llama runtime.
+typedef _LocalLlamaLoader =
+    Future<llama.LlamaSession> Function(llama.LlamaRuntime runtime);
+
+/// Everything needed to make one local model resident, with no opinion about
+/// what will then use it.
+///
+/// Shared by [_createLocalLlamaClient] and [_warmLocalLlamaModel] so a chat
+/// request and a background warm-up derive the *same* [loadKey] and run the
+/// *same* [loader]. A warm-up that computed either differently would load a
+/// second copy — evicting the first — instead of priming the one the next
+/// chat asks for.
+@immutable
+class _LocalLlamaLoadPlan {
+  const _LocalLlamaLoadPlan({
+    required this.host,
+    required this.spec,
+    required this.location,
+    required this.loadKey,
+    required this.loader,
+  });
+
+  /// Holds the single resident model this plan loads into.
+  final LocalLlamaModelHost host;
+
+  /// The model's load parameters, before memory-aware context planning.
+  final llama.ModelSpec spec;
+
+  /// Where the model's artifacts come from: a picked file or a URL.
+  final _LocalLlamaModelLocation location;
+
+  /// Identifies the model, its artifacts, and its load parameters, so the
+  /// host reuses the resident session when another agent shares the same
+  /// local model and reloads only when the model actually differs.
+  final String loadKey;
+
+  /// Loads the model. Runs only on a residency miss.
+  final _LocalLlamaLoader loader;
+}
+
+_LocalLlamaLoadPlan _localLlamaLoadPlan(
   ServiceProvider services, {
   required ModelSourceConfig source,
   required ModelConfig model,
-  AgentScope? scope,
-  bool forTitle = false,
 }) {
   final location = _localLlamaModelLocation(model);
   final spec = _localLlamaSpec(
@@ -373,9 +413,7 @@ ai.ChatClient _createLocalLlamaClient(
   );
   final host = services.getRequiredService<LocalLlamaModelHost>();
 
-  // Identifies the model, its artifacts, and its load parameters so the host
-  // reuses the resident session when another agent shares the same local model
-  // and reloads only when the model actually differs.
+  // See [_LocalLlamaLoadPlan.loadKey].
   final loadKey = <Object?>[
     model.id,
     location.localPath ?? location.modelUrl.toString(),
@@ -391,17 +429,19 @@ ai.ChatClient _createLocalLlamaClient(
   // rebuild a client for whatever model the host currently holds.
   _residentLocalConfigs[loadKey] = (source: source, model: model);
 
-  // Format chosen from the GGUF's own metadata during load. The embedded
-  // chat template is what the model was actually trained on, so it beats
-  // the file-name guess baked into the spec; an explicit chat.format
-  // setting still beats both.
-  llama.ChatFormat? ggufFormat;
+  // Format chosen from the GGUF's own metadata during load, recorded in
+  // [_resolvedLlamaFormats] under this load key. The embedded chat template
+  // is what the model was actually trained on, so it beats the file-name
+  // guess baked into the spec; an explicit chat.format setting still beats
+  // both. The map is the only channel: whoever loads the model — a chat
+  // client or a background warm-up — records the format there for every
+  // later client that reuses the resident session.
   final explicitFormat =
       (model.settings[chatFormatSetting]?.trim().isNotEmpty ?? false) ||
       (model.settings[legacyLlamaFormatSetting]?.trim().isNotEmpty ?? false);
 
   Future<void> resolveFormatFromGguf(String modelSource) async {
-    if (explicitFormat || ggufFormat != null) return;
+    if (explicitFormat || _resolvedLlamaFormats[loadKey] != null) return;
     final metadata = await sniffGgufMetadata(modelSource);
     if (metadata == null) return;
     final detected = chatFormatFromGgufMetadata(metadata);
@@ -417,7 +457,6 @@ ai.ChatClient _createLocalLlamaClient(
       );
       return;
     }
-    ggufFormat = resolved;
     _resolvedLlamaFormats[loadKey] = resolved;
     developer.log(
       'Chat format "$detected" resolved from GGUF metadata for '
@@ -539,6 +578,26 @@ ai.ChatClient _createLocalLlamaClient(
     }
   }
 
+  return _LocalLlamaLoadPlan(
+    host: host,
+    spec: spec,
+    location: location,
+    loadKey: loadKey,
+    loader: loader,
+  );
+}
+
+ai.ChatClient _createLocalLlamaClient(
+  ServiceProvider services, {
+  required ModelSourceConfig source,
+  required ModelConfig model,
+  AgentScope? scope,
+  bool forTitle = false,
+}) {
+  final plan = _localLlamaLoadPlan(services, source: source, model: model);
+  final loadKey = plan.loadKey;
+  final spec = plan.spec;
+
   // KV ownership: each conversation (delegates included, via their derived
   // scope ids) keeps its own KV-cache lineage in the shared session, so
   // returning to a warm chat restores its prefix instead of re-prefilling.
@@ -567,10 +626,11 @@ ai.ChatClient _createLocalLlamaClient(
         // allocated, not the configured maximum.
         contextSizeOverride: _plannedLocalContextTokens[loadKey],
         sessionProvider: () async => session,
-        // On a session cache hit this client's loader never runs, so read a
-        // format recorded by whichever client first loaded this model before
-        // falling back to the spec's file-name guess.
-        formatResolver: () => ggufFormat ?? _resolvedLlamaFormats[loadKey],
+        // On a session cache hit no loader runs for this client at all, so
+        // read the format recorded by whoever first loaded this model —
+        // another chat client or the startup warm-up — and fall back to the
+        // spec's file-name guess when nothing sniffed it.
+        formatResolver: () => _resolvedLlamaFormats[loadKey],
         inspector: forTitle
             ? null
             : services.getService<llama.PromptInspector>(),
@@ -584,7 +644,7 @@ ai.ChatClient _createLocalLlamaClient(
       );
 
   return LeasedLocalLlamaChatClient(
-    host: host,
+    host: plan.host,
     loadKey: loadKey,
     ownerKey: kvOwnerKey,
     retainKvState: retainKvState,
@@ -593,9 +653,51 @@ ai.ChatClient _createLocalLlamaClient(
     // reloading when the resident model changed out from under it (e.g. a
     // scheduled task swapped models) — the summarizer catches this and
     // moves on.
-    load: forTitle ? null : loader,
+    load: forTitle ? null : plan.loader,
     buildClient: buildSessionClient,
   );
+}
+
+/// Makes [model] resident ahead of the first message, when doing so costs
+/// nothing but time already available.
+///
+/// Uses [LocalLlamaModelHost.acquire] rather than a lease: residency is all
+/// that is wanted, and acquire grants no exclusivity and performs no KV owner
+/// switch, so it neither reserves the model from a real request nor disturbs
+/// any conversation's cached prefix. A user message that arrives mid-load
+/// queues on the host's gate and then takes the session as a cache hit — it
+/// never starts a second load, so the worst case of warming is the same wait
+/// the user would have had anyway.
+///
+/// Warms only what is already downloaded. The loader downloads
+/// unconditionally, so warming an undownloaded model would pull gigabytes at
+/// launch that the user never asked for; that case is left to the first
+/// message, where the progress banner explains the wait. Returns whether the
+/// model was warmed.
+Future<bool> _warmLocalLlamaModel(
+  ServiceProvider services, {
+  required ModelSourceConfig source,
+  required ModelConfig model,
+}) async {
+  // A model whose picked file needs reselecting throws from here; that is a
+  // configuration problem for the first real request to report, not
+  // something a silent warm-up should surface.
+  final plan = _localLlamaLoadPlan(services, source: source, model: model);
+  // Something already beat the warm-up to the single resident slot. Nothing
+  // to gain, and this way the warm-up can never be the reason a model the
+  // user is talking to gets evicted.
+  if (plan.host.currentKey != null) return false;
+  if (plan.location.localPath == null &&
+      !await _localArtifactsAlreadyDownloaded(services, plan.spec, model.id)) {
+    developer.log(
+      'Skipping warm-up of "${model.label}": its artifacts are not '
+      'downloaded yet, and warming would start the download.',
+      name: 'local_llama.warmup',
+    );
+    return false;
+  }
+  await plan.host.acquire(plan.loadKey, plan.loader);
+  return true;
 }
 
 /// Applies memory-aware context sizing to [spec] before a native load.
@@ -817,6 +919,80 @@ llama.ChatFormat _chatFormatFor(String? format, {String detectionBasis = ''}) {
   return resolved;
 }
 
+/// One downloadable artifact of a local model.
+typedef _LocalArtifactSource = ({
+  Uri url,
+  String fallbackFilename,
+  String label,
+});
+
+/// The remote artifacts [spec] declares, in load order.
+///
+/// The single source of truth for each artifact's URL, on-disk name, and
+/// progress label, so the downloader and the warm-up's "is this already on
+/// disk?" probe can never disagree about where a file lives — a divergence
+/// there would make the probe check the wrong path and silently never warm.
+Map<LlamaArtifactKind, _LocalArtifactSource> _localArtifactSources(
+  llama.ModelSpec spec,
+  String modelId,
+) {
+  final mmprojUrl = spec.mmprojUrl;
+  final draftUrl = spec.draftUrl;
+  return <LlamaArtifactKind, _LocalArtifactSource>{
+    LlamaArtifactKind.model: (
+      url: spec.modelUrl,
+      fallbackFilename: '$modelId.gguf',
+      label: 'local model',
+    ),
+    if (mmprojUrl != null)
+      LlamaArtifactKind.mmproj: (
+        url: mmprojUrl,
+        fallbackFilename: '$modelId-mmproj.gguf',
+        label: 'projector (mmproj)',
+      ),
+    if (draftUrl != null)
+      LlamaArtifactKind.draft: (
+        url: draftUrl,
+        fallbackFilename: '$modelId-draft.gguf',
+        label: 'draft/MTP model',
+      ),
+  };
+}
+
+DownloadRequest _localArtifactRequest(
+  llama.ModelSpec spec,
+  String modelId,
+  _LocalArtifactSource artifact,
+) => DownloadRequest(
+  url: artifact.url.toString(),
+  filename: artifact.url.pathSegments.isEmpty
+      ? artifact.fallbackFilename
+      : artifact.url.pathSegments.last,
+  directory: 'local_llama/$modelId',
+  metaData: spec.id,
+);
+
+/// Whether every artifact [spec] declares is already on disk.
+///
+/// Answers "would making this model resident be free?" — the gate the
+/// startup warm-up needs, since the loader downloads unconditionally and has
+/// no skip-if-missing mode. Reached only by URL-backed models; a picked file
+/// is already local. Always false on web (see [downloadedArtifactExists]).
+Future<bool> _localArtifactsAlreadyDownloaded(
+  ServiceProvider services,
+  llama.ModelSpec spec,
+  String modelId,
+) async {
+  final downloads = services.getRequiredService<DownloadService>();
+  for (final artifact in _localArtifactSources(spec, modelId).values) {
+    final path = await downloads.filePathFor(
+      _localArtifactRequest(spec, modelId, artifact),
+    );
+    if (!await downloadedArtifactExists(path)) return false;
+  }
+  return true;
+}
+
 Future<({String modelPath, String? mmprojPath, String? draftPath})>
 _downloadLocalModel(
   ServiceProvider services,
@@ -824,56 +1000,32 @@ _downloadLocalModel(
   String modelId,
 ) async {
   final downloads = services.getRequiredService<DownloadService>();
-  final modelPath = await _downloadLocalArtifact(
-    downloads,
-    spec,
-    modelId,
-    url: spec.modelUrl,
-    fallbackFilename: '$modelId.gguf',
-    label: 'local model',
+  final paths = <LlamaArtifactKind, String>{};
+  // Insertion-ordered, so the main model still downloads before its optional
+  // companions.
+  for (final entry in _localArtifactSources(spec, modelId).entries) {
+    paths[entry.key] = await _downloadLocalArtifact(
+      downloads,
+      spec,
+      modelId,
+      entry.value,
+    );
+  }
+  return (
+    modelPath: paths[LlamaArtifactKind.model]!,
+    mmprojPath: paths[LlamaArtifactKind.mmproj],
+    draftPath: paths[LlamaArtifactKind.draft],
   );
-  final mmprojUrl = spec.mmprojUrl;
-  final mmprojPath = mmprojUrl == null
-      ? null
-      : await _downloadLocalArtifact(
-          downloads,
-          spec,
-          modelId,
-          url: mmprojUrl,
-          fallbackFilename: '$modelId-mmproj.gguf',
-          label: 'projector (mmproj)',
-        );
-  final draftUrl = spec.draftUrl;
-  final draftPath = draftUrl == null
-      ? null
-      : await _downloadLocalArtifact(
-          downloads,
-          spec,
-          modelId,
-          url: draftUrl,
-          fallbackFilename: '$modelId-draft.gguf',
-          label: 'draft/MTP model',
-        );
-  return (modelPath: modelPath, mmprojPath: mmprojPath, draftPath: draftPath);
 }
 
 Future<String> _downloadLocalArtifact(
   DownloadService downloads,
   llama.ModelSpec spec,
-  String modelId, {
-  required Uri url,
-  required String fallbackFilename,
-  required String label,
-}) async {
-  final filename = url.pathSegments.isEmpty
-      ? fallbackFilename
-      : url.pathSegments.last;
-  final request = DownloadRequest(
-    url: url.toString(),
-    filename: filename,
-    directory: 'local_llama/$modelId',
-    metaData: spec.id,
-  );
+  String modelId,
+  _LocalArtifactSource artifact,
+) async {
+  final label = artifact.label;
+  final request = _localArtifactRequest(spec, modelId, artifact);
   final path = await downloads.filePathFor(request);
   _localLlamaProgress.update(
     modelId,
@@ -931,6 +1083,7 @@ class _AgentsAppState extends State<AgentsApp> with WidgetsBindingObserver {
   late final GoRouter _router;
   late final TaskSchedulerService _scheduler;
   late final AppActivityMonitor _activity;
+  late final LocalModelWarmup _warmup;
 
   @override
   void initState() {
@@ -941,6 +1094,20 @@ class _AgentsAppState extends State<AgentsApp> with WidgetsBindingObserver {
       seedModel: _seedModel,
     );
     _scheduler = TaskSchedulerService(widget.services)..start();
+    // When local inference is the only engine configured, the model the first
+    // message needs is knowable now — load it in the background so that
+    // message does not pay for it. Chained off the bootstrap future rather
+    // than awaited: startup must not block on a model load.
+    _warmup = LocalModelWarmup(
+      manager: widget.services.getRequiredService<ConfiguredAgentsManager>(),
+      ready: bootstrap.ensureInitialized,
+      warm: (target) => _warmLocalLlamaModel(
+        widget.services,
+        source: target.source,
+        model: target.model,
+      ),
+    );
+    unawaited(_warmup.start());
     _router = createAppRouter(
       services: widget.services,
       bootstrap: bootstrap,
@@ -957,6 +1124,7 @@ class _AgentsAppState extends State<AgentsApp> with WidgetsBindingObserver {
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKeyEvent);
     WidgetsBinding.instance.removeObserver(this);
+    _warmup.stop();
     _scheduler.stop();
     super.dispose();
   }
