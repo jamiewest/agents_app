@@ -11,7 +11,9 @@
 ///    key/value store, so they are deleted first.
 /// 2. The key/value store — sources, models, saved agents, theme, thinking,
 ///    and embedding settings.
-/// 3. Stored local model files (Application Support on native, OPFS on web).
+/// 3. Stored local model files (Application Support on native, OPFS on web),
+///    both the files the user picked and — on the web — the GGUFs the
+///    runtime downloaded into managed storage.
 /// 4. The inventory database (native only — the store is not registered on
 ///    web).
 /// 5. The record store — conversations, transcripts, channels, tasks, agent
@@ -27,6 +29,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 
 import '../features/inventory/inventory_store.dart';
+import 'downloaded_model_artifacts.dart';
 import 'local_model_store.dart';
 
 export 'app_restart_stub.dart'
@@ -65,6 +68,7 @@ Future<void> resetAppData(ServiceProvider services) async {
 
   // An empty keep-set deletes every stored model artifact.
   await pruneLocalModelFiles(const {});
+  await pruneDownloadedModelArtifacts(const {});
 
   // The inventory lives in its own SQLite file outside the record store.
   await services.getService<InventoryStore>()?.destroy();
