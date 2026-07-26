@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../app_theme.dart';
+
 /// The top-level pages of the Agent Center, in nav order.
 ///
 /// Overview leads the switcher but is not the landing page: people open the
@@ -84,21 +86,21 @@ class AgentCenterNav extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final tab in AgentCenterTab.values)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: _NavButton(
-              tab: tab,
-              selected: tab == current,
-              onPressed: () => onSelected(tab),
-            ),
+          _NavTile(
+            tab: tab,
+            selected: tab == current,
+            onPressed: () => onSelected(tab),
           ),
       ],
     );
   }
 }
 
-class _NavButton extends StatelessWidget {
-  const _NavButton({
+/// One entry in the vertical nav, shaped like a conversation tile in the
+/// chats sidebar: same stadium, same insets, same selected fill, so a menu
+/// and a list of conversations sit at the same rhythm.
+class _NavTile extends StatelessWidget {
+  const _NavTile({
     required this.tab,
     required this.selected,
     required this.onPressed,
@@ -110,20 +112,55 @@ class _NavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final foreground = selected
+        ? scheme.onSecondaryContainer
+        : scheme.onSurface;
     return Semantics(
       selected: selected,
-      child: TextButton.icon(
-        onPressed: onPressed,
-        icon: Icon(tab.icon, size: 18),
-        label: Text(tab.label),
-        style: TextButton.styleFrom(
-          alignment: Alignment.centerLeft,
-          minimumSize: const Size(140, 44),
-          backgroundColor: selected ? scheme.secondaryContainer : null,
-          foregroundColor: selected
-              ? scheme.onSecondaryContainer
-              : scheme.onSurfaceVariant,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: 1,
+        ),
+        child: Material(
+          shape: const StadiumBorder(),
+          color: selected ? scheme.secondaryContainer : Colors.transparent,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: 6,
+              ),
+              child: Row(
+                children: [
+                  // Sized to the conversation tiles' 28pt avatar so both
+                  // lists share one text column.
+                  SizedBox.square(
+                    dimension: 28,
+                    child: Icon(tab.icon, size: 18, color: foreground),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Text(
+                      tab.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: foreground,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
