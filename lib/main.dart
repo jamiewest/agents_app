@@ -333,9 +333,15 @@ class _LocalLlamaModelLocation {
   final bool isSelectedFile;
 }
 
-/// Config behind each resident local-model load key, so the title summarizer
-/// can rebuild a client for whatever model [LocalLlamaModelHost] currently
-/// holds and reuse its session through an acquire cache hit.
+/// Config behind each local-model load key, so the title summarizer can
+/// rebuild a client for whatever model [LocalLlamaModelHost] currently holds
+/// and reuse its session through an acquire cache hit.
+///
+/// An entry is written when a load key is *planned*, which can precede — or
+/// never reach — residency: a declined warm-up leaves one behind for a model
+/// that never loaded. That is safe because the only reader
+/// ([_residentTitleClient]) looks up by [LocalLlamaModelHost.currentKey], so
+/// it can only ever reach the entry of a model that really is resident.
 final Map<String, ({ModelSourceConfig source, ModelConfig model})>
 _residentLocalConfigs = {};
 
