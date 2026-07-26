@@ -15,18 +15,21 @@ typedef SectionDestination = ({String label, IconData icon});
 /// The back control a settings section shows above its title.
 ///
 /// Sections are sibling routes of `/settings` rather than pages pushed over
-/// it, so there is nothing to pop — this navigates. It wears the app's
-/// [AppBackIcon] so it reads as back navigation everywhere else does, and
-/// names its destination in the tooltip since it carries no label.
+/// it, so there is nothing to pop — this navigates to [location]. It wears
+/// the app's [AppBackIcon] so it reads as back navigation everywhere else
+/// does, and names its destination in the tooltip since it carries no label.
 class SettingsBackButton extends StatelessWidget {
   /// Creates a [SettingsBackButton].
-  const SettingsBackButton({super.key});
+  const SettingsBackButton({this.location = '/settings', super.key});
+
+  /// Where the button navigates — the page the section was opened from.
+  final String location;
 
   @override
   Widget build(BuildContext context) => IconButton(
     tooltip: 'Back to settings',
     icon: const AppBackIcon(),
-    onPressed: () => context.go('/settings'),
+    onPressed: () => context.go(location),
   );
 }
 
@@ -38,12 +41,17 @@ class SettingsBackButton extends StatelessWidget {
 /// never re-animates the menu. On wide layouts the nav is a labelled rail
 /// beside the content; on compact it is a scrollable segmented control above
 /// it, with a hamburger to reach the app drawer.
+///
+/// A section is entered by branch switch rather than a push, so there is no
+/// route to pop back to; the header's back button navigates to
+/// [backLocation] explicitly.
 class SettingsSectionShell extends StatelessWidget {
   /// Creates a [SettingsSectionShell].
   const SettingsSectionShell({
     required this.title,
     required this.destinations,
     required this.shell,
+    required this.backLocation,
     super.key,
   });
 
@@ -55,6 +63,9 @@ class SettingsSectionShell extends StatelessWidget {
 
   /// The branch navigator for the active tab.
   final StatefulNavigationShell shell;
+
+  /// Where the back button goes — the page this section was opened from.
+  final String backLocation;
 
   void _go(int index) =>
       shell.goBranch(index, initialLocation: index == shell.currentIndex);
@@ -86,9 +97,9 @@ class SettingsSectionShell extends StatelessWidget {
                         // Back sits on its own line: beside the title it
                         // would squeeze longer section names into an
                         // ellipsis at this width.
-                        const Align(
+                        Align(
                           alignment: Alignment.centerLeft,
-                          child: SettingsBackButton(),
+                          child: SettingsBackButton(location: backLocation),
                         ),
                         Padding(
                           padding: const EdgeInsets.only(left: 8, bottom: 12),
@@ -119,14 +130,20 @@ class SettingsSectionShell extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(4, 8, 8, 0),
                 child: Row(
                   children: [
-                    const SettingsBackButton(),
+                    SettingsBackButton(location: backLocation),
                     if (openDrawer != null)
                       IconButton(
                         tooltip: 'Menu',
                         icon: const Icon(LucideIcons.menu300),
                         onPressed: openDrawer,
                       ),
-                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),

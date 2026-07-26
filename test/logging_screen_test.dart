@@ -128,6 +128,7 @@ Widget _loggingApp(ServiceProvider services) => MaterialApp.router(
           title: 'Logs & diagnostics',
           destinations: loggingDestinations,
           shell: shell,
+          backLocation: '/settings',
         ),
         branches: [
           StatefulShellBranch(
@@ -149,6 +150,12 @@ Widget _loggingApp(ServiceProvider services) => MaterialApp.router(
             ],
           ),
         ],
+      ),
+      // Stands in for the settings home the section's back button returns to.
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) =>
+            const Scaffold(body: Text('Settings home')),
       ),
     ],
   ),

@@ -10,6 +10,8 @@ import 'package:agents_app/navigation/app_router.dart';
 import 'package:agents_app/ui/screens/add_agent_wizard.dart';
 import 'package:agents_app/ui/screens/chats_home.dart';
 import 'package:agents_app/ui/screens/onboarding_screen.dart';
+import 'package:agents_app/ui/screens/settings_home_screen.dart';
+import 'package:agents_app/ui/widgets/settings_section_shell.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
@@ -228,6 +230,41 @@ void main() {
       expect(find.text('Agent Center'), findsOneWidget);
     });
 
+    // Logs & diagnostics is entered by branch switch rather than a push, so
+    // nothing pops it; its header carries an explicit back button.
+    for (final (label, width) in [('wide', 1200.0), ('compact', 420.0)]) {
+      testWidgets('Logs & diagnostics goes back to settings home ($label)', (
+        tester,
+      ) async {
+        final services = _buildServices();
+        await _seedUsableAgent(services);
+        tester.view.physicalSize = Size(width, 1200);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+
+        for (final location in [
+          '/settings/logging',
+          '/settings/logging/prompts',
+        ]) {
+          await tester.pumpWidget(_app(services, initialLocation: location));
+          await tester.pumpAndSettle();
+          expect(
+            find.byType(SettingsHomeScreen),
+            findsNothing,
+            reason: location,
+          );
+
+          await tester.tap(find.byType(SettingsBackButton));
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byType(SettingsHomeScreen),
+            findsOneWidget,
+            reason: location,
+          );
+        }
+      });
+    }
   });
 }
 
