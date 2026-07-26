@@ -394,6 +394,25 @@ void main() {
       expect(find.byType(AgentEditorPage), findsNothing);
     });
 
+    testWidgets('ultrawide: the split lays out without overflow', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      await pumpAt(
+        tester,
+        services,
+        '/settings/agents/sources',
+        size: const Size(3440, 1440),
+      );
+      await tester.tap(find.text('Local'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SourceEditor), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('narrow: a models card still pushes the editor page', (
       tester,
     ) async {
