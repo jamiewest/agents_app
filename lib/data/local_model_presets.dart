@@ -103,9 +103,12 @@ const List<LocalModelPreset> localModelPresets = [
   LocalModelPreset(
     name: 'Gemma 3 1B',
     subtitle: 'Q4_0 QAT · ~0.7 GB file · fine on 4 GB RAM · fastest',
+    // lmstudio-community mirrors Google's QAT quant without the license
+    // gate; the google/ repos answer 401 to unauthenticated downloads,
+    // which is every in-app download.
     url:
-        'https://huggingface.co/google/gemma-3-1b-it-qat-q4_0-gguf/'
-        'resolve/main/gemma-3-1b-it-q4_0.gguf',
+        'https://huggingface.co/lmstudio-community/gemma-3-1B-it-qat-GGUF/'
+        'resolve/main/gemma-3-1B-it-QAT-Q4_0.gguf',
     // 8192 so the harness system prompt + tool declarations (~5k tokens) fit;
     // 4096 overflowed and stalled prefill.
     contextSize: 8192,
@@ -115,8 +118,8 @@ const List<LocalModelPreset> localModelPresets = [
     name: 'Gemma 3 4B',
     subtitle: 'Q4_0 QAT · ~2.5 GB file · 8 GB RAM · good quality',
     url:
-        'https://huggingface.co/google/gemma-3-4b-it-qat-q4_0-gguf/'
-        'resolve/main/gemma-3-4b-it-q4_0.gguf',
+        'https://huggingface.co/lmstudio-community/gemma-3-4B-it-qat-GGUF/'
+        'resolve/main/gemma-3-4B-it-QAT-Q4_0.gguf',
     contextSize: 8192,
     minMemoryMb: 8192,
   ),

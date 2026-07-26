@@ -159,23 +159,37 @@ class AgentEditorBody extends StatefulWidget {
 
 class _AgentEditorBodyState extends State<AgentEditorBody> {
   late final ConfiguredAgentsController _controller;
+  StreamSubscription<void>? _configSub;
   bool _loaded = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = ConfiguredAgentsController(
-      widget.services.getRequiredService<ConfiguredAgentsManager>(),
-    );
+    final manager = widget.services
+        .getRequiredService<ConfiguredAgentsManager>();
+    _controller = ConfiguredAgentsController(manager);
     unawaited(
       _controller.load().then((_) {
         if (mounted) setState(() => _loaded = true);
       }),
     );
+    // The editor pane can outlive other editors' saves (the two-pane layout
+    // keeps it mounted across tab switches), so reload on configuration
+    // changes: a model saved under the Models tab must appear in an already
+    // open agent form's model dropdown. Form field state lives in the child
+    // editors' own controllers, so a reload only refreshes the option lists.
+    _configSub = manager.configurationChanges.listen(
+      (_) => unawaited(
+        _controller.load().then((_) {
+          if (mounted) setState(() {});
+        }),
+      ),
+    );
   }
 
   @override
   void dispose() {
+    unawaited(_configSub?.cancel());
     _controller.dispose();
     super.dispose();
   }

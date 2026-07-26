@@ -854,10 +854,10 @@ packages:
     dependency: "direct main"
     description:
       name: llama_cpp_flutter
-      sha256: "41e833876b8abeba09ab7c3649b94ed65aa616d5739cccae30ad04cecc3bf14f"
+      sha256: "29f6ae66efdaf5b824c731d35a981d7fa568713ef85c727075563d7a96a02372"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.1"
+    version: "0.6.2"
   logging:
     dependency: transitive
     description:
