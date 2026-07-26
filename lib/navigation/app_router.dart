@@ -199,6 +199,7 @@ StatefulShellRoute _loggingShell(ServiceProvider services) =>
         title: 'Logs & diagnostics',
         destinations: loggingDestinations,
         shell: navigationShell,
+        backLocation: '/settings',
       ),
       branches: [
         StatefulShellBranch(

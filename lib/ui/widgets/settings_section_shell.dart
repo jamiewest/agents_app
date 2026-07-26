@@ -19,12 +19,17 @@ typedef SectionDestination = ({String label, IconData icon});
 /// never re-animates the menu. On wide layouts the nav is a labelled rail
 /// beside the content; on compact it is a scrollable segmented control above
 /// it, with a hamburger to reach the app drawer.
+///
+/// A section is entered by branch switch rather than a push, so there is no
+/// route to pop back to; the header's back button navigates to
+/// [backLocation] explicitly.
 class SettingsSectionShell extends StatelessWidget {
   /// Creates a [SettingsSectionShell].
   const SettingsSectionShell({
     required this.title,
     required this.destinations,
     required this.shell,
+    required this.backLocation,
     super.key,
   });
 
@@ -36,6 +41,9 @@ class SettingsSectionShell extends StatelessWidget {
 
   /// The branch navigator for the active tab.
   final StatefulNavigationShell shell;
+
+  /// Where the back button goes — the page this section was opened from.
+  final String backLocation;
 
   void _go(int index) =>
       shell.goBranch(index, initialLocation: index == shell.currentIndex);
@@ -60,10 +68,19 @@ class SettingsSectionShell extends StatelessWidget {
                 SizedBox(
                   width: 200,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 20, 8, 12),
+                    padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // The back button sits above the title rather than
+                        // beside it: at 200px the two together would crowd a
+                        // long section name onto an ellipsis.
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: BackButton(
+                            onPressed: () => context.go(backLocation),
+                          ),
+                        ),
                         Padding(
                           padding: const EdgeInsets.only(left: 8, bottom: 12),
                           child: Text(
@@ -93,13 +110,20 @@ class SettingsSectionShell extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(4, 8, 8, 0),
                 child: Row(
                   children: [
+                    BackButton(onPressed: () => context.go(backLocation)),
                     if (openDrawer != null)
                       IconButton(
                         tooltip: 'Menu',
                         icon: const Icon(LucideIcons.menu300),
                         onPressed: openDrawer,
                       ),
-                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),
