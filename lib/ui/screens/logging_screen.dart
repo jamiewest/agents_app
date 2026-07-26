@@ -358,60 +358,147 @@ class _FilterBar extends StatelessWidget {
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onClear;
 
+  /// Below this the search field and the filters no longer share a line.
+  /// The section's side panel leaves the content area narrow enough on a
+  /// laptop-width window to reach this, so it is a real layout, not a
+  /// phone-only fallback.
+  static const double _singleRowMinWidth = 520;
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-    child: Row(
-      children: [
-        Expanded(
-          child: TextField(
-            decoration: const InputDecoration(
-              hintText: 'Search logs',
-              prefixIcon: Icon(LucideIcons.search300, size: 20),
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onChanged: onQueryChanged,
-          ),
-        ),
-        const SizedBox(width: 8),
-        DropdownButton<LogLevel?>(
-          value: displayLevel,
-          hint: const Text('Level'),
-          isDense: true,
-          items: [
-            const DropdownMenuItem<LogLevel?>(child: Text('All levels')),
-            for (final level in _pickableLevels)
-              DropdownMenuItem<LogLevel?>(
-                value: level,
-                child: Text('≥ ${_levelLabel(level)}'),
+  Widget build(BuildContext context) {
+    final search = _LogSearchField(onQueryChanged: onQueryChanged);
+    final level = _LevelFilter(
+      displayLevel: displayLevel,
+      onLevelChanged: onLevelChanged,
+    );
+    final category = _CategoryFilter(
+      categories: categories,
+      displayCategory: displayCategory,
+      onCategoryChanged: onCategoryChanged,
+    );
+    final clear = _ClearLogButton(onClear: onClear);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: LayoutBuilder(
+        builder: (context, constraints) =>
+            constraints.maxWidth >= _singleRowMinWidth
+            ? Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: 8),
+                  level,
+                  const SizedBox(width: 8),
+                  category,
+                  const SizedBox(width: 4),
+                  clear,
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  search,
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [level, category, clear],
+                  ),
+                ],
               ),
-          ],
-          onChanged: onLevelChanged,
-        ),
-        const SizedBox(width: 8),
-        DropdownButton<String?>(
-          value: displayCategory,
-          hint: const Text('Category'),
-          isDense: true,
-          items: [
-            const DropdownMenuItem<String?>(child: Text('All categories')),
-            for (final category in categories)
-              DropdownMenuItem<String?>(
-                value: category,
-                child: Text(category, overflow: TextOverflow.ellipsis),
-              ),
-          ],
-          onChanged: onCategoryChanged,
-        ),
-        const SizedBox(width: 4),
-        IconButton(
-          tooltip: 'Clear log',
-          icon: const Icon(LucideIcons.trash2300),
-          onPressed: onClear,
-        ),
-      ],
+      ),
+    );
+  }
+}
+
+class _LogSearchField extends StatelessWidget {
+  const _LogSearchField({required this.onQueryChanged});
+
+  final ValueChanged<String> onQueryChanged;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    decoration: const InputDecoration(
+      hintText: 'Search logs',
+      prefixIcon: Icon(LucideIcons.search300, size: 20),
+      isDense: true,
+      border: OutlineInputBorder(),
     ),
+    onChanged: onQueryChanged,
+  );
+}
+
+class _LevelFilter extends StatelessWidget {
+  const _LevelFilter({
+    required this.displayLevel,
+    required this.onLevelChanged,
+  });
+
+  final LogLevel? displayLevel;
+  final ValueChanged<LogLevel?> onLevelChanged;
+
+  @override
+  Widget build(BuildContext context) => DropdownButton<LogLevel?>(
+    value: displayLevel,
+    hint: const Text('Level'),
+    isDense: true,
+    items: [
+      const DropdownMenuItem<LogLevel?>(child: Text('All levels')),
+      for (final level in _pickableLevels)
+        DropdownMenuItem<LogLevel?>(
+          value: level,
+          child: Text('≥ ${_levelLabel(level)}'),
+        ),
+    ],
+    onChanged: onLevelChanged,
+  );
+}
+
+class _CategoryFilter extends StatelessWidget {
+  const _CategoryFilter({
+    required this.categories,
+    required this.displayCategory,
+    required this.onCategoryChanged,
+  });
+
+  final Set<String> categories;
+  final String? displayCategory;
+  final ValueChanged<String?> onCategoryChanged;
+
+  /// Bounded because category names come from log records and would
+  /// otherwise size the button to the longest one.
+  static const double _width = 168;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: _width,
+    child: DropdownButton<String?>(
+      value: displayCategory,
+      hint: const Text('Category'),
+      isDense: true,
+      isExpanded: true,
+      items: [
+        const DropdownMenuItem<String?>(child: Text('All categories')),
+        for (final category in categories)
+          DropdownMenuItem<String?>(
+            value: category,
+            child: Text(category, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: onCategoryChanged,
+    ),
+  );
+}
+
+class _ClearLogButton extends StatelessWidget {
+  const _ClearLogButton({required this.onClear});
+
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: 'Clear log',
+    icon: const Icon(LucideIcons.trash2300),
+    onPressed: onClear,
   );
 }
 
