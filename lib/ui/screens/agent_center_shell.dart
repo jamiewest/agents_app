@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../navigation/app_shell.dart';
+import '../widgets/settings_section_shell.dart';
 import 'agent_center_nav.dart';
 
 /// The persistent chrome around the Agent Center's four pages.
@@ -18,7 +19,11 @@ import 'agent_center_nav.dart';
 /// longer animates the whole menu in.
 class AgentCenterShell extends StatelessWidget {
   /// Creates an [AgentCenterShell].
-  const AgentCenterShell({required this.services, required this.shell, super.key});
+  const AgentCenterShell({
+    required this.services,
+    required this.shell,
+    super.key,
+  });
 
   /// The application service provider.
   final ServiceProvider services;
@@ -51,10 +56,16 @@ class AgentCenterShell extends StatelessWidget {
                 SizedBox(
                   width: 184,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 20, 8, 12),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Back sits on its own line so it never competes
+                        // with the title for the rail's width.
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: SettingsBackButton(),
+                        ),
                         Padding(
                           padding: const EdgeInsets.only(left: 8, bottom: 12),
                           child: Text(
@@ -86,6 +97,7 @@ class AgentCenterShell extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(4, 8, 8, 0),
                 child: Row(
                   children: [
+                    const SettingsBackButton(),
                     if (openDrawer != null)
                       IconButton(
                         tooltip: 'Menu',

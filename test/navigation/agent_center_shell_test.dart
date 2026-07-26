@@ -17,6 +17,7 @@ import 'package:agents_app/ui/screens/agent_center_shell.dart';
 import 'package:agents_app/ui/screens/agent_detail_screen.dart';
 import 'package:agents_app/ui/screens/agent_editor_page.dart';
 import 'package:agents_app/ui/screens/add_agent_wizard.dart';
+import 'package:agents_app/ui/screens/settings_home_screen.dart';
 import 'package:agents_app/ui/views/configured_agents/configured_agents.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
@@ -220,6 +221,51 @@ void main() {
 
       expect(find.byType(AgentCatalogView), findsOneWidget);
       expect(find.text('Test Agent'), findsOneWidget);
+    });
+
+    testWidgets('back returns to Settings from any tab or pushed page', (
+      tester,
+    ) async {
+      // The center is a sibling route of /settings, not a page pushed over
+      // it, so back has to navigate — from a non-default tab and from a
+      // page pushed inside one alike.
+      final services = _buildServices();
+      await _seed(services);
+
+      for (final location in [
+        '/settings/agents',
+        '/settings/agents/models',
+        '/settings/agents/view/agent-1',
+      ]) {
+        await pumpAt(tester, services, location);
+        await tester.tap(find.byTooltip('Back to settings'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byType(SettingsHomeScreen),
+          findsOneWidget,
+          reason: location,
+        );
+        // The section shell is gone, not merely covered.
+        expect(find.byType(AgentCenterShell), findsNothing, reason: location);
+      }
+    });
+
+    testWidgets('compact: back returns to Settings', (tester) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      await pumpAt(
+        tester,
+        services,
+        '/settings/agents',
+        size: const Size(420, 1800),
+      );
+      await tester.tap(find.byTooltip('Back to settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsHomeScreen), findsOneWidget);
+      expect(find.byType(AgentCenterShell), findsNothing);
     });
 
     testWidgets('the setup wizard stays reachable', (tester) async {
