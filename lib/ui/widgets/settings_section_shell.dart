@@ -7,9 +7,28 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../navigation/app_shell.dart';
+import '../app_theme.dart';
 
 /// One tab of a settings section shell.
 typedef SectionDestination = ({String label, IconData icon});
+
+/// The back control a settings section shows above its title.
+///
+/// Sections are sibling routes of `/settings` rather than pages pushed over
+/// it, so there is nothing to pop — this navigates. It wears the app's
+/// [AppBackIcon] so it reads as back navigation everywhere else does, and
+/// names its destination in the tooltip since it carries no label.
+class SettingsBackButton extends StatelessWidget {
+  /// Creates a [SettingsBackButton].
+  const SettingsBackButton({super.key});
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: 'Back to settings',
+    icon: const AppBackIcon(),
+    onPressed: () => context.go('/settings'),
+  );
+}
 
 /// The persistent chrome around a multi-page settings section, built once by
 /// the section's [StatefulShellRoute].
@@ -60,10 +79,17 @@ class SettingsSectionShell extends StatelessWidget {
                 SizedBox(
                   width: 200,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 20, 8, 12),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Back sits on its own line: beside the title it
+                        // would squeeze longer section names into an
+                        // ellipsis at this width.
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: SettingsBackButton(),
+                        ),
                         Padding(
                           padding: const EdgeInsets.only(left: 8, bottom: 12),
                           child: Text(
@@ -93,6 +119,7 @@ class SettingsSectionShell extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(4, 8, 8, 0),
                 child: Row(
                   children: [
+                    const SettingsBackButton(),
                     if (openDrawer != null)
                       IconButton(
                         tooltip: 'Menu',
