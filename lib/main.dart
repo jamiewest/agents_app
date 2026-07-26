@@ -33,6 +33,7 @@ import 'data/chat_transcript_store.dart';
 import 'data/conversation_service.dart';
 import 'data/conversation_store.dart';
 import 'data/downloaded_artifact_presence.dart';
+import 'data/downloaded_model_artifacts.dart';
 import 'data/embedding_settings.dart';
 import 'data/local_llama_context_planner.dart';
 import 'data/local_llama_lease_client.dart';
@@ -983,12 +984,21 @@ DownloadRequest _localArtifactRequest(
 /// Answers "would making this model resident be free?" — the gate the
 /// startup warm-up needs, since the loader downloads unconditionally and has
 /// no skip-if-missing mode. Reached only by URL-backed models; a picked file
-/// is already local. Always false on web (see [downloadedArtifactExists]).
+/// is already local. On web the probe asks the runtime's managed OPFS
+/// storage instead of the filesystem; models small enough to live in
+/// wllama's own URL cache stay invisible there and report absent (see
+/// [downloadedArtifactsInManagedStorage]).
 Future<bool> _localArtifactsAlreadyDownloaded(
   ServiceProvider services,
   llama.ModelSpec spec,
   String modelId,
 ) async {
+  if (kIsWeb) {
+    return downloadedArtifactsInManagedStorage([
+      for (final artifact in _localArtifactSources(spec, modelId).values)
+        artifact.url,
+    ]);
+  }
   final downloads = services.getRequiredService<DownloadService>();
   for (final artifact in _localArtifactSources(spec, modelId).values) {
     final path = await downloads.filePathFor(

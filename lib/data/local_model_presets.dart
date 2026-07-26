@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// A known-good local GGUF model with sensible runtime defaults.
 ///
@@ -28,6 +29,7 @@ class LocalModelPreset {
     this.supportsThinking = false,
     this.supportsVision = false,
     this.supportsAudio = false,
+    this.webCompatible = true,
   });
 
   /// Display name.
@@ -69,6 +71,15 @@ class LocalModelPreset {
   /// projector carries an audio encoder; the runtime re-checks with
   /// `mtmd_support_audio` and fails audio turns when it does not).
   final bool supportsAudio;
+
+  /// Whether the preset can load in the web runtime.
+  ///
+  /// `false` hides it from the browser's preset list. Set it for desktop
+  /// presets that cannot load there — a [draftModelUrl] makes the web
+  /// runtime throw (wllama cannot stage a second GGUF for
+  /// `spec_draft_model`) — or that are sized for desktop memory a wasm32
+  /// heap (4 GiB address space) cannot hold.
+  final bool webCompatible;
 
   /// Materializes the preset as a new [ModelConfig] for [sourceId].
   ///
@@ -142,6 +153,26 @@ const List<LocalModelPreset> localModelPresets = [
     contextSize: 8192,
     minMemoryMb: 8192,
   ),
+  // Gemma 4 E2B, the browser-viable Gemma 4: per-layer embeddings keep the
+  // effective parameter count at 2.3B, and the QAT UD-Q4_K_XL file is
+  // 2.62 GB — over the 2 GiB wasm32 per-file limit (the web runtime's
+  // OPFS client-side split handles that) but small enough that weights
+  // plus an 8k q8_0 KV cache fit the 4 GiB wasm address space.
+  // Deliberately text-only and drafter-free: the QAT repo ships no
+  // projector (and E2B's 1536-wide projection would need its own anyway;
+  // see the class doc), and an MTP drafter would make the web runtime
+  // throw. Fine on desktop too, where the E4B preset below is the richer
+  // choice.
+  LocalModelPreset(
+    name: 'Gemma 4 E2B',
+    subtitle: 'Q4_K_XL QAT · ~2.6 GB file · 8 GB RAM · runs in the browser',
+    url:
+        'https://huggingface.co/unsloth/gemma-4-E2B-it-qat-GGUF/'
+        'resolve/main/gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf',
+    chatFormat: 'gemma',
+    contextSize: 8192,
+    minMemoryMb: 8192,
+  ),
   // Gemma 4 E4B for Macs. Every artifact comes from the E4B repo: the
   // E2B repo's mmproj is NOT compatible (1536- vs 2560-wide projection;
   // see the class doc), and the MTP drafter is E4B-specific. The Q4_0
@@ -170,6 +201,7 @@ const List<LocalModelPreset> localModelPresets = [
     minMemoryMb: 16384,
     supportsVision: true,
     supportsAudio: true,
+    webCompatible: false,
   ),
   // LFM2.5 VL for Macs. Q8_0 over Q4_0: at 1.6B the extra ~0.5 GB is
   // cheap on a desktop and the quant quality gap matters more on small
@@ -191,5 +223,17 @@ const List<LocalModelPreset> localModelPresets = [
     contextSize: 16384,
     minMemoryMb: 8192,
     supportsVision: true,
+    webCompatible: false,
   ),
 ];
+
+/// The presets offered on the current platform.
+///
+/// The browser drops the Mac-tuned presets ([LocalModelPreset.webCompatible]
+/// explains why); every other platform sees the full list.
+List<LocalModelPreset> get availableLocalModelPresets => kIsWeb
+    ? [
+        for (final preset in localModelPresets)
+          if (preset.webCompatible) preset,
+      ]
+    : localModelPresets;

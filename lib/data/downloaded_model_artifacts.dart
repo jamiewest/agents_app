@@ -109,6 +109,27 @@ Future<void> pruneDownloadedModelArtifacts(Set<String> keepKeys) async {
   }
 }
 
+/// Whether every URL in [urls] is stored as a complete artifact in the
+/// runtime's managed storage.
+///
+/// The startup warm-up's web presence probe. Only artifacts the web runtime
+/// downloaded through its OPFS route — files over the wasm32 single-file
+/// limit — are visible here; smaller models live in wllama's own URL cache,
+/// which exposes no presence query. Unknown therefore reports as absent,
+/// the direction the warm-up treats as "skip rather than download".
+Future<bool> downloadedArtifactsInManagedStorage(Iterable<Uri> urls) async {
+  final store = _store();
+  if (store == null) return false;
+  try {
+    final stored = await store.list();
+    final keys = <String>{for (final artifact in stored) artifact.key};
+    return urls.every((url) => keys.contains(stableArtifactFileName(url)));
+  } catch (error, stackTrace) {
+    _log('Failed to list downloaded model artifacts', error, stackTrace);
+    return false;
+  }
+}
+
 /// Deletes [keys], surviving a per-key failure so one bad entry cannot strand
 /// the rest.
 Future<void> _delete(Set<String> keys, {ArtifactStore? store}) async {

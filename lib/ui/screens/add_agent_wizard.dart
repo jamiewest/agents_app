@@ -307,7 +307,7 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final preset in localModelPresets)
+                for (final preset in availableLocalModelPresets)
                   Tooltip(
                     message: preset.subtitle,
                     child: ActionChip(
