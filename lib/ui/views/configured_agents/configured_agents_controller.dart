@@ -5,6 +5,7 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../data/downloaded_model_artifacts.dart';
 import '../../../data/local_model_store.dart';
 
 /// Mutable view-model for the configured-agents UI.
@@ -57,8 +58,24 @@ class ConfiguredAgentsController extends ChangeNotifier {
       _run(() => manager.saveSource(source, apiKey: apiKey));
 
   /// Deletes the source [id], optionally cascading, then reloads.
+  ///
+  /// A cascade takes the source's models with it, so their storage goes too:
+  /// the models are read before the delete, because afterwards there is
+  /// nothing left to say which artifacts were theirs.
   Future<String?> deleteSource(String id, {bool cascade = false}) =>
-      _run(() => manager.deleteSource(id, cascade: cascade));
+      _run(() async {
+        final doomed = cascade
+            ? [
+                for (final model in await manager.sources.listModels())
+                  if (model.sourceId == id) model,
+              ]
+            : const <ModelConfig>[];
+        await manager.deleteSource(id, cascade: cascade);
+        for (final model in doomed) {
+          await deleteLocalModelFiles(model.id);
+          await deleteDownloadedModelArtifacts(model);
+        }
+      });
 
   /// Saves [model] then reloads.
   Future<String?> saveModel(ModelConfig model) =>
@@ -66,12 +83,17 @@ class ConfiguredAgentsController extends ChangeNotifier {
 
   /// Deletes the model [id], optionally cascading, then reloads.
   ///
-  /// Also removes any browser-persisted local GGUF files for the model so a
-  /// deleted local model does not leave gigabytes stranded in storage.
+  /// Also removes the model's stored GGUFs so a deleted local model does not
+  /// leave gigabytes stranded in storage — both the files picked into the
+  /// app's own storage and, on the web, the ones the runtime downloaded into
+  /// managed storage. The latter is keyed by URL, which only the model's
+  /// settings record, so it is read before the config is gone.
   Future<String?> deleteModel(String id, {bool cascade = false}) =>
       _run(() async {
+        final model = await manager.sources.getModel(id);
         await manager.deleteModel(id, cascade: cascade);
         await deleteLocalModelFiles(id);
+        if (model != null) await deleteDownloadedModelArtifacts(model);
       });
 
   /// Saves [agent] then reloads.

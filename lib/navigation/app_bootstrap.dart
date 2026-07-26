@@ -7,6 +7,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 
 import '../data/agent_run_store.dart';
 import '../data/demo_seed.dart';
+import '../data/downloaded_model_artifacts.dart';
 import '../data/embedding_settings.dart';
 import '../data/legacy_chat_migration.dart';
 import '../data/local_model_store.dart';
@@ -45,6 +46,24 @@ class AppBootstrap {
     // in-flight run as interrupted.
     await _services.getService<AgentRunTelemetryStore>()?.recoverInterrupted();
     await _restoreLocalModelFiles();
+    await _pruneDownloadedModelArtifacts();
+  }
+
+  /// Reclaims managed storage from downloaded GGUFs no configured model asks
+  /// for any more.
+  ///
+  /// The web counterpart of the prune inside [_restoreLocalModelFiles], and
+  /// the safety net behind the per-model deletes: a model removed by an
+  /// older build (or by a path that never learned to clean up) can have left
+  /// gigabytes behind, and until they go the browser keeps refusing the next
+  /// download for want of quota. Runs before any model loads, so nothing it
+  /// deletes is in use.
+  Future<void> _pruneDownloadedModelArtifacts() async {
+    if (!downloadedModelArtifactsSupported) return;
+    final manager = _services.getRequiredService<ConfiguredAgentsManager>();
+    await pruneDownloadedModelArtifacts(
+      downloadedArtifactKeysFor(await manager.sources.listModels()),
+    );
   }
 
   /// Re-registers picked local GGUF files that were persisted to local
