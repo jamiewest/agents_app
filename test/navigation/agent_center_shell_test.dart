@@ -11,6 +11,7 @@ import 'package:agents_app/data/theme_settings.dart';
 import 'package:agents_app/data/usage_store.dart';
 import 'package:agents_app/navigation/app_bootstrap.dart';
 import 'package:agents_app/navigation/app_router.dart';
+import 'package:agents_app/ui/app_theme.dart';
 import 'package:agents_app/ui/screens/agent_center_nav.dart';
 import 'package:agents_app/ui/screens/agent_catalog_view.dart';
 import 'package:agents_app/ui/screens/agent_center_shell.dart';
@@ -19,6 +20,7 @@ import 'package:agents_app/ui/screens/agent_editor_page.dart';
 import 'package:agents_app/ui/screens/add_agent_wizard.dart';
 import 'package:agents_app/ui/screens/settings_home_screen.dart';
 import 'package:agents_app/ui/views/configured_agents/configured_agents.dart';
+import 'package:agents_app/ui/widgets/draggable_separator.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
@@ -437,6 +439,74 @@ void main() {
         tester.widget<AgentCatalogView>(find.byType(AgentCatalogView)).kind,
         AgentCenterTab.models,
       );
+    });
+
+    // The panel spans from the nav's leading edge to the drag handle. Read it
+    // that way rather than from the window, since the app's outer rail sits
+    // to its left.
+    double navPanelWidth(WidgetTester tester) =>
+        tester.getTopLeft(find.byType(DraggableSeparator)).dx -
+        tester.getTopLeft(find.byType(AgentCenterNav)).dx;
+
+    testWidgets('the nav panel is draggable within the chats sidebar bounds', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      await pumpAt(tester, services, '/settings/agents');
+
+      expect(find.byType(DraggableSeparator), findsOneWidget);
+      expect(
+        navPanelWidth(tester),
+        AppSidePanel.defaultWidth,
+        reason: 'starts at the chats sidebar width',
+      );
+
+      final handle = find.byType(DraggableSeparator);
+      await tester.drag(handle, const Offset(100, 0));
+      await tester.pumpAndSettle();
+      expect(navPanelWidth(tester), 400);
+
+      // Past the far edge it stops at the shared maximum.
+      await tester.drag(handle, const Offset(400, 0));
+      await tester.pumpAndSettle();
+      expect(navPanelWidth(tester), AppSidePanel.maxWidth);
+
+      // And at the near edge, the shared minimum.
+      await tester.drag(handle, const Offset(-600, 0));
+      await tester.pumpAndSettle();
+      expect(navPanelWidth(tester), AppSidePanel.minWidth);
+    });
+
+    testWidgets('a narrow window borrows panel width back for the content', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+
+      // Barely past the side-nav breakpoint: the default width would leave
+      // the content too little, so the panel gives some back.
+      await pumpAt(
+        tester,
+        services,
+        '/settings/agents',
+        size: const Size(700, 1400),
+      );
+
+      expect(find.byType(DraggableSeparator), findsOneWidget);
+      // The app's outer rail takes a slice first, so state the window this
+      // case needs in terms of what actually reaches the shell.
+      final available = tester.getSize(find.byType(AgentCenterShell)).width;
+      expect(
+        available,
+        inExclusiveRange(600, 660),
+        reason: 'wide enough for the side nav, too narrow for its full width',
+      );
+
+      final width = navPanelWidth(tester);
+      expect(width, lessThan(AppSidePanel.defaultWidth));
+      expect(width, greaterThanOrEqualTo(AppSidePanel.minWidth));
     });
 
     testWidgets('agent cards show run stats once there is history', (
