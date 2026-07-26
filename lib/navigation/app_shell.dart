@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 import 'package:agents_flutter/agents_flutter.dart';
-import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -44,10 +43,7 @@ class AppShellScope extends InheritedWidget {
 /// resizes.
 class AppShell extends StatefulWidget {
   /// Creates an [AppShell].
-  const AppShell({required this.services, required this.shell, super.key});
-
-  /// The application service provider, used by the drawer's chats list.
-  final ServiceProvider services;
+  const AppShell({required this.shell, super.key});
 
   /// The router's stateful branch container.
   final StatefulNavigationShell shell;
@@ -82,7 +78,6 @@ class _AppShellState extends State<AppShell> {
         key: _scaffoldKey,
         drawer: compact
             ? _AppDrawer(
-                services: widget.services,
                 selectedIndex: widget.shell.currentIndex,
                 onDestinationSelected: _goBranch,
               )
@@ -149,17 +144,19 @@ class _AppShellState extends State<AppShell> {
       );
 }
 
-/// The compact-width navigation drawer: the conversations/channels list
-/// fills the top, and the top-level destinations sit anchored to the bottom
-/// where a thumb can reach them.
+/// The compact-width navigation drawer: the product mark at the top, and the
+/// top-level destinations anchored to the bottom where a thumb can reach
+/// them.
+///
+/// It deliberately carries no conversations list — on compact widths the
+/// Chats destination already shows every conversation, and a second copy in
+/// the drawer duplicated that list with its own, separate filter state.
 class _AppDrawer extends StatelessWidget {
   const _AppDrawer({
-    required this.services,
     required this.selectedIndex,
     required this.onDestinationSelected,
   });
 
-  final ServiceProvider services;
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
 
@@ -170,12 +167,16 @@ class _AppDrawer extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: ChatsListView(
-              services: services,
-              presentation: ChatsListPresentation.drawer,
+          const Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.sm,
             ),
+            child: AgentTeamsBrand(),
           ),
+          const Spacer(),
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
