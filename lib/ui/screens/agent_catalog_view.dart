@@ -120,6 +120,17 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
 
   Future<void> _load() async {
     await _controller.load();
+    // Deleting the item in the pane leaves it pointing at nothing. Dropping
+    // it here rather than during build keeps the reload as the one thing that
+    // schedules the frame; the dirty flag goes with it, or the next selection
+    // would prompt about a form that no longer exists.
+    final id = _detail?.id;
+    if (mounted && id != null && _isStale(id)) {
+      setState(() {
+        _detail = null;
+        _editorDirty = false;
+      });
+    }
     await _loadStats();
   }
 
@@ -214,10 +225,13 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
       if (_controller.loading) {
         return const Center(child: CircularProgressIndicator());
       }
-      // A deleted item leaves the pane pointing at nothing; drop it rather
-      // than render an editor for a row that is no longer in the list.
-      final detail = _detail;
-      if (detail?.id != null && _isStale(detail!.id!)) _detail = null;
+      // The reload that removed an item clears [_detail] too, but it lands a
+      // frame later; ignore a stale selection now rather than render an
+      // editor for a row that has already left the list.
+      final selected = _detail;
+      final detail = selected?.id != null && _isStale(selected!.id!)
+          ? null
+          : selected;
 
       return LayoutBuilder(
         builder: (context, constraints) {
@@ -225,18 +239,21 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
           // full width at every size.
           final twoPane =
               constraints.maxWidth >= catalogTwoPaneBreakpoint && _count > 0;
-          if (!twoPane) return _list(twoPane: false);
+          if (!twoPane) return _list(twoPane: false, selectedId: null);
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(width: _listWidth, child: _list(twoPane: true)),
+              SizedBox(
+                width: _listWidth,
+                child: _list(twoPane: true, selectedId: detail?.id),
+              ),
               DraggableSeparator(
                 onDragUpdate: (deltaX) => setState(() {
                   // The floor keeps a card's title and metrics readable.
                   _listWidth = (_listWidth + deltaX).clamp(280.0, 520.0);
                 }),
               ),
-              Expanded(child: _detailPane()),
+              Expanded(child: _detailPane(detail)),
             ],
           );
         },
@@ -244,8 +261,8 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
     },
   );
 
-  Widget _list({required bool twoPane}) {
-    final items = _items(twoPane: twoPane);
+  Widget _list({required bool twoPane, required String? selectedId}) {
+    final items = _items(twoPane: twoPane, selectedId: selectedId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -286,8 +303,7 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
     );
   }
 
-  Widget _detailPane() {
-    final detail = _detail;
+  Widget _detailPane(_Detail? detail) {
     if (detail == null) {
       return EmptyState(
         icon: widget.kind.icon,
@@ -361,26 +377,33 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
 
   // --- Cards ---------------------------------------------------------------
 
-  List<Widget> _items({required bool twoPane}) => switch (widget.kind) {
+  List<Widget> _items({
+    required bool twoPane,
+    required String? selectedId,
+  }) => switch (widget.kind) {
     AgentCenterTab.agents => [
       for (final agent in _controller.agents)
         if (_matches(agent.name, agent.description))
-          _agentCard(agent, twoPane: twoPane),
+          _agentCard(agent, twoPane: twoPane, selectedId: selectedId),
     ],
     AgentCenterTab.models => [
       for (final model in _controller.models)
         if (_matches(model.label, model.modelId))
-          _modelCard(model, twoPane: twoPane),
+          _modelCard(model, twoPane: twoPane, selectedId: selectedId),
     ],
     AgentCenterTab.sources => [
       for (final source in _controller.sources)
         if (_matches(source.displayName, source.providerType.wireName))
-          _sourceCard(source, twoPane: twoPane),
+          _sourceCard(source, twoPane: twoPane, selectedId: selectedId),
     ],
     AgentCenterTab.overview => const [],
   };
 
-  Widget _agentCard(SavedAgentConfig agent, {required bool twoPane}) {
+  Widget _agentCard(
+    SavedAgentConfig agent, {
+    required bool twoPane,
+    required String? selectedId,
+  }) {
     final model = _controller.models
         .where((m) => m.id == agent.modelId)
         .firstOrNull;
@@ -395,7 +418,7 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
           ? 'Needs setup'
           : '${model.label} · ${source.displayName}',
       subtitleIsWarning: broken,
-      selected: twoPane && _detail?.id == agent.id,
+      selected: twoPane && selectedId == agent.id,
       metrics: stats == null || stats.completed == 0
           ? [const _Metric('No runs yet', '')]
           : [
@@ -414,7 +437,11 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
     );
   }
 
-  Widget _modelCard(ModelConfig model, {required bool twoPane}) {
+  Widget _modelCard(
+    ModelConfig model, {
+    required bool twoPane,
+    required String? selectedId,
+  }) {
     final source = _controller.sources
         .where((s) => s.id == model.sourceId)
         .firstOrNull;
@@ -425,7 +452,7 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
       title: model.label,
       subtitle: source?.displayName ?? 'Source missing',
       subtitleIsWarning: source == null,
-      selected: twoPane && _detail?.id == model.id,
+      selected: twoPane && selectedId == model.id,
       metrics: [
         _Metric('Used by', consumers == 1 ? '1 agent' : '$consumers agents'),
       ],
@@ -440,7 +467,11 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
     );
   }
 
-  Widget _sourceCard(ModelSourceConfig source, {required bool twoPane}) {
+  Widget _sourceCard(
+    ModelSourceConfig source, {
+    required bool twoPane,
+    required String? selectedId,
+  }) {
     final models = _controller.models
         .where((m) => m.sourceId == source.id)
         .length;
@@ -449,7 +480,7 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
       subtitle: source.endpoint == null
           ? source.providerType.wireName
           : '${source.providerType.wireName} · ${source.endpoint}',
-      selected: twoPane && _detail?.id == source.id,
+      selected: twoPane && selectedId == source.id,
       metrics: [
         _Metric('Models', '$models'),
       ],

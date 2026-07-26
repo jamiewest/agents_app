@@ -394,6 +394,92 @@ void main() {
       expect(find.byType(AgentEditorPage), findsNothing);
     });
 
+    testWidgets('wide: deleting the selected source empties the pane', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+      // A second source so the list survives the delete and the split stays.
+      await services.getRequiredService<ConfiguredAgentsManager>().saveSource(
+        const ModelSourceConfig(
+          id: 'source-2',
+          providerType: ProviderType.localLlama,
+          displayName: 'Spare',
+        ),
+      );
+
+      await pumpAt(tester, services, '/settings/agents/sources');
+      await tester.tap(find.text('Spare'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SourceEditor), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Spare'),
+            matching: find.byType(InkWell),
+          ),
+          matching: find.byTooltip('Delete'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // The pane let go of the row that left the list.
+      expect(find.byType(SourceEditor), findsNothing);
+      expect(find.text('Nothing selected'), findsOneWidget);
+      expect(find.text('Local'), findsOneWidget);
+    });
+
+    testWidgets('wide: deleting a dirty selection does not strand the guard', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seed(services);
+      await services.getRequiredService<ConfiguredAgentsManager>().saveSource(
+        const ModelSourceConfig(
+          id: 'source-2',
+          providerType: ProviderType.localLlama,
+          displayName: 'Spare',
+        ),
+      );
+
+      await pumpAt(tester, services, '/settings/agents/sources');
+      await tester.tap(find.text('Spare'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.widgetWithText(ConfiguredAgentsFormField, 'Display name'),
+          matching: find.byType(TextFormField),
+        ),
+        'Edited',
+      );
+      await tester.pumpAndSettle();
+
+      // Delete the very item being edited: the form goes with it, so the
+      // unsaved-edits flag must go too.
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Spare'),
+            matching: find.byType(InkWell),
+          ),
+          matching: find.byTooltip('Delete'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // Picking the next source must not ask about a form that is gone.
+      await tester.tap(find.text('Local'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard changes?'), findsNothing);
+      expect(find.byType(SourceEditor), findsOneWidget);
+    });
+
     testWidgets('ultrawide: the split lays out without overflow', (
       tester,
     ) async {
