@@ -25,6 +25,7 @@ class AgentDetailScreen extends StatefulWidget {
     required this.services,
     required this.agentId,
     this.now,
+    this.onEdit,
     super.key,
   });
 
@@ -36,6 +37,12 @@ class AgentDetailScreen extends StatefulWidget {
 
   /// Injectable clock for deterministic tests.
   final DateTime Function()? now;
+
+  /// Handles Edit with the agent's id instead of routing to the editor.
+  ///
+  /// Supplied by the two-pane catalog, which swaps this pane for the form
+  /// rather than pushing a page over a layout that already has room for it.
+  final ValueChanged<String>? onEdit;
 
   @override
   State<AgentDetailScreen> createState() => _AgentDetailScreenState();
@@ -122,7 +129,9 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
         actions: [
           if (agent != null)
             TextButton.icon(
-              onPressed: () => context.go('/settings/agents/edit/${agent.id}'),
+              onPressed: () => widget.onEdit == null
+                  ? context.go('/settings/agents/edit/${agent.id}')
+                  : widget.onEdit!(agent.id),
               icon: const Icon(LucideIcons.pencil300, size: 18),
               label: const Text('Edit'),
             ),

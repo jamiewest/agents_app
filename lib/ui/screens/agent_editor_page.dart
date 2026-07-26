@@ -9,17 +9,40 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../dialogs/discard_changes.dart';
 import '../strings/configured_agents_strings.dart';
 import '../styles/configured_agents_style.dart';
 import '../views/configured_agents/configured_agents.dart';
 import 'agent_center_nav.dart';
 
+/// The title an editor for [kind] carries, creating or editing.
+///
+/// Shared so the pushed page's app bar and the two-pane detail header name
+/// the same form the same way.
+String agentEditorTitle(
+  AgentCenterTab kind, {
+  required bool creating,
+  ConfiguredAgentsStrings? strings,
+}) {
+  final s = strings ?? ConfiguredAgentsStrings.defaults;
+  return switch ((kind, creating)) {
+    (AgentCenterTab.agents, true) => s.addAgent,
+    (AgentCenterTab.agents, false) => s.editAgent,
+    (AgentCenterTab.models, true) => s.addModel,
+    (AgentCenterTab.models, false) => s.editModel,
+    (AgentCenterTab.sources, true) => s.addSource,
+    (AgentCenterTab.sources, false) => s.editSource,
+    (AgentCenterTab.overview, _) => '',
+  };
+}
+
 /// A pushed page that creates or edits one agent, model, or source.
 ///
-/// Every editor is now a full page — the old width-conditional inline pane is
-/// gone — so unsaved edits are guarded by one uniform [PopScope]. On save the
-/// page pops back to the catalog; the catalog reloads off
-/// `configurationChanges`, so the new item is there when you land.
+/// The page owns only the chrome — an app bar and the unsaved-edits guard on
+/// back — while [AgentEditorBody] owns the form. Wide layouts skip this page
+/// and host the same body in the catalog's detail pane. On save the page pops
+/// back to the catalog; the catalog reloads off `configurationChanges`, so
+/// the new item is there when you land.
 class AgentEditorPage extends StatefulWidget {
   /// Creates an [AgentEditorPage].
   const AgentEditorPage({
@@ -43,8 +66,99 @@ class AgentEditorPage extends StatefulWidget {
 }
 
 class _AgentEditorPageState extends State<AgentEditorPage> {
-  late final ConfiguredAgentsController _controller;
   bool _dirty = false;
+
+  void _markDirty() {
+    // The editors only report dirty after their first frame, so this is a
+    // genuine user edit and never fires during build.
+    if (_dirty || !mounted) return;
+    setState(() => _dirty = true);
+  }
+
+  Future<void> _finish(String? error) async {
+    _dirty = false;
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+    }
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_dirty,
+    onPopInvokedWithResult: (didPop, _) async {
+      if (didPop) return;
+      // Capture the navigator before the await so no context crosses the gap.
+      final navigator = Navigator.of(context);
+      if (await confirmDiscardChanges(context) && mounted) navigator.pop();
+    },
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text(
+          agentEditorTitle(
+            widget.kind,
+            creating: widget.editingId == null,
+            strings: ConfiguredAgentsStyle.resolveFor(context, null).strings,
+          ),
+        ),
+      ),
+      body: AgentEditorBody(
+        services: widget.services,
+        kind: widget.kind,
+        editingId: widget.editingId,
+        onDirty: _markDirty,
+        onCancel: () => Navigator.of(context).pop(),
+        onSaved: _finish,
+      ),
+    ),
+  );
+}
+
+/// The form half of an editor, without page chrome.
+///
+/// Hosted by [AgentEditorPage] on narrow layouts and directly by the catalog's
+/// detail pane on wide ones. Reports the first edit through [onDirty] so the
+/// host can guard whatever would take the form away — a back gesture on a
+/// page, a change of selection in a pane.
+class AgentEditorBody extends StatefulWidget {
+  /// Creates an [AgentEditorBody].
+  const AgentEditorBody({
+    required this.services,
+    required this.kind,
+    required this.onDirty,
+    required this.onCancel,
+    required this.onSaved,
+    this.editingId,
+    super.key,
+  });
+
+  /// The application service provider.
+  final ServiceProvider services;
+
+  /// Which kind of item to edit. Must not be [AgentCenterTab.overview].
+  final AgentCenterTab kind;
+
+  /// The item being edited, or null to create.
+  final String? editingId;
+
+  /// Invoked on the first genuine edit.
+  final VoidCallback onDirty;
+
+  /// Invoked when the user abandons the form.
+  final VoidCallback onCancel;
+
+  /// Invoked after a save attempt with its error, or null on success.
+  final Future<void> Function(String? error) onSaved;
+
+  @override
+  State<AgentEditorBody> createState() => _AgentEditorBodyState();
+}
+
+class _AgentEditorBodyState extends State<AgentEditorBody> {
+  late final ConfiguredAgentsController _controller;
   bool _loaded = false;
 
   @override
@@ -71,86 +185,31 @@ class _AgentEditorPageState extends State<AgentEditorPage> {
   ConfiguredAgentsStrings get _strings =>
       _style.strings ?? ConfiguredAgentsStrings.defaults;
 
-  bool get _creating => widget.editingId == null;
-
-  void _markDirty() {
-    // The editors only report dirty after their first frame, so this is a
-    // genuine user edit and never fires during build.
-    if (_dirty || !mounted) return;
-    setState(() => _dirty = true);
-  }
-
-  Future<void> _finish(String? error) async {
-    _dirty = false;
-    if (!mounted) return;
-    if (error != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
-    }
-    Navigator.of(context).pop();
-  }
-
-  Future<bool> _confirmDiscard() async {
-    if (!_dirty) return true;
-    final discard = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Discard changes?'),
-        content: const Text('This form has edits that have not been saved.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Keep editing'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Discard'),
-          ),
-        ],
-      ),
-    );
-    return discard ?? false;
-  }
-
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !_dirty,
-    onPopInvokedWithResult: (didPop, _) async {
-      if (didPop) return;
-      // Capture the navigator before the await so no context crosses the gap.
-      final navigator = Navigator.of(context);
-      if (await _confirmDiscard() && mounted) navigator.pop();
-    },
-    child: Scaffold(
-      appBar: AppBar(title: Text(_title)),
-      body: _loaded
-          ? SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 640),
-                  // A card surface so the form reads in the same visual
-                  // language as the dashboard and the catalog cards.
-                  child: Material(
-                    color: Theme.of(context).colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: _editor(),
-                    ),
-                  ),
+  Widget build(BuildContext context) => _loaded
+      ? SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              // A card surface so the form reads in the same visual
+              // language as the dashboard and the catalog cards.
+              child: Material(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: _editor(),
                 ),
               ),
-            )
-          : const Center(child: CircularProgressIndicator()),
-    ),
-  );
+            ),
+          ),
+        )
+      : const Center(child: CircularProgressIndicator());
 
   Widget _editor() {
     final style = _style;
     final strings = _strings;
-    void cancel() => Navigator.of(context).pop();
 
     switch (widget.kind) {
       case AgentCenterTab.agents:
@@ -169,10 +228,10 @@ class _AgentEditorPageState extends State<AgentEditorPage> {
           },
           style: style,
           strings: strings,
-          onDirty: _markDirty,
-          onCancel: cancel,
+          onDirty: widget.onDirty,
+          onCancel: widget.onCancel,
           onSubmit: (edited) async =>
-              _finish(await _controller.saveAgent(edited)),
+              widget.onSaved(await _controller.saveAgent(edited)),
         );
       case AgentCenterTab.models:
         return ModelEditor(
@@ -181,10 +240,10 @@ class _AgentEditorPageState extends State<AgentEditorPage> {
           style: style,
           strings: strings,
           pickLlamaModelFile: pickDefaultLlamaModelFile,
-          onDirty: _markDirty,
-          onCancel: cancel,
+          onDirty: widget.onDirty,
+          onCancel: widget.onCancel,
           onSubmit: (edited) async =>
-              _finish(await _controller.saveModel(edited)),
+              widget.onSaved(await _controller.saveModel(edited)),
         );
       case AgentCenterTab.sources:
         return _SourceEditorHost(
@@ -192,9 +251,9 @@ class _AgentEditorPageState extends State<AgentEditorPage> {
           source: _find(_controller.sources, (s) => s.id),
           style: style,
           strings: strings,
-          onDirty: _markDirty,
-          onCancel: cancel,
-          onSaved: _finish,
+          onDirty: widget.onDirty,
+          onCancel: widget.onCancel,
+          onSaved: widget.onSaved,
         );
       case AgentCenterTab.overview:
         return const SizedBox.shrink();
@@ -209,16 +268,6 @@ class _AgentEditorPageState extends State<AgentEditorPage> {
     }
     return null;
   }
-
-  String get _title => switch ((widget.kind, _creating)) {
-    (AgentCenterTab.agents, true) => _strings.addAgent,
-    (AgentCenterTab.agents, false) => _strings.editAgent,
-    (AgentCenterTab.models, true) => _strings.addModel,
-    (AgentCenterTab.models, false) => _strings.editModel,
-    (AgentCenterTab.sources, true) => _strings.addSource,
-    (AgentCenterTab.sources, false) => _strings.editSource,
-    (AgentCenterTab.overview, _) => '',
-  };
 }
 
 /// Hosts [SourceEditor], which needs to know whether a key is already stored
