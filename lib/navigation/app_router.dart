@@ -25,6 +25,7 @@ import '../ui/widgets/settings_section_shell.dart';
 import '../ui/screens/network_pairing_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../data/task_scheduler_service.dart';
+import '../ui/screens/task_detail_screen.dart';
 import '../ui/screens/tasks_screen.dart';
 import 'app_bootstrap.dart';
 import 'app_shell.dart';
@@ -142,6 +143,16 @@ GoRouter createAppRouter({
               path: '/tasks',
               builder: (context, state) =>
                   TasksScreen(services: services, scheduler: scheduler),
+              routes: [
+                GoRoute(
+                  path: 't/:id',
+                  builder: (context, state) => TaskDetailScreen(
+                    services: services,
+                    scheduler: scheduler,
+                    taskId: state.pathParameters['id']!,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -6,6 +6,7 @@ import 'dart:io' as io;
 
 import 'package:agents_app/data/agent_run_store.dart';
 import 'package:agents_app/data/local_model_store_io.dart';
+import 'package:agents_app/data/pushover_settings.dart';
 import 'package:agents_app/data/task_scheduler_service.dart';
 import 'package:agents_app/data/theme_settings.dart';
 import 'package:agents_app/data/usage_store.dart';
@@ -46,6 +47,9 @@ const _agent = SavedAgentConfig(
 ServiceProvider _buildServices() {
   final services = ServiceCollection()
     ..addSingleton<ThemeSettings>((_) => ThemeSettings(InMemoryKeyValueStore()))
+    ..addSingleton<PushoverSettings>(
+      (sp) => PushoverSettings(sp.getRequiredService<SecretStore>()),
+    )
     ..addRecordStore(recordStore: (_) => InMemoryRecordStore())
     ..addSingleton<UsageStore>(
       (sp) => UsageStore(sp.getRequiredService<RecordStore>()),

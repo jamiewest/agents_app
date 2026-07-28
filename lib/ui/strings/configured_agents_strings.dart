@@ -59,6 +59,7 @@ class ConfiguredAgentsStrings {
     this.locationAccessLabel = 'Location',
     this.networkInfoAccessLabel = 'Network info',
     this.wakeLockAccessLabel = 'Wake lock',
+    this.pushoverAccessLabel = 'Pushover notifications',
     this.openAiCompatibleProvider = 'OpenAI-compatible',
     this.anthropicProvider = 'Anthropic',
     this.googleProvider = 'Google (Gemini)',
@@ -214,6 +215,9 @@ class ConfiguredAgentsStrings {
   /// Label for wake-lock tool access.
   final String wakeLockAccessLabel;
 
+  /// Label for Pushover notification tool access.
+  final String pushoverAccessLabel;
+
   /// Display label for the OpenAI-compatible provider.
   final String openAiCompatibleProvider;
 
@@ -323,6 +327,7 @@ class ConfiguredAgentsStrings {
     String? locationAccessLabel,
     String? networkInfoAccessLabel,
     String? wakeLockAccessLabel,
+    String? pushoverAccessLabel,
     String? openAiCompatibleProvider,
     String? anthropicProvider,
     String? googleProvider,
@@ -394,6 +399,7 @@ class ConfiguredAgentsStrings {
     networkInfoAccessLabel:
         networkInfoAccessLabel ?? this.networkInfoAccessLabel,
     wakeLockAccessLabel: wakeLockAccessLabel ?? this.wakeLockAccessLabel,
+    pushoverAccessLabel: pushoverAccessLabel ?? this.pushoverAccessLabel,
     openAiCompatibleProvider:
         openAiCompatibleProvider ?? this.openAiCompatibleProvider,
     anthropicProvider: anthropicProvider ?? this.anthropicProvider,

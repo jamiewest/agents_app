@@ -25,7 +25,7 @@ void main() {
 
   AgentTask task({
     String id = 't1',
-    int? intervalMinutes,
+    TaskSchedule? schedule,
     DateTime? nextRunAt,
     AgentTaskStatus status = AgentTaskStatus.scheduled,
   }) => AgentTask(
@@ -33,7 +33,7 @@ void main() {
     title: 'Check things',
     prompt: 'Check the things.',
     agentId: 'agent-1',
-    intervalMinutes: intervalMinutes,
+    schedule: schedule,
     status: status,
     nextRunAt: nextRunAt ?? DateTime.utc(2026, 7, 2, 9),
     createdAt: DateTime.utc(2026, 7, 1),
@@ -51,7 +51,7 @@ void main() {
         },
         now: () => now,
       );
-      await store.save(task(id: 'due', intervalMinutes: 30));
+      await store.save(task(id: 'due', schedule: const IntervalSchedule(30)));
       await store.save(
         task(id: 'future', nextRunAt: DateTime.utc(2026, 7, 2, 11)),
       );
@@ -64,6 +64,39 @@ void main() {
       expect(updated.status, AgentTaskStatus.scheduled);
       expect(updated.lastRunAt, now);
       expect(updated.nextRunAt, now.add(const Duration(minutes: 30)));
+    });
+
+    test('calendar schedules reschedule to the next occurrence', () async {
+      // 2 Jul 2026 is a Thursday; the next first-Tuesday is 7 Jul.
+      final now = DateTime.utc(2026, 7, 2, 10);
+      final scheduler = TaskSchedulerService(
+        services,
+        runner: (_) async => 'ok',
+        now: () => now,
+      );
+      await store.save(
+        task(id: 'monthly-day', schedule: const MonthlyDaySchedule(day: 15)),
+      );
+      await store.save(
+        task(
+          id: 'first-tuesday',
+          schedule: const MonthlyWeekdaySchedule(
+            week: 1,
+            weekday: DateTime.tuesday,
+          ),
+        ),
+      );
+
+      await scheduler.tick();
+
+      expect(
+        (await store.get('monthly-day'))!.nextRunAt,
+        DateTime.utc(2026, 7, 15, 9),
+      );
+      expect(
+        (await store.get('first-tuesday'))!.nextRunAt,
+        DateTime.utc(2026, 7, 7, 9),
+      );
     });
 
     test('one-shot tasks complete and never rerun', () async {
@@ -92,7 +125,7 @@ void main() {
         runner: (_) async => throw StateError('boom'),
         now: () => now,
       );
-      await store.save(task(id: 'flaky', intervalMinutes: 15));
+      await store.save(task(id: 'flaky', schedule: const IntervalSchedule(15)));
 
       await scheduler.tick();
 
@@ -134,7 +167,7 @@ void main() {
         await store.save(
           task(
             id: 'retry',
-            intervalMinutes: 15,
+            schedule: const IntervalSchedule(15),
             status: AgentTaskStatus.failed,
             nextRunAt: DateTime.utc(2026, 7, 2, 9, 45),
           ),
@@ -236,7 +269,7 @@ void main() {
       await store.save(
         task(
           id: 'recurring',
-          intervalMinutes: 30,
+          schedule: const IntervalSchedule(30),
           status: AgentTaskStatus.running,
           nextRunAt: DateTime.utc(2026, 7, 2, 9),
         ),

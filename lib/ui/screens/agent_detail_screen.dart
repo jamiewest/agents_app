@@ -338,6 +338,7 @@ class _AccessCard extends StatelessWidget {
       if (access.enableLocation) 'Location',
       if (access.enableNetworkInfo) 'Network info',
       if (access.enableWakeLock) 'Wake lock',
+      if (access.enablePushover) 'Pushover',
     ];
     return DashboardCard(
       title: 'Tool access',

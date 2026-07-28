@@ -201,10 +201,13 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
         : (model.modelId == model.id ? '' : model.modelId);
     setState(() {
       _model = model;
+      // New agents start with every tool disabled; the editor's access
+      // fallback for a null record is reserved for legacy saved agents.
       _agentDraft = SavedAgentConfig(
         id: newConfiguredAgentsId(),
         name: suggestedName,
         modelId: model.id,
+        access: newAgentAccess,
       );
       _step = _agentStep;
     });

@@ -12,21 +12,19 @@ packages:
   agents:
     dependency: "direct main"
     description:
-      path: "packages/agents"
-      ref: "65111a0e61e5f02f41a61a50a04d1baab4ac167c"
-      resolved-ref: "65111a0e61e5f02f41a61a50a04d1baab4ac167c"
-      url: "https://github.com/jamiewest/agents.git"
-    source: git
-    version: "1.5.0"
+      name: agents
+      sha256: "4038b12c886fb12fe9e14159f7aeb7efa32c8f4ebc61be55d5fa3d0d5eece4a3"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.6.0"
   agents_flutter:
     dependency: "direct main"
     description:
-      path: "packages/agents_flutter"
-      ref: "65111a0e61e5f02f41a61a50a04d1baab4ac167c"
-      resolved-ref: "65111a0e61e5f02f41a61a50a04d1baab4ac167c"
-      url: "https://github.com/jamiewest/agents.git"
-    source: git
-    version: "0.0.1"
+      name: agents_flutter
+      sha256: "5ceec245ededa79af048e47ffff70d1e729492f27c55715c5f7ec52f31be84b4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
   animations:
     dependency: "direct main"
     description:
@@ -195,6 +193,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  convert:
+    dependency: transitive
+    description:
+      name: convert
+      sha256: b30acd5944035672bc15c6b7a8b47d773e41e2f17de064350988c5d02adb1c68
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.1.2"
   cross_file:
     dependency: "direct main"
     description:
@@ -1114,6 +1120,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
+  pointycastle:
+    dependency: transitive
+    description:
+      name: pointycastle
+      sha256: "92aa3841d083cc4b0f4709b5c74fd6409a3e6ba833ffc7dc6a8fee096366acf5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.0.0"
   pool:
     dependency: "direct main"
     description:
@@ -1679,6 +1693,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.6.1"
+  xterm:
+    dependency: "direct main"
+    description:
+      name: xterm
+      sha256: "168dfedca77cba33fdb6f52e2cd001e9fde216e398e89335c19b524bb22da3a2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.0.0"
   yaml:
     dependency: transitive
     description:
@@ -1687,6 +1709,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.3"
+  zmodem:
+    dependency: transitive
+    description:
+      name: zmodem
+      sha256: "3b7e5b29f3a7d8aee472029b05165a68438eff2f3f7766edf13daba1e297adbf"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.6"
 sdks:
   dart: ">=3.12.0 <4.0.0"
   flutter: ">=3.44.0"

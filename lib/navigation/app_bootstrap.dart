@@ -11,6 +11,7 @@ import '../data/downloaded_model_artifacts.dart';
 import '../data/embedding_settings.dart';
 import '../data/legacy_chat_migration.dart';
 import '../data/local_model_store.dart';
+import '../data/pushover_settings.dart';
 import '../data/theme_settings.dart';
 import '../data/thinking_settings.dart';
 import '../ui/views/configured_agents/configured_agents.dart';
@@ -41,6 +42,7 @@ class AppBootstrap {
     await _services.getService<EmbeddingSettings>()?.reload();
     await _services.getService<ThinkingSettings>()?.load();
     await _services.getService<ThemeSettings>()?.load();
+    await _services.getService<PushoverSettings>()?.load();
     // Runs left `running` by a crash or force-quit are recovered before any
     // new run can start; a sweep after that point would mark a legitimately
     // in-flight run as interrupted.

@@ -41,7 +41,9 @@ import 'data/local_llama_model_host.dart';
 import 'data/local_model_warmup.dart';
 import 'data/prompt_log.dart';
 import 'data/prompt_logging.dart';
+import 'data/pushover_settings.dart';
 import 'data/task_scheduler_service.dart';
+import 'data/terminal_activity.dart';
 import 'data/theme_settings.dart';
 import 'data/thinking_settings.dart';
 import 'data/tool_activity.dart';
@@ -58,6 +60,7 @@ import 'ui/screens/chats_home.dart' show detailPaneLeading;
 import 'ui/views/configured_agents/configured_agents.dart';
 import 'ui/views/llm_chat_view/llm_chat_view.dart';
 import 'ui/widgets/chat_side_panel.dart';
+import 'ui/widgets/chat_terminal_panel.dart';
 import 'ui/widgets/conversation_actions.dart';
 import 'ui/widgets/side_panel_host.dart';
 import 'ui/widgets/prompt_inspector_panel.dart';
@@ -112,6 +115,11 @@ final _builder = Host.createApplicationBuilder()
     // Live "which tool is the model running" signal, driven from inside the
     // chat client pipeline and mirrored under the streaming chat bubble.
     flutter.services.tryAddSingleton<ToolActivity>((sp) => ToolActivity());
+    // Live in-chat terminal mirroring the shell commands each conversation's
+    // agent executes, fed from inside the tool pipeline.
+    flutter.services.tryAddSingleton<TerminalActivity>(
+      (sp) => TerminalActivity(),
+    );
     // Holds the one resident local llama model: same-model agent switches
     // reuse it, a different model evicts and reloads it, and it is never more
     // than one model at a time.
@@ -147,6 +155,12 @@ final _builder = Host.createApplicationBuilder()
         ),
       );
     }
+    // Pushover credentials live in the secret store; while they are
+    // configured, agents that opt in through their access settings get
+    // the notification tools.
+    flutter.services.tryAddSingleton<PushoverSettings>(
+      (sp) => PushoverSettings(sp.getRequiredService<SecretStore>()),
+    );
     flutter.services.tryAddSingleton<EmbeddingSettings>(
       (sp) => EmbeddingSettings(
         keyValueStore: sp.getRequiredService<KeyValueStore>(),
@@ -182,6 +196,28 @@ final _builder = Host.createApplicationBuilder()
             ...createInventoryTools(inventory),
           ];
           options.chatOptions = chatOptions;
+        }
+
+        // Pushover: attach the client built from the credentials stored in
+        // Settings. The factory strips it again for agents whose saved
+        // access settings do not opt in, so which tools an agent gets is
+        // decided per agent in the editor, not here.
+        options.pushoverClient = sp
+            .getRequiredService<PushoverSettings>()
+            .client;
+
+        // Mirror the agent's shell commands into the conversation's in-chat
+        // terminal panel. Decorating whatever executor the factory chose
+        // (local shell today, ssh or container backends tomorrow) keeps the
+        // terminal a pure observer of the real tool.
+        final terminals = sp.getService<TerminalActivity>();
+        final shellExecutor = options.shellExecutor;
+        if (terminals != null && shellExecutor != null) {
+          options.shellExecutor = TerminalMirroringShellExecutor(
+            shellExecutor,
+            registry: terminals,
+            conversationId: scope.conversationId,
+          );
         }
 
         // Private conversations keep the default in-memory capabilities;
@@ -1254,6 +1290,15 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _agentReloadScheduled = false;
   bool _agentReloadInProgress = false;
   int _toolActivityRefs = 0;
+  ChatTerminalSession? _terminalSession;
+
+  /// Acquires this conversation's terminal session once, so the chat body
+  /// can dock a live terminal over the agent's shell commands. Released in
+  /// [dispose]; agent reloads reuse the same session, keeping the buffer.
+  ChatTerminalSession? _listenTerminalSession() =>
+      _terminalSession ??= widget.services
+          .getService<TerminalActivity>()
+          ?.listen(_conversationId);
 
   /// Acquires this conversation's tool-activity channel, when the registry
   /// is registered. Every acquisition is matched by [_releaseToolActivity];
@@ -2129,6 +2174,11 @@ class _ChatScreenState extends State<ChatScreen> {
     while (_toolActivityRefs > 0) {
       _releaseToolActivity();
     }
+    if (_terminalSession != null) {
+      _terminalSession = null;
+      // Non-null session implies _conversationId was initialized.
+      widget.services.getService<TerminalActivity>()?.release(_conversationId);
+    }
     super.dispose();
   }
 
@@ -2305,6 +2355,7 @@ class _ChatScreenState extends State<ChatScreen> {
           if (provider == null) {
             return const Center(child: CircularProgressIndicator());
           }
+          final terminalSession = _listenTerminalSession();
           return Column(
             children: [
               _LocalLlamaProgressBanner(modelId: widget.agent.modelId),
@@ -2314,6 +2365,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   onMessageSubmitted: (prompt, {required attachments}) =>
                       _persistSubmittedPrompt(provider, prompt, attachments),
                   welcomeMessage: 'Ask ${widget.agent.name} anything.',
+                  dock: terminalSession == null
+                      ? null
+                      : ChatTerminalPanel(session: terminalSession),
                   enableAttachments: true,
                   enableImageAttachments: _supportsImageAttachments,
                   enableVoiceNotes: false,

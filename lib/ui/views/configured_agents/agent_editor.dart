@@ -11,6 +11,32 @@ import '../../styles/configured_agents_style.dart';
 import 'configured_agents_form_field.dart';
 import 'editor_actions.dart';
 
+/// Access settings for a newly created agent: every tool and context
+/// capability starts disabled so the user opts in to each one.
+///
+/// Existing agents saved without an access record keep the package
+/// defaults instead — the runtime treats a missing record as
+/// `AgentAccessConfig()`, so showing anything else here would silently
+/// change their behavior on the next save.
+const AgentAccessConfig newAgentAccess = AgentAccessConfig(
+  enableFileMemory: false,
+  enableFileAccess: false,
+  enableFileWriteTools: false,
+  enableWebSearch: false,
+  enableShell: false,
+  enableTodoList: false,
+  enableAgentMode: false,
+  enableSkills: false,
+  enableTemporal: false,
+  enableConnectivity: false,
+  enableAppInfo: false,
+  enableDeviceInfo: false,
+  enableLocation: false,
+  enableNetworkInfo: false,
+  enableWakeLock: false,
+  enablePushover: false,
+);
+
 /// Editor form for creating or updating a [SavedAgentConfig].
 class AgentEditor extends StatefulWidget {
   /// Creates an [AgentEditor].
@@ -142,7 +168,9 @@ class _AgentEditorState extends State<AgentEditor> {
       (model) => model.id == initial?.modelId,
     );
     _modelId = hasInitialModel ? initial!.modelId : widget.models.first.id;
-    _access = initial?.access ?? const AgentAccessConfig();
+    _access = initial == null
+        ? newAgentAccess
+        : initial.access ?? const AgentAccessConfig();
   }
 
   @override
@@ -332,6 +360,12 @@ class _AgentEditorState extends State<AgentEditor> {
                   value: _access.enableWakeLock,
                   onChanged: (value) =>
                       _updateAccess(_access.copyWith(enableWakeLock: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.pushoverAccessLabel,
+                  value: _access.enablePushover,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enablePushover: value)),
                 ),
               ],
             ),

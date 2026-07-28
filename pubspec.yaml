@@ -9,16 +9,8 @@ environment:
 
 dependencies:
   a2a: ^4.2.0
-  agents:
-    git:
-      url: https://github.com/jamiewest/agents.git
-      ref: 65111a0e61e5f02f41a61a50a04d1baab4ac167c
-      path: packages/agents
-  agents_flutter:
-    git:
-      url: https://github.com/jamiewest/agents.git
-      ref: 65111a0e61e5f02f41a61a50a04d1baab4ac167c
-      path: packages/agents_flutter
+  agents: ^1.6.0
+  agents_flutter: ^0.2.1
   animations: ^2.2.0
   anthropic_sdk_dart: ^5.0.0
   camera_macos: ^0.1.0
@@ -55,6 +47,7 @@ dependencies:
   url_launcher: ^6.3.2
   waveform_recorder: ^1.8.0
   web: ^1.1.1
+  xterm: ^4.0.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0

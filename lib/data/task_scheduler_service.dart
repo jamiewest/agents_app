@@ -92,7 +92,7 @@ class TaskSchedulerService {
       await _tasks.save(
         task.copyWith(
           status: AgentTaskStatus.failed,
-          nextRunAt: task.intervalMinutes == null ? null : _now(),
+          nextRunAt: task.schedule == null ? null : _now(),
         ),
       );
     }
@@ -145,19 +145,17 @@ class TaskSchedulerService {
     DateTime startedAt, {
     required bool failed,
   }) async {
-    final interval = task.intervalMinutes;
+    final schedule = task.schedule;
     final status = failed
         ? AgentTaskStatus.failed
-        : interval == null
+        : schedule == null
         ? AgentTaskStatus.completed
         : AgentTaskStatus.scheduled;
     await _tasks.save(
       task.copyWith(
         status: status,
         lastRunAt: startedAt,
-        nextRunAt: interval == null
-            ? task.nextRunAt
-            : startedAt.add(Duration(minutes: interval)),
+        nextRunAt: schedule?.nextRunAfter(startedAt) ?? task.nextRunAt,
       ),
     );
   }

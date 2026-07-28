@@ -7,8 +7,9 @@
 ///
 /// The surfaces, in wipe order:
 ///
-/// 1. Secrets (API keys) — keyed by source id, which only exists in the
-///    key/value store, so they are deleted first.
+/// 1. Secrets (API keys and Pushover credentials) — API keys are keyed by
+///    source id, which only exists in the key/value store, so they are
+///    deleted first.
 /// 2. The key/value store — sources, models, saved agents, theme, thinking,
 ///    and embedding settings.
 /// 3. Stored local model files (Application Support on native, OPFS on web),
@@ -31,6 +32,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import '../features/inventory/inventory_store.dart';
 import 'downloaded_model_artifacts.dart';
 import 'local_model_store.dart';
+import 'pushover_settings.dart';
 
 export 'app_restart_stub.dart'
     if (dart.library.js_interop) 'app_restart_web.dart'
@@ -55,6 +57,24 @@ Future<void> resetAppData(ServiceProvider services) async {
     } catch (error, stackTrace) {
       developer.log(
         'Failed to delete the secret for source "$sourceId" during reset.',
+        name: 'agents_app.app_reset',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  // Pushover credentials share the secret store with the API keys above and
+  // get the same best-effort treatment.
+  for (final key in const [
+    PushoverSettings.tokenSecretKey,
+    PushoverSettings.userSecretKey,
+  ]) {
+    try {
+      await secrets.delete(key);
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to delete the Pushover secret "$key" during reset.',
         name: 'agents_app.app_reset',
         error: error,
         stackTrace: stackTrace,

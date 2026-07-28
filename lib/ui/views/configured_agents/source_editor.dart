@@ -106,6 +106,12 @@ class _SourceEditorState extends State<SourceEditor> {
   late final TextEditingController _apiKey;
   late ProviderType _provider;
 
+  /// The display name as this editor last wrote it, used to tell a name the
+  /// user owns from one the form supplied. Empty until the form fills the
+  /// field itself: a stored name is the user's. See
+  /// [_syncDisplayNameToProvider].
+  String _autoDisplayName = '';
+
   @override
   void initState() {
     super.initState();
@@ -134,6 +140,23 @@ class _SourceEditorState extends State<SourceEditor> {
         ProviderType.localLlama => 'Local llama',
         ProviderType.network => 'Network (paired device)',
       };
+
+  /// Names the source after the selected provider, unless the name is the
+  /// user's.
+  ///
+  /// Only a blank field or a label an earlier provider pick left behind is
+  /// the form's to rewrite. A name the user typed — or one the source was
+  /// saved with — survives the dropdown untouched.
+  void _syncDisplayNameToProvider() {
+    final current = _displayName.text.trim();
+    if (current.isNotEmpty && current != _autoDisplayName) return;
+    final label = _providerLabel(_provider, widget.strings);
+    _displayName.value = TextEditingValue(
+      text: label,
+      selection: TextSelection.collapsed(offset: label.length),
+    );
+    _autoDisplayName = label;
+  }
 
   @override
   void dispose() {
@@ -187,8 +210,10 @@ class _SourceEditorState extends State<SourceEditor> {
                         child: Text(_providerLabel(type, strings)),
                       ),
                   ],
-                  onChanged: (value) =>
-                      setState(() => _provider = value ?? _provider),
+                  onChanged: (value) => setState(() {
+                    _provider = value ?? _provider;
+                    _syncDisplayNameToProvider();
+                  }),
                 ),
               ],
             ),

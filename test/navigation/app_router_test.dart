@@ -2,6 +2,7 @@ import 'dart:io' as io;
 
 import 'package:agents_app/data/agent_run_store.dart';
 import 'package:agents_app/data/local_model_store_io.dart';
+import 'package:agents_app/data/pushover_settings.dart';
 import 'package:agents_app/data/task_scheduler_service.dart';
 import 'package:agents_app/data/theme_settings.dart';
 import 'package:agents_app/data/usage_store.dart';
@@ -38,6 +39,9 @@ ServiceProvider _buildServices() {
   final kv = InMemoryKeyValueStore();
   final services = ServiceCollection()
     ..addSingleton<ThemeSettings>((_) => ThemeSettings(kv))
+    ..addSingleton<PushoverSettings>(
+      (sp) => PushoverSettings(sp.getRequiredService<SecretStore>()),
+    )
     ..addRecordStore(recordStore: (_) => InMemoryRecordStore())
     ..addSingleton<UsageStore>(
       (sp) => UsageStore(sp.getRequiredService<RecordStore>()),
@@ -144,7 +148,7 @@ void main() {
       await tester.pumpWidget(_app(services, initialLocation: '/tasks'));
       await tester.pumpAndSettle();
 
-      expect(find.text('No tasks yet.', findRichText: true), findsNothing);
+      expect(find.text('No scheduled tasks yet.'), findsOneWidget);
       expect(find.byType(OnboardingScreen), findsNothing);
     });
 
@@ -210,7 +214,7 @@ void main() {
       await tester.tap(find.text('Tasks'));
       await tester.pumpAndSettle();
       expect(find.byType(Drawer), findsNothing);
-      expect(find.textContaining('No tasks yet'), findsOneWidget);
+      expect(find.textContaining('No scheduled tasks yet'), findsOneWidget);
     });
 
     testWidgets('switching branches preserves the shell', (tester) async {
@@ -222,8 +226,7 @@ void main() {
       await tester.tap(find.text('Tasks'));
       await tester.pumpAndSettle();
 
-      expect(find.text('No tasks yet.', findRichText: true), findsNothing);
-      expect(find.textContaining('No tasks yet'), findsOneWidget);
+      expect(find.text('No scheduled tasks yet.'), findsOneWidget);
 
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();

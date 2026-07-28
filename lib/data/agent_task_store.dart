@@ -63,7 +63,7 @@ class AgentTaskStore {
     final due = [
       for (final task in await _byStatus(AgentTaskStatus.scheduled)) task,
       for (final task in await _byStatus(AgentTaskStatus.failed))
-        if (task.intervalMinutes != null) task,
+        if (task.schedule != null) task,
     ];
     return [
       for (final task in due)

@@ -90,6 +90,7 @@ class LlmChatView extends StatefulWidget {
     SpeechToTextConverter? speechToText,
     List<String> suggestions = const [],
     String? welcomeMessage,
+    this.dock,
     this.onCancelCallback,
     this.onErrorCallback,
     this.cancelMessage = 'CANCEL',
@@ -140,6 +141,10 @@ class LlmChatView extends StatefulWidget {
   /// attachments remain available. Has no effect when [enableAttachments]
   /// is false.
   final bool enableImageAttachments;
+
+  /// Optional widget docked between the message history and the input area,
+  /// such as the live terminal panel that mirrors agent shell commands.
+  final Widget? dock;
 
   /// The view model containing the chat state and configuration.
   ///
@@ -266,6 +271,7 @@ class _LlmChatViewState extends State<LlmChatView>
                     ],
                   ),
                 ),
+                ?widget.dock,
                 if (pendingApproval != null)
                   ToolApprovalView(
                     request: pendingApproval,
