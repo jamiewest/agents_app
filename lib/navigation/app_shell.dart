@@ -11,6 +11,14 @@ import '../ui/app_theme.dart';
 import '../ui/screens/chats_home.dart';
 import '../ui/widgets/side_panel_host.dart';
 
+/// How far below its own top a [NavigationRail] puts the centre of its first
+/// destination's icon.
+///
+/// Read off the Material implementation, which is fixed rather than themed:
+/// an 8-tall top spacer, no extra padding above the first destination under
+/// Material 3, then the icon centred in a 32-tall selection indicator.
+const double _kRailIconCenterY = 8 + 32 / 2;
+
 /// Exposes the compact-width shell drawer to descendant pages, so their
 /// headers can show a hamburger button that opens it.
 class AppShellScope extends InheritedWidget {
@@ -122,23 +130,34 @@ class _AppShellState extends State<AppShell> {
       SizedBox(
         width: 78,
         child: SafeArea(
-          child: NavigationRail(
-            selectedIndex: widget.shell.currentIndex,
-            onDestinationSelected: _goBranch,
-            labelType: NavigationRailLabelType.all,
-            destinations: [
-              for (final destination in _destinations)
-                NavigationRailDestination(
-                  icon: Icon(destination.icon),
-                  // Material Symbols renders the selected state through the
-                  // fill variation axis rather than a separate filled icon.
-                  selectedIcon: Icon(destination.icon, fill: 1),
-                  label: Text(
-                    destination.label,
-                    style: Theme.of(context).textTheme.labelSmall,
+          child: Padding(
+            // Drop the rail onto the shared header band, so its first
+            // destination's icon sits on the same line as the sidebar brand
+            // and the detail pane's app-bar title instead of riding above
+            // them. NavigationRail spends _kRailIconCenterY before that
+            // icon's centre; the band wants it at AppHeaderBand.centerY.
+            padding: const EdgeInsets.only(
+              top: AppHeaderBand.centerY - _kRailIconCenterY,
+            ),
+            child: NavigationRail(
+              selectedIndex: widget.shell.currentIndex,
+              onDestinationSelected: _goBranch,
+              labelType: NavigationRailLabelType.all,
+              destinations: [
+                for (final destination in _destinations)
+                  NavigationRailDestination(
+                    icon: Icon(destination.icon),
+                    // Material Symbols renders the selected state through
+                    // the fill variation axis rather than a separate filled
+                    // icon.
+                    selectedIcon: Icon(destination.icon, fill: 1),
+                    label: Text(
+                      destination.label,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -167,14 +186,12 @@ class _AppDrawer extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.lg,
-              AppSpacing.lg,
-              AppSpacing.sm,
+          const SizedBox(
+            height: AppHeaderBand.height,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: AgentTeamsBrand(),
             ),
-            child: AgentTeamsBrand(),
           ),
           const Spacer(),
           const Divider(height: 1),

@@ -141,6 +141,23 @@ abstract final class AppSpacing {
   static const double xxxl = 32;
 }
 
+/// The band across the top of the window that every pane's header sits in.
+///
+/// The app bars — the open chat's, and the sliver header on the top-level
+/// pages — are [kToolbarHeight] tall and centre their title and actions in
+/// that height. Panes that head themselves without an app bar (the
+/// conversations sidebar's brand row, the navigation rail's destinations)
+/// centre on the same line, so the window reads as one header row rather
+/// than three that each start wherever their content happened to land.
+abstract final class AppHeaderBand {
+  /// The height of the band, measured from the top of a pane.
+  static const double height = kToolbarHeight;
+
+  /// The distance from the top of a pane down to the band's centre line —
+  /// where header icons, titles, and actions align.
+  static const double centerY = height / 2;
+}
+
 /// The shared geometry of the app's resizable side panels — the chats
 /// conversation list and the Agent Center's menu.
 ///

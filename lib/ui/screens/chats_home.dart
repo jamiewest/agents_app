@@ -76,6 +76,10 @@ class ChatsScope extends InheritedWidget {
       filters != oldWidget.filters;
 }
 
+/// The width [AppBar] reserves for a single leading button, and so the width
+/// anything standing in for one should occupy to line up with it.
+const double _kAppBarLeadingWidth = 56;
+
 /// The detail-pane button that opens/closes the conversations sidebar:
 /// the persistent two-pane sidebar on wide layouts, or the conversations
 /// drawer on single-pane widths that host one.
@@ -263,10 +267,19 @@ class ChatsRootPane extends StatelessWidget {
     if (ChatsScope.twoPaneOf(context)) {
       return Stack(
         children: [
+          // No app bar here, so stand in for one: the same leading slot an
+          // AppBar would give the toggle, so it lands on the header band
+          // beside the sidebar brand rather than floating above it.
           const Positioned(
-            top: AppSpacing.sm,
-            left: AppSpacing.sm,
-            child: SafeArea(child: SidebarToggleButton()),
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              child: SizedBox(
+                width: _kAppBarLeadingWidth,
+                height: AppHeaderBand.height,
+                child: Center(child: SidebarToggleButton()),
+              ),
+            ),
           ),
           Center(
             child: Column(
@@ -1372,24 +1385,28 @@ class _SidebarHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.sm,
-        AppSpacing.sm,
-      ),
-      child: Row(
-        children: [
-          const Expanded(child: AgentTeamsBrand()),
-          ?expandCollapseButton,
-          ChatsFilterButton(query: query, onOpenFilters: onOpenFilters),
-          _NewMenuButton(
-            onNewChat: onNewChat,
-            onNewChannel: onNewChannel,
-            iconSize: 20,
-          ),
-        ],
+    // A fixed header band rather than padding around the row: the row's
+    // height would otherwise be set by whichever action buttons happen to be
+    // present, drifting the brand off the line the app bars sit on.
+    return SizedBox(
+      height: AppHeaderBand.height,
+      child: Padding(
+        padding: const EdgeInsets.only(
+          left: AppSpacing.lg,
+          right: AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            const Expanded(child: AgentTeamsBrand()),
+            ?expandCollapseButton,
+            ChatsFilterButton(query: query, onOpenFilters: onOpenFilters),
+            _NewMenuButton(
+              onNewChat: onNewChat,
+              onNewChannel: onNewChannel,
+              iconSize: 20,
+            ),
+          ],
+        ),
       ),
     );
   }
