@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:io';
+
+import 'package:agents_app/data/local_model_store_io.dart';
 import 'package:agents_app/ui/strings/configured_agents_strings.dart';
 import 'package:agents_app/ui/styles/configured_agents_style.dart';
 import 'package:agents_app/ui/views/configured_agents/model_editor.dart';
@@ -26,6 +29,7 @@ Widget _editor({
   ModelConfig? initial,
   required List<ModelSourceConfig> sources,
   required void Function(ModelConfig model) onSubmit,
+  LlamaModelFilePicker? pickLlamaModelFile,
 }) => MaterialApp(
   home: Scaffold(
     body: SingleChildScrollView(
@@ -36,6 +40,9 @@ Widget _editor({
         strings: const ConfiguredAgentsStrings(),
         onSubmit: onSubmit,
         onCancel: () {},
+        pickLlamaModelFile: pickLlamaModelFile ?? pickDefaultLlamaModelFile,
+        // Hermetic: tests never read real GGUF bytes for the format hint.
+        sniffGguf: (source) async => null,
       ),
     ),
   ),
@@ -198,6 +205,195 @@ void main() {
       expect(saved, isNotNull);
       expect(saved!.settings['llama.format'], 'gemma');
       expect(saved!.settings[chatFormatSetting], 'gemma');
+    });
+  });
+
+  group('ModelEditor local llama thinking capability', () {
+    const initial = ModelConfig(
+      id: 'model-1',
+      sourceId: 'src-llama',
+      modelId: 'model-1',
+      settings: {
+        'llama.modelSource': 'url',
+        'llama.modelUrl': 'https://example.com/gemma-4-E2B.gguf',
+        'llama.contextSize': '8192',
+        'llama.gpuLayers': '999',
+        chatFormatSetting: 'gemma',
+        ModelCapabilities.visionKey: 'true',
+        ModelCapabilities.contextLengthKey: '8192',
+        ModelCapabilities.minMemoryMbKey: '8192',
+      },
+    );
+
+    testWidgets('enabling the switch writes the capability and preserves '
+        'preset metadata', (tester) async {
+      ModelConfig? saved;
+      await tester.pumpWidget(
+        _editor(
+          initial: initial,
+          sources: const [_llamaSource],
+          onSubmit: (m) => saved = m,
+        ),
+      );
+
+      final thinkingSwitch = tester.widget<Switch>(find.byType(Switch));
+      expect(thinkingSwitch.value, isFalse);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+
+      expect(saved, isNotNull);
+      expect(saved!.settings[ModelCapabilities.thinkingKey], 'true');
+      expect(saved!.capabilities.supportsThinking, isTrue);
+      // Settings the form has no field for survive the edit.
+      expect(saved!.settings[ModelCapabilities.visionKey], 'true');
+      expect(saved!.settings[ModelCapabilities.minMemoryMbKey], '8192');
+    });
+
+    testWidgets('a stored capability seeds the switch; turning it off '
+        'removes the key', (tester) async {
+      final stored = ModelConfig(
+        id: initial.id,
+        sourceId: initial.sourceId,
+        modelId: initial.modelId,
+        settings: {...initial.settings, ModelCapabilities.thinkingKey: 'true'},
+      );
+      ModelConfig? saved;
+      await tester.pumpWidget(
+        _editor(
+          initial: stored,
+          sources: const [_llamaSource],
+          onSubmit: (m) => saved = m,
+        ),
+      );
+
+      final thinkingSwitch = tester.widget<Switch>(find.byType(Switch));
+      expect(thinkingSwitch.value, isTrue);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+
+      expect(saved, isNotNull);
+      expect(
+        saved!.settings.containsKey(ModelCapabilities.thinkingKey),
+        isFalse,
+      );
+    });
+
+    testWidgets('editing the context size updates the stored context '
+        'capability', (tester) async {
+      ModelConfig? saved;
+      await tester.pumpWidget(
+        _editor(
+          initial: initial,
+          sources: const [_llamaSource],
+          onSubmit: (m) => saved = m,
+        ),
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, '8192'),
+        '16384',
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+
+      expect(saved, isNotNull);
+      expect(saved!.settings['llama.contextSize'], '16384');
+      expect(saved!.settings[ModelCapabilities.contextLengthKey], '16384');
+    });
+  });
+
+  group('ModelEditor local llama file registration', () {
+    const initial = ModelConfig(
+      id: 'model-file',
+      sourceId: 'src-llama',
+      modelId: 'model-file',
+      settings: {
+        'llama.modelSource': 'file',
+        'llama.modelPath': '/original/downloads/gemma.gguf',
+        'llama.modelFileName': 'gemma.gguf',
+        'llama.contextSize': '8192',
+        'llama.gpuLayers': '999',
+      },
+    );
+
+    tearDown(() => clearSelectedLlamaModelFile('model-file'));
+
+    testWidgets('saving without repicking preserves the restored '
+        'registration', (tester) async {
+      // Simulates the bootstrap restore: the sandbox-safe app-container
+      // copy is the registered selection, while the stored path points at
+      // the originally picked (possibly deleted) file.
+      registerSelectedLlamaModelFile('model-file', '/app-container/model');
+
+      ModelConfig? saved;
+      await tester.pumpWidget(
+        _editor(
+          initial: initial,
+          sources: const [_llamaSource],
+          onSubmit: (m) => saved = m,
+        ),
+      );
+
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+
+      expect(saved, isNotNull);
+      expect(
+        selectedLlamaModelFilePathFor('model-file'),
+        '/app-container/model',
+      );
+      expect(
+        saved!.settings['llama.modelPath'],
+        '/original/downloads/gemma.gguf',
+      );
+    });
+
+    testWidgets('a file picked this session replaces the registration', (
+      tester,
+    ) async {
+      registerSelectedLlamaModelFile('model-file', '/app-container/model');
+      final tmp = Directory.systemTemp.createTempSync('model_editor_test');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      debugLocalModelStoreRoot = Directory('${tmp.path}/store');
+      addTearDown(() => debugLocalModelStoreRoot = null);
+      final picked = File('${tmp.path}/picked.gguf')..writeAsStringSync('g');
+
+      ModelConfig? saved;
+      await tester.pumpWidget(
+        _editor(
+          initial: initial,
+          sources: const [_llamaSource],
+          onSubmit: (m) => saved = m,
+          pickLlamaModelFile: () async =>
+              LlamaModelFileSelection(path: picked.path, name: 'picked.gguf'),
+        ),
+      );
+
+      await tester.tap(find.text('Choose file').first);
+      await tester.pump();
+
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+
+      // The save copies the picked file into the store behind a progress
+      // dialog; runAsync lets that real file I/O complete, then a pump
+      // processes the dialog dismissing and the submit finishing.
+      for (var i = 0; saved == null && i < 10; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+      }
+
+      expect(saved, isNotNull);
+      expect(selectedLlamaModelFilePathFor('model-file'), picked.path);
+      expect(saved!.settings['llama.modelPath'], picked.path);
     });
   });
 }

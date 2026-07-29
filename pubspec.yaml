@@ -10,7 +10,7 @@ environment:
 dependencies:
   a2a: ^4.2.0
   agents: ^1.6.0
-  agents_flutter: ^0.2.1
+  agents_flutter: ^0.3.0
   animations: ^2.2.0
   anthropic_sdk_dart: ^5.0.0
   camera_macos: ^0.1.0
@@ -47,6 +47,7 @@ dependencies:
   url_launcher: ^6.3.2
   waveform_recorder: ^1.8.0
   web: ^1.1.1
+  webview_flutter: ^4.14.1
   xterm: ^4.0.0
 
 dev_dependencies:

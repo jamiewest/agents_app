@@ -165,13 +165,16 @@ const List<LocalModelPreset> localModelPresets = [
   // choice.
   LocalModelPreset(
     name: 'Gemma 4 E2B',
-    subtitle: 'Q4_K_XL QAT · ~2.6 GB file · 8 GB RAM · runs in the browser',
+    subtitle:
+        'Q4_K_XL QAT · ~2.6 GB file · 8 GB RAM · thinking · '
+        'runs in the browser',
     url:
         'https://huggingface.co/unsloth/gemma-4-E2B-it-qat-GGUF/'
         'resolve/main/gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf',
     chatFormat: 'gemma',
     contextSize: 8192,
     minMemoryMb: 8192,
+    supportsThinking: true,
   ),
   // Gemma 4 E4B for Macs. Every artifact comes from the E4B repo: the
   // E2B repo's mmproj is NOT compatible (1536- vs 2560-wide projection;
@@ -186,7 +189,7 @@ const List<LocalModelPreset> localModelPresets = [
     name: 'Gemma 4 E4B (Mac)',
     subtitle:
         'Q4_K_XL QAT · ~4.2 GB + 1 GB projector + MTP drafter · 16 GB RAM · '
-        'vision + audio + speculative decoding, all-Metal',
+        'vision + audio + thinking + speculative decoding, all-Metal',
     url:
         'https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/'
         'resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf',
@@ -199,6 +202,7 @@ const List<LocalModelPreset> localModelPresets = [
     chatFormat: 'gemma',
     contextSize: 16384,
     minMemoryMb: 16384,
+    supportsThinking: true,
     supportsVision: true,
     supportsAudio: true,
     webCompatible: false,

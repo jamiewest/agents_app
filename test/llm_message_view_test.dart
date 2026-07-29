@@ -122,6 +122,39 @@ void main() {
     expect(find.byType(ImageAttachmentView), findsNothing);
   });
 
+  testWidgets('thoughts stream expanded while generating, collapse when the '
+      'answer starts, and reopen on tap', (tester) async {
+    final message = ChatMessage.llm()
+      ..isGenerating = true
+      ..turnStartedAt = DateTime.now()
+      ..appendThinking('First thought. ');
+
+    await tester.pumpWidget(_host(LlmMessageView(message)));
+
+    // Live: expanded in place of the jumping dots, following new deltas.
+    expect(find.text('▾ Thoughts'), findsOneWidget);
+    expect(find.textContaining('First thought.'), findsOneWidget);
+    expect(find.byType(JumpingDotsProgressIndicator), findsNothing);
+
+    message.appendThinking('Second thought.');
+    await tester.pump();
+    expect(find.textContaining('Second thought.'), findsOneWidget);
+
+    // The answer starting collapses the thoughts out of the way.
+    message.append('The answer');
+    await tester.pump();
+    expect(find.text('▸ Thoughts'), findsOneWidget);
+    expect(find.textContaining('First thought.'), findsNothing);
+
+    // A tap pins them open again.
+    await tester.tap(find.text('▸ Thoughts'));
+    await tester.pump();
+    expect(find.textContaining('First thought.'), findsOneWidget);
+
+    // Unmount to cancel the status line's ticking timer.
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('live status renders below the image while generating', (
     tester,
   ) async {

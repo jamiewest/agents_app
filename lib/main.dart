@@ -35,6 +35,8 @@ import 'data/conversation_store.dart';
 import 'data/downloaded_artifact_presence.dart';
 import 'data/downloaded_model_artifacts.dart';
 import 'data/embedding_settings.dart';
+import 'data/headless_web_view_renderer.dart';
+import 'data/inventory_access_settings.dart';
 import 'data/local_llama_context_planner.dart';
 import 'data/local_llama_lease_client.dart';
 import 'data/local_llama_model_host.dart';
@@ -48,6 +50,7 @@ import 'data/theme_settings.dart';
 import 'data/thinking_settings.dart';
 import 'data/tool_activity.dart';
 import 'data/usage_store.dart';
+import 'data/web_search_settings.dart';
 import 'domain/agent_task.dart' show taskPromptAuthorName;
 import 'domain/conversation.dart';
 import 'features/inventory/inventory_store.dart';
@@ -161,6 +164,35 @@ final _builder = Host.createApplicationBuilder()
     flutter.services.tryAddSingleton<PushoverSettings>(
       (sp) => PushoverSettings(sp.getRequiredService<SecretStore>()),
     );
+    // The web-search endpoint URL lives in the secret store; while it is
+    // configured, agents whose web-search access is on get the local
+    // `web_search` and `open_web_page` tools instead of the provider's
+    // hosted search marker. Native-only: the headless page loader those
+    // tools rely on is unsupported on Flutter web, which keeps hosted
+    // search instead.
+    if (!kIsWeb) {
+      flutter.services.tryAddSingleton<WebSearchSettings>(
+        // The hidden-WebView renderer serves clients that opt into
+        // JavaScript rendering; webview_flutter has no desktop
+        // implementation beyond macOS, so elsewhere those clients fall
+        // back to plain HTTP.
+        (sp) => WebSearchSettings(
+          sp.getRequiredService<SecretStore>(),
+          renderer: switch (defaultTargetPlatform) {
+            TargetPlatform.android ||
+            TargetPlatform.iOS ||
+            TargetPlatform.macOS => HeadlessWebViewRenderer(),
+            _ => null,
+          },
+        ),
+      );
+    }
+    // Per-agent opt-in for the inventory tools. Lives outside the agent
+    // record because AgentAccessConfig belongs to agents_flutter, which
+    // knows nothing about this app's inventory.
+    flutter.services.tryAddSingleton<InventoryAccessSettings>(
+      (sp) => InventoryAccessSettings(sp.getRequiredService<KeyValueStore>()),
+    );
     flutter.services.tryAddSingleton<EmbeddingSettings>(
       (sp) => EmbeddingSettings(
         keyValueStore: sp.getRequiredService<KeyValueStore>(),
@@ -185,11 +217,15 @@ final _builder = Host.createApplicationBuilder()
             ),
       ),
       configureHarnessForScope: (sp) => (agent, options, scope) {
-        // The shared inventory is app-wide, not conversation-scoped, so
-        // every agent gets the tools — private chats included. The store
-        // is absent on web, where sqflite has no backend.
+        // The shared inventory is app-wide, not conversation-scoped, but
+        // like the other tool capabilities each agent opts in through its
+        // editor. The store is absent on web, where sqflite has no
+        // backend.
         final inventory = sp.getService<InventoryStore>();
-        if (inventory != null) {
+        if (inventory != null &&
+            sp.getRequiredService<InventoryAccessSettings>().enabledFor(
+              agent.id,
+            )) {
           final chatOptions = options.chatOptions ?? ai.ChatOptions();
           chatOptions.tools = [
             ...?chatOptions.tools,
@@ -205,6 +241,13 @@ final _builder = Host.createApplicationBuilder()
         options.pushoverClient = sp
             .getRequiredService<PushoverSettings>()
             .client;
+
+        // Web search: attach the source for the search URL configured in
+        // Settings. The harness swaps the hosted search marker for the
+        // local tools while a source is present, and the agent's own
+        // web-search access toggle still gates both through the factory.
+        // The service is unregistered on web, where hosted search stays.
+        options.webSearchSource = sp.getService<WebSearchSettings>()?.source;
 
         // Mirror the agent's shell commands into the conversation's in-chat
         // terminal panel. Decorating whatever executor the factory chose
@@ -712,8 +755,8 @@ ai.ChatClient _createLocalLlamaClient(
 /// never starts a second load, so the worst case of warming is the same wait
 /// the user would have had anyway.
 ///
-/// Warms only what is already downloaded. The loader downloads
-/// unconditionally, so warming an undownloaded model would pull gigabytes at
+/// Warms only what is already downloaded. The loader fetches whatever is
+/// missing, so warming an undownloaded model would pull gigabytes at
 /// launch that the user never asked for; that case is left to the first
 /// message, where the progress banner explains the wait. Returns whether the
 /// model was warmed.
@@ -1018,8 +1061,8 @@ DownloadRequest _localArtifactRequest(
 /// Whether every artifact [spec] declares is already on disk.
 ///
 /// Answers "would making this model resident be free?" — the gate the
-/// startup warm-up needs, since the loader downloads unconditionally and has
-/// no skip-if-missing mode. Reached only by URL-backed models; a picked file
+/// startup warm-up needs, since the loader downloads whatever artifact is
+/// not yet on disk. Reached only by URL-backed models; a picked file
 /// is already local. On web the probe asks the runtime's managed OPFS
 /// storage instead of the filesystem; models small enough to live in
 /// wllama's own URL cache stay invisible there and report absent (see
@@ -1079,6 +1122,12 @@ Future<String> _downloadLocalArtifact(
   final label = artifact.label;
   final request = _localArtifactRequest(spec, modelId, artifact);
   final path = await downloads.filePathFor(request);
+  // A non-empty file at the final path is a completed download: the plugin
+  // transfers into a temporary location and only moves the file here on
+  // success. Without this check every fresh app process re-downloaded the
+  // artifact from its URL, because the loader only runs on a resident-session
+  // miss — never within a run, always after a restart.
+  if (await downloadedArtifactExists(path)) return path;
   _localLlamaProgress.update(
     modelId,
     _LocalLlamaStatus(
@@ -1295,10 +1344,10 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Acquires this conversation's terminal session once, so the chat body
   /// can dock a live terminal over the agent's shell commands. Released in
   /// [dispose]; agent reloads reuse the same session, keeping the buffer.
-  ChatTerminalSession? _listenTerminalSession() =>
-      _terminalSession ??= widget.services
-          .getService<TerminalActivity>()
-          ?.listen(_conversationId);
+  ChatTerminalSession? _listenTerminalSession() => _terminalSession ??= widget
+      .services
+      .getService<TerminalActivity>()
+      ?.listen(_conversationId);
 
   /// Acquires this conversation's tool-activity channel, when the registry
   /// is registered. Every acquisition is matched by [_releaseToolActivity];

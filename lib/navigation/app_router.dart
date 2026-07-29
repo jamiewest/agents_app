@@ -27,6 +27,7 @@ import '../ui/screens/settings_home_screen.dart';
 import '../data/task_scheduler_service.dart';
 import '../ui/screens/task_detail_screen.dart';
 import '../ui/screens/tasks_screen.dart';
+import '../ui/screens/web_search_settings_screen.dart';
 import 'app_bootstrap.dart';
 import 'app_shell.dart';
 
@@ -172,6 +173,11 @@ GoRouter createAppRouter({
                   path: 'hosting',
                   builder: (context, state) =>
                       HostingScreen(services: services),
+                ),
+                GoRoute(
+                  path: 'web-search',
+                  builder: (context, state) =>
+                      WebSearchSettingsScreen(services: services),
                 ),
               ],
             ),

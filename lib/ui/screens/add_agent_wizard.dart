@@ -10,8 +10,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../data/inventory_access_settings.dart';
 import '../../data/local_model_presets.dart';
+import '../../data/pushover_settings.dart';
+import '../../features/inventory/inventory_store.dart';
 import '../app_theme.dart';
+import '../dialogs/pushover_credentials.dart';
 import '../strings/configured_agents_strings.dart';
 import '../widgets/page_body.dart';
 import '../styles/configured_agents_style.dart';
@@ -342,11 +346,25 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
       );
     }
 
+    // Inventory access is app-local (see InventoryAccessSettings); a null
+    // initial value hides the switch where the store is absent. The wizard
+    // only creates agents, so the switch always starts off.
+    final inventoryAccess = widget.services.getService<InventoryStore>() == null
+        ? null
+        : widget.services.getRequiredService<InventoryAccessSettings>();
+    final pushover = widget.services.getService<PushoverSettings>();
     return AgentEditor(
       models: [_model!],
       initial: _agentDraft,
       style: style,
       strings: strings,
+      initialInventoryEnabled: inventoryAccess == null ? null : false,
+      onInventoryEnabled: (agentId, enabled) =>
+          unawaited(inventoryAccess!.setEnabled(agentId, enabled)),
+      pushoverSettings: pushover,
+      onConfigurePushover: pushover == null
+          ? null
+          : () => unawaited(showPushoverCredentialsDialog(context, pushover)),
       onSubmit: (agent) => unawaited(_submitAgent(agent)),
       onCancel: _back,
     );

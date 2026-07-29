@@ -35,6 +35,7 @@ class ChatMessage extends ChangeNotifier {
     required this.origin,
     required String? text,
     required this.attachments,
+    this._thinking,
   }) : assert(origin.isUser && text != null && text.isNotEmpty || origin.isLlm),
        _text = text;
 
@@ -52,6 +53,7 @@ class ChatMessage extends ChangeNotifier {
   factory ChatMessage.fromJson(Map<String, dynamic> map) => ChatMessage(
     origin: MessageOrigin.values.byName(map['origin'] as String),
     text: map['text'] as String,
+    thinking: map['thinking'] as String?,
     attachments: [
       for (final attachment in map['attachments'] as List<dynamic>)
         switch (attachment['type'] as String) {
@@ -91,6 +93,14 @@ class ChatMessage extends ChangeNotifier {
   /// Streamed LLM text grows through [append]; there is no setter.
   String? get text => _text;
   String? _text;
+
+  /// The model's reasoning ("thinking") for this turn, when it produced any.
+  ///
+  /// Streamed reasoning grows through [appendThinking]; there is no setter.
+  /// Kept separate from [text] so the answer bubble and transcript stay
+  /// clean of raw thought tokens.
+  String? get thinking => _thinking;
+  String? _thinking;
 
   /// The origin of the message (user or LLM).
   final MessageOrigin origin;
@@ -170,6 +180,12 @@ class ChatMessage extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Appends a streamed reasoning delta to [thinking].
+  void appendThinking(String text) {
+    _thinking = (_thinking ?? '') + text;
+    notifyListeners();
+  }
+
   @override
   String toString() =>
       'ChatMessage('
@@ -192,6 +208,7 @@ class ChatMessage extends ChangeNotifier {
   Map<String, dynamic> toJson() => {
     'origin': origin.name,
     'text': text,
+    if (thinking != null) 'thinking': thinking,
     'attachments': [
       for (final attachment in attachments)
         {

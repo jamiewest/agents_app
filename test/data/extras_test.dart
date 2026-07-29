@@ -91,6 +91,8 @@ void main() {
               .supportsThinking,
       };
       expect(thinking['Qwen3 4B'], isTrue);
+      expect(thinking['Gemma 4 E2B'], isTrue);
+      expect(thinking['Gemma 4 E4B (Mac)'], isTrue);
       expect(thinking['Gemma 3 1B'], isFalse);
     });
   });

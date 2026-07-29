@@ -48,7 +48,9 @@ void main() {
       message.usage = ai.UsageDetails(inputTokenCount: 10);
       expect(notified, 1);
 
-      message.addUsage(ai.UsageDetails(inputTokenCount: 5, outputTokenCount: 2));
+      message.addUsage(
+        ai.UsageDetails(inputTokenCount: 5, outputTokenCount: 2),
+      );
       expect(notified, 2);
       expect(message.usage!.inputTokenCount, 15);
       expect(message.usage!.outputTokenCount, 2);
@@ -84,6 +86,33 @@ void main() {
       expect(restored.text, 'hello there');
       expect(restored.origin, message.origin);
       expect(restored.toJson(), message.toJson());
+    });
+
+    test('appendThinking notifies and grows separately from text', () {
+      final message = ChatMessage.llm();
+      var notified = 0;
+      message.addListener(() => notified++);
+
+      message.appendThinking('hmm ');
+      message.appendThinking('okay');
+      message.append('answer');
+
+      expect(message.thinking, 'hmm okay');
+      expect(message.text, 'answer');
+      expect(notified, 3);
+    });
+
+    test('JSON round-trip keeps thinking and omits it when absent', () {
+      final message = ChatMessage.llm()
+        ..append('answer')
+        ..appendThinking('a thought');
+      final restored = ChatMessage.fromJson(message.toJson());
+      expect(restored.thinking, 'a thought');
+      expect(restored.text, 'answer');
+
+      final plain = ChatMessage.user('hi', const []);
+      expect(plain.toJson().containsKey('thinking'), isFalse);
+      expect(ChatMessage.fromJson(plain.toJson()).thinking, isNull);
     });
   });
 }

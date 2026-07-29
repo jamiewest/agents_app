@@ -14,7 +14,9 @@ import '../../data/app_reset.dart';
 import '../../data/embedding_settings.dart';
 import '../../data/pushover_settings.dart';
 import '../../data/theme_settings.dart';
+import '../../data/web_search_settings.dart';
 import '../app_theme.dart';
+import '../dialogs/pushover_credentials.dart';
 import '../widgets/app_sliver_header.dart';
 import '../widgets/page_body.dart';
 
@@ -85,6 +87,11 @@ class SettingsHomeScreen extends StatelessWidget {
                 _PushoverTile(
                   settings: services.getRequiredService<PushoverSettings>(),
                 ),
+                // Absent on web, where the local web tools are unsupported
+                // and the service is never registered.
+                if (services.getService<WebSearchSettings>()
+                    case final webSearch?)
+                  _WebSearchTile(settings: webSearch),
                 ListTile(
                   leading: const Icon(LucideIcons.brain300),
                   title: const Text('Memory embedding model'),
@@ -239,121 +246,35 @@ class _PushoverTile extends StatelessWidget {
     ),
   );
 
-  Future<void> _edit(BuildContext context) async {
-    final token = await settings.storedToken();
-    final user = await settings.storedUser();
-    if (!context.mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => _PushoverDialog(
-        settings: settings,
-        initialToken: token,
-        initialUser: user,
-      ),
-    );
-  }
+  Future<void> _edit(BuildContext context) =>
+      showPushoverCredentialsDialog(context, settings);
 }
 
-/// Edits the Pushover application token and user key.
+/// The Settings row for the local web-search tools.
 ///
-/// Saving with both fields blank clears the configuration (and with it the
-/// agents' notification tools); anything else requires both values.
-class _PushoverDialog extends StatefulWidget {
-  const _PushoverDialog({
-    required this.settings,
-    required this.initialToken,
-    required this.initialUser,
-  });
+/// Live: the subtitle flips between the setup hint and "configured" the
+/// moment a key is saved or cleared.
+class _WebSearchTile extends StatelessWidget {
+  const _WebSearchTile({required this.settings});
 
-  final PushoverSettings settings;
-  final String initialToken;
-  final String initialUser;
+  final WebSearchSettings settings;
 
   @override
-  State<_PushoverDialog> createState() => _PushoverDialogState();
-}
-
-class _PushoverDialogState extends State<_PushoverDialog> {
-  late final TextEditingController _token = TextEditingController(
-    text: widget.initialToken,
-  );
-  late final TextEditingController _user = TextEditingController(
-    text: widget.initialUser,
-  );
-  String? _error;
-
-  @override
-  void dispose() {
-    _token.dispose();
-    _user.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final token = _token.text.trim();
-    final user = _user.text.trim();
-    if (token.isEmpty != user.isEmpty) {
-      setState(() {
-        _error = 'Enter both values, or clear both to turn Pushover off.';
-      });
-      return;
-    }
-    if (token.isEmpty) {
-      await widget.settings.clear();
-    } else {
-      await widget.settings.save(token: token, user: user);
-    }
-    if (mounted) Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Pushover notifications'),
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Agents get tools to notify your own devices through Pushover. '
-          'Create an application at pushover.net to get a token; your user '
-          'key is on the dashboard.',
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _token,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: const InputDecoration(
-            labelText: 'Application token',
-            isDense: true,
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _user,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: const InputDecoration(
-            labelText: 'User key',
-            isDense: true,
-          ),
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          Text(
-            _error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-        ],
-      ],
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Cancel'),
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: settings,
+    builder: (context, _) => ListTile(
+      leading: const Icon(LucideIcons.globe300),
+      title: const Text('Web search'),
+      subtitle: Text(
+        settings.isConfigured
+            ? 'Configured — agents search through '
+                  '"${settings.selectedClient?.name}" and read pages on '
+                  'this device'
+            : 'Let agents search the web through any search URL you choose',
       ),
-      FilledButton(onPressed: _save, child: const Text('Save')),
-    ],
+      trailing: const Icon(LucideIcons.chevronRight300),
+      onTap: () => context.go('/settings/web-search'),
+    ),
   );
 }
 

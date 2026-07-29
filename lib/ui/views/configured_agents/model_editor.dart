@@ -211,6 +211,12 @@ class _ModelEditorState extends State<ModelEditor> {
   late String _toolsMode;
   late bool _toolsParallel;
 
+  /// Whether this local model advertises extended reasoning ("thinking").
+  ///
+  /// Written as [ModelCapabilities.thinkingKey]; the chat screen shows its
+  /// per-conversation thinking toggle only for models that advertise it.
+  late bool _supportsThinking;
+
   /// Selected reasoning-tags setting value; empty means auto-detect.
   late String _reasoningTags;
 
@@ -262,6 +268,8 @@ class _ModelEditorState extends State<ModelEditor> {
       _ => '',
     };
     _toolsParallel = settings[toolsParallelSetting] != 'false';
+    _supportsThinking =
+        settings[ModelCapabilities.thinkingKey]?.trim() == 'true';
     _reasoningTags = switch (settings[reasoningTagsSetting]) {
       reasoningTagsThink || reasoningTagsNone => //
       settings[reasoningTagsSetting]!,
@@ -460,13 +468,41 @@ class _ModelEditorState extends State<ModelEditor> {
     return settings;
   }
 
+  /// Keys [_localLlamaSettings] rewrites from form state on every save.
+  ///
+  /// Everything else in the stored settings — capability flags a preset
+  /// stamped, hardware hints — is preserved as-is, so editing a model does
+  /// not silently strip metadata this form has no field for.
+  static const Set<String> _formOwnedLlamaKeys = {
+    'llama.modelSource',
+    'llama.contextSize',
+    'llama.gpuLayers',
+    chatFormatSetting,
+    legacyLlamaFormatSetting,
+    taskPromptRoleSetting,
+    'llama.modelUrl',
+    'llama.mmprojUrl',
+    'llama.draftModelUrl',
+    'llama.modelPath',
+    'llama.modelFileName',
+    'llama.mmprojPath',
+    'llama.mmprojFileName',
+    'llama.draftModelPath',
+    'llama.draftModelFileName',
+    ModelCapabilities.thinkingKey,
+  };
+
   Map<String, String> _localLlamaSettings(String id) {
-    final settings = <String, String>{
+    final contextSize = _llamaContextSize.text.trim();
+    final settings = Map<String, String>.of(
+      widget.initial?.settings ?? const <String, String>{},
+    )..removeWhere((key, _) => _formOwnedLlamaKeys.contains(key));
+    settings.addAll({
       'llama.modelSource': switch (_llamaModelSource) {
         _LlamaModelSource.url => 'url',
         _LlamaModelSource.file => 'file',
       },
-      'llama.contextSize': _llamaContextSize.text.trim(),
+      'llama.contextSize': contextSize,
       'llama.gpuLayers': _llamaGpuLayers.text.trim(),
       // Both keys are written: chat.format is canonical, llama.format
       // keeps older readers working. Empty means auto-detect.
@@ -476,7 +512,13 @@ class _ModelEditorState extends State<ModelEditor> {
       },
       if (_taskPromptRole == taskPromptRoleSystem)
         taskPromptRoleSetting: _taskPromptRole,
-    };
+      if (_supportsThinking) ModelCapabilities.thinkingKey: 'true',
+    });
+    // A preset records its context window as a capability too; keep it in
+    // step when the form changes the configured size.
+    if (settings.containsKey(ModelCapabilities.contextLengthKey)) {
+      settings[ModelCapabilities.contextLengthKey] = contextSize;
+    }
 
     switch (_llamaModelSource) {
       case _LlamaModelSource.url:
@@ -500,7 +542,13 @@ class _ModelEditorState extends State<ModelEditor> {
         }) {
           final selectedPath = path?.trim();
           if (selectedPath != null && selectedPath.isNotEmpty) {
-            registerSelectedLlamaModelFile(id, selectedPath, kind: kind);
+            // Register only files picked this session — their sandbox grant
+            // is alive. On an ordinary edit the stored path may be dead (a
+            // sandboxed restart, a moved file), and re-registering it would
+            // clobber the app-container copy the bootstrap restored.
+            if (_pickedThisSession.contains(kind)) {
+              registerSelectedLlamaModelFile(id, selectedPath, kind: kind);
+            }
             if (!kIsWeb) settings[pathKey] = selectedPath;
           }
           final selectedName = fileName?.trim();
@@ -627,6 +675,22 @@ class _ModelEditorState extends State<ModelEditor> {
         ],
         onChanged: (value) => setState(() => _taskPromptRole = value),
       );
+
+  /// A labeled switch row following the dropdown layout below.
+  Widget _labeledSwitch({
+    required String label,
+    required ConfiguredAgentsStyle style,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Row(
+      children: [
+        Expanded(child: Text(label, style: style.labelTextStyle)),
+        Switch(value: value, onChanged: onChanged),
+      ],
+    ),
+  );
 
   /// A labeled dropdown following the source-selector layout above.
   Widget _labeledDropdown<T>({
@@ -799,6 +863,12 @@ class _ModelEditorState extends State<ModelEditor> {
                   : null,
             ),
             _formatDropdown(style),
+            _labeledSwitch(
+              label: 'Supports thinking',
+              style: style,
+              value: _supportsThinking,
+              onChanged: (value) => setState(() => _supportsThinking = value),
+            ),
             _taskPromptRoleDropdown(style),
           ] else ...[
             ConfiguredAgentsFormField(
@@ -836,24 +906,11 @@ class _ModelEditorState extends State<ModelEditor> {
                 onChanged: (value) => setState(() => _reasoningTags = value),
               ),
               _taskPromptRoleDropdown(style),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Parallel tool calls',
-                        style: style.labelTextStyle,
-                      ),
-                    ),
-                    Switch(
-                      value: _toolsParallel,
-                      onChanged: (value) {
-                        setState(() => _toolsParallel = value);
-                      },
-                    ),
-                  ],
-                ),
+              _labeledSwitch(
+                label: 'Parallel tool calls',
+                style: style,
+                value: _toolsParallel,
+                onChanged: (value) => setState(() => _toolsParallel = value),
               ),
             ],
           ],

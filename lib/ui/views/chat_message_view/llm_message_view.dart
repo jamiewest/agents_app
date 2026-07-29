@@ -46,6 +46,7 @@ class LlmMessageView extends StatelessWidget {
                 .toList();
             final hasImages = images.isNotEmpty;
             final hasText = text != null && text.isNotEmpty;
+            final hasThinking = message.thinking?.isNotEmpty ?? false;
             final chatStyle = LlmChatViewStyle.resolveFor(
               context,
               viewModel.style,
@@ -89,11 +90,16 @@ class LlmMessageView extends StatelessWidget {
                             decoration: llmStyle.decoration,
                             margin: const EdgeInsets.only(left: 40),
                             padding: llmStyle.padding,
-                            child: hasImages || hasText
+                            child: hasThinking || hasImages || hasText
                                 ? Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
+                                      if (hasThinking)
+                                        ThinkingSection(
+                                          message: message,
+                                          baseStyle: llmStyle.markdownStyle?.p,
+                                        ),
                                       for (var i = 0; i < images.length; i++)
                                         Padding(
                                           padding: EdgeInsets.only(
@@ -174,6 +180,89 @@ class LlmMessageView extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// The model's streamed reasoning, rendered above the answer text.
+///
+/// Auto-expands while thoughts stream and the answer has not started, so the
+/// user can watch them pass by; collapses once the answer begins or the turn
+/// ends. Tapping the header pins the section open or closed, overriding the
+/// automatic behavior for this message.
+class ThinkingSection extends StatefulWidget {
+  /// Creates a [ThinkingSection] for [message].
+  const ThinkingSection({required this.message, this.baseStyle, super.key});
+
+  /// The message whose [ChatMessage.thinking] this section renders.
+  final ChatMessage message;
+
+  /// The bubble's body text style the section derives its muted style from.
+  final TextStyle? baseStyle;
+
+  @override
+  State<ThinkingSection> createState() => _ThinkingSectionState();
+}
+
+class _ThinkingSectionState extends State<ThinkingSection> {
+  /// The user's explicit open/closed choice; null keeps automatic behavior.
+  bool? _pinnedExpanded;
+
+  bool get _autoExpanded =>
+      widget.message.isGenerating && (widget.message.text?.isEmpty ?? true);
+
+  @override
+  Widget build(BuildContext context) {
+    final expanded = _pinnedExpanded ?? _autoExpanded;
+    final base = widget.baseStyle ?? const TextStyle();
+    final muted = (base.color ?? const Color(0xFF888888)).withValues(
+      alpha: 0.65,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _pinnedExpanded = !expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Text(
+              '${expanded ? '▾' : '▸'} Thoughts',
+              style: base.copyWith(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: muted,
+              ),
+            ),
+          ),
+        ),
+        if (expanded)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 2, bottom: 6),
+            padding: const EdgeInsets.only(left: 8),
+            constraints: const BoxConstraints(maxHeight: 160),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: muted.withValues(alpha: 0.4), width: 2),
+              ),
+            ),
+            // Reversed so the newest thought stays in view as the text
+            // grows, without fighting a user who scrolled back up.
+            child: SingleChildScrollView(
+              reverse: true,
+              child: Text(
+                widget.message.thinking ?? '',
+                style: base.copyWith(
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  color: muted,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// A live status line rendered under a streaming LLM bubble, in the same

@@ -173,6 +173,8 @@ class AgentLlmProvider extends LlmProvider
               llmMessage.addUsage(details);
               _currentRun?.countModelCall();
             },
+            // Unsmoothed: thoughts tick in as the model emits them.
+            onReasoning: llmMessage.appendThinking,
           )
           .smoothed()
           .map((chunk) {
@@ -286,6 +288,7 @@ class AgentLlmProvider extends LlmProvider
   Stream<String> _runMessage(
     ai.ChatMessage message, {
     void Function(ai.UsageDetails details)? onUsage,
+    void Function(String delta)? onReasoning,
   }) async* {
     _pendingApprovalContent = null;
     _activeRuns++;
@@ -297,15 +300,15 @@ class AgentLlmProvider extends LlmProvider
         messages: [message],
       )) {
         // `update.text` only concatenates [ai.TextContent]; a thinking model
-        // (e.g. Gemma 4 with reasoning enabled) opens its turn with a
-        // [ai.TextReasoningContent] block that would otherwise stream as dead
-        // air. Surface reasoning too so the user sees liveness. This UI's
-        // [ChatMessage] has no separate reasoning channel yet, so reasoning
-        // and answer currently share one bubble.
+        // (e.g. Gemma 4 with reasoning enabled) opens its turn with
+        // [ai.TextReasoningContent] deltas. Those go to [onReasoning] — the
+        // chat bubble's separate thinking channel — so the answer text and
+        // the persisted transcript stay clean of raw thought tokens. Without
+        // a callback (one-off generations) reasoning is dropped.
         final buffer = StringBuffer();
         for (final content in update.contents) {
           if (content is ai.TextReasoningContent) {
-            buffer.write(content.text);
+            onReasoning?.call(content.text);
           } else if (content is ai.TextContent) {
             buffer.write(content.text);
           } else if (content is ai.ToolApprovalRequestContent) {

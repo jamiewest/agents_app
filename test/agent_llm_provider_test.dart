@@ -76,6 +76,25 @@ void main() {
       expect(uriContent.mediaType, 'text/html');
     });
 
+    test('routes reasoning deltas to the thinking channel, not the '
+        'answer', () async {
+      final agent = _FakeAgent(
+        updates: [
+          _reasoningUpdate('Consider '),
+          _reasoningUpdate('the request.'),
+          _textUpdate('Answer.'),
+        ],
+      );
+      final provider = AgentLlmProvider(agent: agent);
+
+      final chunks = await provider.sendMessageStream('go').toList();
+
+      expect(chunks.join(), 'Answer.');
+      final message = provider.history.last;
+      expect(message.thinking, 'Consider the request.');
+      expect(message.text, 'Answer.');
+    });
+
     test('appends streamed chunks into one assistant UI message', () async {
       final agent = _FakeAgent(
         updates: [_textUpdate('hel'), _textUpdate('lo')],
@@ -435,6 +454,11 @@ AgentResponseUpdate _usageUpdate() => AgentResponseUpdate(
 
 AgentResponseUpdate _textUpdate(String text) =>
     AgentResponseUpdate(role: ai.ChatRole.assistant, content: text);
+
+AgentResponseUpdate _reasoningUpdate(String text) => AgentResponseUpdate(
+  role: ai.ChatRole.assistant,
+  contents: [ai.TextReasoningContent(text)],
+);
 
 AgentResponseUpdate _approvalUpdate(
   String requestId,

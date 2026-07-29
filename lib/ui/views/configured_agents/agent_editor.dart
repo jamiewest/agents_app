@@ -6,6 +6,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:universal_platform/universal_platform.dart';
 
+import '../../../data/pushover_settings.dart';
 import '../../strings/configured_agents_strings.dart';
 import '../../styles/configured_agents_style.dart';
 import 'configured_agents_form_field.dart';
@@ -50,6 +51,10 @@ class AgentEditor extends StatefulWidget {
     this.onDirty,
     this.agents = const [],
     this.networkModelIds = const {},
+    this.initialInventoryEnabled,
+    this.onInventoryEnabled,
+    this.pushoverSettings,
+    this.onConfigurePushover,
     super.key,
   });
 
@@ -80,6 +85,34 @@ class AgentEditor extends StatefulWidget {
 
   /// Called when the user cancels.
   final VoidCallback onCancel;
+
+  /// The agent's current inventory-tools access, or `null` to hide the
+  /// switch on platforms without an inventory store.
+  ///
+  /// The flag is app-local (keyed by agent id, not part of
+  /// [SavedAgentConfig]), so the host supplies it separately and receives
+  /// the edited value through [onInventoryEnabled].
+  final bool? initialInventoryEnabled;
+
+  /// Called on submit with the agent's id and the chosen inventory access.
+  ///
+  /// Only invoked while [initialInventoryEnabled] is non-null.
+  final void Function(String agentId, bool enabled)? onInventoryEnabled;
+
+  /// The device's Pushover configuration, or `null` to omit the
+  /// not-configured hint.
+  ///
+  /// The Pushover tools only exist while credentials are stored on this
+  /// device, so enabling the switch without them silently grants nothing.
+  /// While that is the case a warning appears under the switch; it clears
+  /// itself the moment the settings report a configuration (they notify on
+  /// save).
+  final PushoverSettings? pushoverSettings;
+
+  /// Opens the Pushover credentials dialog from the warning's action.
+  ///
+  /// Without it the warning renders as text alone.
+  final VoidCallback? onConfigurePushover;
 
   /// Called the first time the user modifies any field.
   ///
@@ -131,6 +164,7 @@ class _AgentEditorState extends State<AgentEditor> {
   late final TextEditingController _maxOutputTokens;
   late String _modelId;
   late AgentAccessConfig _access;
+  late bool _inventoryEnabled = widget.initialInventoryEnabled ?? false;
   late List<SavedAgentConfig> _delegateCandidates;
   final Set<String> _selectedDelegates = {};
   final Map<String, TextEditingController> _delegationGuidance = {};
@@ -190,6 +224,9 @@ class _AgentEditorState extends State<AgentEditor> {
     if (!_formKey.currentState!.validate()) return;
     final description = _description.text.trim();
     final instructions = _instructions.text.trim();
+    if (widget.initialInventoryEnabled != null) {
+      widget.onInventoryEnabled?.call(_entityId, _inventoryEnabled);
+    }
     widget.onSubmit(
       SavedAgentConfig(
         id: _entityId,
@@ -218,6 +255,47 @@ class _AgentEditorState extends State<AgentEditor> {
     if (text.isEmpty) return null;
     final parsed = integer ? int.tryParse(text) : double.tryParse(text);
     return parsed == null ? widget.strings.invalidNumber : null;
+  }
+
+  /// The "Pushover isn't configured" warning under its switch, or null when
+  /// there is nothing to warn about.
+  ///
+  /// A [ListenableBuilder] rather than a listener on this state: saving
+  /// credentials from the warning's own action must clear it immediately,
+  /// but an external settings change is not a user edit and must not mark
+  /// the form dirty through this state's [setState] override.
+  Widget? _pushoverWarning(
+    ConfiguredAgentsStyle style,
+    ConfiguredAgentsStrings strings,
+  ) {
+    final settings = widget.pushoverSettings;
+    if (settings == null || !_access.enablePushover) return null;
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        if (settings.isConfigured) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                strings.pushoverNotConfiguredWarning,
+                style: style.subtitleTextStyle?.copyWith(
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+              if (widget.onConfigurePushover != null)
+                TextButton(
+                  onPressed: widget.onConfigurePushover,
+                  child: Text(strings.pushoverConfigureAction),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -366,7 +444,15 @@ class _AgentEditorState extends State<AgentEditor> {
                   value: _access.enablePushover,
                   onChanged: (value) =>
                       _updateAccess(_access.copyWith(enablePushover: value)),
+                  footer: _pushoverWarning(style, strings),
                 ),
+                if (widget.initialInventoryEnabled != null)
+                  _AccessSwitchConfig(
+                    label: strings.inventoryAccessLabel,
+                    value: _inventoryEnabled,
+                    onChanged: (value) =>
+                        setState(() => _inventoryEnabled = value),
+                  ),
               ],
             ),
             _buildAccessSection(
@@ -526,7 +612,7 @@ class _AgentEditorState extends State<AgentEditor> {
       children: [
         Text(label, style: style.labelTextStyle),
         const SizedBox(height: 6),
-        for (final accessSwitch in switches)
+        for (final accessSwitch in switches) ...[
           SwitchListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
@@ -534,6 +620,8 @@ class _AgentEditorState extends State<AgentEditor> {
             value: accessSwitch.value,
             onChanged: accessSwitch.onChanged,
           ),
+          if (accessSwitch.footer != null) accessSwitch.footer!,
+        ],
       ],
     ),
   );
@@ -544,9 +632,13 @@ class _AccessSwitchConfig {
     required this.label,
     required this.value,
     required this.onChanged,
+    this.footer,
   });
 
   final String label;
   final bool value;
   final ValueChanged<bool> onChanged;
+
+  /// Rendered directly under the switch, e.g. a misconfiguration warning.
+  final Widget? footer;
 }

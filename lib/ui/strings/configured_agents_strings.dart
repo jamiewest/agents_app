@@ -60,6 +60,11 @@ class ConfiguredAgentsStrings {
     this.networkInfoAccessLabel = 'Network info',
     this.wakeLockAccessLabel = 'Wake lock',
     this.pushoverAccessLabel = 'Pushover notifications',
+    this.pushoverNotConfiguredWarning =
+        "Pushover isn't configured on this device, so this agent's "
+        'notifications cannot send.',
+    this.pushoverConfigureAction = 'Add credentials',
+    this.inventoryAccessLabel = 'Inventory',
     this.openAiCompatibleProvider = 'OpenAI-compatible',
     this.anthropicProvider = 'Anthropic',
     this.googleProvider = 'Google (Gemini)',
@@ -218,6 +223,15 @@ class ConfiguredAgentsStrings {
   /// Label for Pushover notification tool access.
   final String pushoverAccessLabel;
 
+  /// Warning shown when Pushover access is on without stored credentials.
+  final String pushoverNotConfiguredWarning;
+
+  /// Label of the warning's action that opens the credentials dialog.
+  final String pushoverConfigureAction;
+
+  /// Label for the shared inventory tool access.
+  final String inventoryAccessLabel;
+
   /// Display label for the OpenAI-compatible provider.
   final String openAiCompatibleProvider;
 
@@ -328,6 +342,9 @@ class ConfiguredAgentsStrings {
     String? networkInfoAccessLabel,
     String? wakeLockAccessLabel,
     String? pushoverAccessLabel,
+    String? pushoverNotConfiguredWarning,
+    String? pushoverConfigureAction,
+    String? inventoryAccessLabel,
     String? openAiCompatibleProvider,
     String? anthropicProvider,
     String? googleProvider,
@@ -400,6 +417,11 @@ class ConfiguredAgentsStrings {
         networkInfoAccessLabel ?? this.networkInfoAccessLabel,
     wakeLockAccessLabel: wakeLockAccessLabel ?? this.wakeLockAccessLabel,
     pushoverAccessLabel: pushoverAccessLabel ?? this.pushoverAccessLabel,
+    pushoverNotConfiguredWarning:
+        pushoverNotConfiguredWarning ?? this.pushoverNotConfiguredWarning,
+    pushoverConfigureAction:
+        pushoverConfigureAction ?? this.pushoverConfigureAction,
+    inventoryAccessLabel: inventoryAccessLabel ?? this.inventoryAccessLabel,
     openAiCompatibleProvider:
         openAiCompatibleProvider ?? this.openAiCompatibleProvider,
     anthropicProvider: anthropicProvider ?? this.anthropicProvider,

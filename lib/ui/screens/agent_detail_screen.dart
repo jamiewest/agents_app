@@ -12,6 +12,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/agent_center_overview.dart';
 import '../../data/agent_run_store.dart';
+import '../../data/inventory_access_settings.dart';
 import '../../data/usage_store.dart';
 import '../widgets/agent_dashboard.dart';
 
@@ -196,7 +197,16 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
                   _InstructionsCard(instructions: agent.instructions.trim()),
                 ],
                 const SizedBox(height: 24),
-                _AccessCard(access: agent.access ?? const AgentAccessConfig()),
+                _AccessCard(
+                  access: agent.access ?? const AgentAccessConfig(),
+                  // Inventory access is app-local, not part of the agent's
+                  // access record; absent settings (web) read as disabled.
+                  inventoryEnabled:
+                      widget.services
+                          .getService<InventoryAccessSettings>()
+                          ?.enabledFor(agent.id) ??
+                      false,
+                ),
                 if (agent.delegations.isNotEmpty) ...[
                   const SizedBox(height: 24),
                   _DelegationsCard(
@@ -316,9 +326,12 @@ class _InstructionsCard extends StatelessWidget {
 /// The enabled tools, as chips. Only the ones that are on are shown — an
 /// exhaustive on/off grid would be noise on a read-only page.
 class _AccessCard extends StatelessWidget {
-  const _AccessCard({required this.access});
+  const _AccessCard({required this.access, required this.inventoryEnabled});
 
   final AgentAccessConfig access;
+
+  /// The app-local inventory-tools grant (see `InventoryAccessSettings`).
+  final bool inventoryEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -339,6 +352,7 @@ class _AccessCard extends StatelessWidget {
       if (access.enableNetworkInfo) 'Network info',
       if (access.enableWakeLock) 'Wake lock',
       if (access.enablePushover) 'Pushover',
+      if (inventoryEnabled) 'Inventory',
     ];
     return DashboardCard(
       title: 'Tool access',

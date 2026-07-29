@@ -9,7 +9,11 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../data/inventory_access_settings.dart';
+import '../../data/pushover_settings.dart';
+import '../../features/inventory/inventory_store.dart';
 import '../dialogs/discard_changes.dart';
+import '../dialogs/pushover_credentials.dart';
 import '../strings/configured_agents_strings.dart';
 import '../styles/configured_agents_style.dart';
 import '../views/configured_agents/configured_agents.dart';
@@ -227,8 +231,26 @@ class _AgentEditorBodyState extends State<AgentEditorBody> {
 
     switch (widget.kind) {
       case AgentCenterTab.agents:
+        // Inventory access is app-local (see InventoryAccessSettings); a
+        // null initial value hides the switch where the store is absent.
+        final inventoryAccess =
+            widget.services.getService<InventoryStore>() == null
+            ? null
+            : widget.services.getRequiredService<InventoryAccessSettings>();
+        final editing = _find(_controller.agents, (a) => a.id);
+        final pushover = widget.services.getService<PushoverSettings>();
         return AgentEditor(
-          initial: _find(_controller.agents, (a) => a.id),
+          initial: editing,
+          initialInventoryEnabled: inventoryAccess == null
+              ? null
+              : editing != null && inventoryAccess.enabledFor(editing.id),
+          onInventoryEnabled: (agentId, enabled) =>
+              unawaited(inventoryAccess!.setEnabled(agentId, enabled)),
+          pushoverSettings: pushover,
+          onConfigurePushover: pushover == null
+              ? null
+              : () =>
+                    unawaited(showPushoverCredentialsDialog(context, pushover)),
           models: _controller.models,
           agents: _controller.agents,
           networkModelIds: {
