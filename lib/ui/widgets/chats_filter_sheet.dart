@@ -5,7 +5,6 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 
-import '../../domain/chats_filter.dart';
 import '../app_theme.dart';
 
 /// Shows the chats filter/sort editor and returns the applied query, or

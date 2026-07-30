@@ -141,6 +141,43 @@ abstract final class AppSpacing {
   static const double xxxl = 32;
 }
 
+/// The band across the top of the window that every pane's header sits in.
+///
+/// The app bars — the open chat's, and the sliver header on the top-level
+/// pages — are [kToolbarHeight] tall and centre their title and actions in
+/// that height. Panes that head themselves without an app bar (the
+/// conversations sidebar's brand row, the navigation rail's destinations)
+/// centre on the same line, so the window reads as one header row rather
+/// than three that each start wherever their content happened to land.
+abstract final class AppHeaderBand {
+  /// The height of the band, measured from the top of a pane.
+  static const double height = kToolbarHeight;
+
+  /// The distance from the top of a pane down to the band's centre line —
+  /// where header icons, titles, and actions align.
+  static const double centerY = height / 2;
+}
+
+/// Where the chat pane's content column starts, measured from the pane's
+/// own left edge.
+///
+/// The transcript insets itself by [AppSpacing.lg], and a model turn's text
+/// clears the avatar beside it by a further [avatarGutter]. That sum is the
+/// edge every line of conversation shares, so the chat's app bar pulls its
+/// title onto it too — heading and conversation read as one column instead
+/// of two that happen to be near each other.
+/// This assumes the transcript's own gutter is [AppSpacing.lg], which holds
+/// while `LlmChatViewStyle.padding` is unset and the fallback applies. A
+/// style that sets its own padding would make [contentInset] a lie.
+abstract final class AppChatPane {
+  /// The room a model turn leaves to the left of its text for the avatar.
+  static const double avatarGutter = 40;
+
+  /// The left edge of the content column: the transcript gutter plus the
+  /// avatar gutter.
+  static const double contentInset = AppSpacing.lg + avatarGutter;
+}
+
 /// The shared geometry of the app's resizable side panels — the chats
 /// conversation list and the Agent Center's menu.
 ///

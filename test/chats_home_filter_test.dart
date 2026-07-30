@@ -2,9 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:agents_app/data/conversation_store.dart';
-import 'package:agents_app/domain/chats_filter.dart';
-import 'package:agents_app/main.dart' show ChatScreen;
+import 'package:agents_app/ui/screens/chat_screen.dart' show ChatScreen;
 import 'package:agents_app/ui/widgets/chats_filter_sheet.dart';
 import 'package:agents_app/ui/screens/chats_home.dart'
     show ChatDetailPane, ChatsHome, ChatsListView, ChatsRootPane, ChatsScope;

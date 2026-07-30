@@ -76,6 +76,26 @@ order.
   no titles.
 - Usage (token) records are kept per model call in the local usage ledger.
 
+## Project layout
+
+`agents_app` is a frontend. Everything reusable — agents, stores, tools,
+telemetry, scheduling, providers — lives in the `agents_flutter` package; this
+repo holds the app that wires it up and the widgets that render it.
+
+| Directory | Holds | Rule |
+|---|---|---|
+| `lib/main.dart` | `main()` and the host build/run block | Stays small. The `// <start>`/`// </start>` block is the canonical bootstrap — don't restructure it. |
+| `lib/app/` | Composition root: `AgentsApp`, bootstrap, router, shell | Wiring only, no feature logic. |
+| `lib/chat_toolkit/` | The reusable chat UI: `views/`, `styles/`, `strings/`, `chat_view_model/` | Depends on packages and on itself — **never** on `ui/screens/` or `ui/widgets/`. |
+| `lib/ui/screens/` | This app's screens, one per route | May use `chat_toolkit/`, `features/`, `data/`. |
+| `lib/ui/widgets/` | This app's own reusable widgets | Presentation; no store or agent wiring. |
+| `lib/features/<name>/` | A feature slice: its store, tools, settings, and feature-specific widgets | Self-contained; `inventory/` and `local_models/` are the models to copy. |
+| `lib/data/` | App-wide data and settings that aren't a feature | Pure mapping and settings; `data/legacy/` is migration-only code. |
+
+The dependency direction is one-way: `main` → `app` → `screens` →
+{`chat_toolkit`, `features`, `data`}. A screen importing `main.dart`, or the
+toolkit importing a screen, means something is in the wrong place.
+
 ## Development
 
 ```sh

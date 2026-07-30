@@ -5,7 +5,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../providers/interface/attachments.dart';
+import 'package:agents_flutter/chat_provider.dart';
 
 /// Shows a dialog to input a URL and returns a [LinkAttachment].
 ///

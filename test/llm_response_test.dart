@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:agents_app/ui/llm_exception.dart';
-import 'package:agents_app/ui/views/llm_chat_view/llm_response.dart';
+import 'package:agents_flutter/chat_provider.dart';
+import 'package:agents_app/chat_toolkit/views/llm_chat_view/llm_response.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -46,24 +46,26 @@ void main() {
       expect(done, [null]);
     });
 
-    test('a stream error reports the failure once, even if cancelled after',
-        () async {
-      final controller = StreamController<String>();
-      final done = <LlmException?>[];
-      final response = LlmResponse(
-        stream: controller.stream,
-        onUpdate: (_) {},
-        onDone: done.add,
-      );
+    test(
+      'a stream error reports the failure once, even if cancelled after',
+      () async {
+        final controller = StreamController<String>();
+        final done = <LlmException?>[];
+        final response = LlmResponse(
+          stream: controller.stream,
+          onUpdate: (_) {},
+          onDone: done.add,
+        );
 
-      controller.addError(StateError('boom'));
-      await Future<void>.delayed(Duration.zero);
-      response.cancel();
+        controller.addError(StateError('boom'));
+        await Future<void>.delayed(Duration.zero);
+        response.cancel();
 
-      expect(done, hasLength(1));
-      expect(done.single, isA<LlmFailureException>());
-      await controller.close();
-    });
+        expect(done, hasLength(1));
+        expect(done.single, isA<LlmFailureException>());
+        await controller.close();
+      },
+    );
 
     test('detach cancels upstream without reporting a result', () async {
       var upstreamCancelled = false;

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:agents_app/data/web_search_settings.dart';
 import 'package:agents_app/ui/screens/web_search_settings_screen.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/extensions.dart';

@@ -4,8 +4,8 @@
 
 import 'dart:async';
 
-import 'package:agents_app/ui/providers/providers.dart';
-import 'package:agents_app/ui/views/llm_chat_view/llm_chat_view.dart';
+import 'package:agents_flutter/chat_provider.dart';
+import 'package:agents_app/chat_toolkit/views/llm_chat_view/llm_chat_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -5,8 +5,8 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 
-import '../../data/usage_store.dart';
-import '../views/chat_message_view/llm_message_view.dart' show formatTokenCount;
+import '../../chat_toolkit/views/chat_message_view/llm_message_view.dart'
+    show formatTokenCount;
 
 /// Opens the token-usage sheet for [conversationId].
 Future<void> showUsageStats(

@@ -1,0 +1,643 @@
+// Copyright 2024 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'package:agents_flutter/agents_flutter.dart';
+import 'package:flutter/material.dart';
+import 'package:universal_platform/universal_platform.dart';
+
+import '../../strings/configured_agents_strings.dart';
+import '../../styles/configured_agents_style.dart';
+import 'configured_agents_form_field.dart';
+import 'editor_actions.dart';
+
+/// Access settings for a newly created agent: every tool and context
+/// capability starts disabled so the user opts in to each one.
+///
+/// Existing agents saved without an access record keep the package
+/// defaults instead — the runtime treats a missing record as
+/// `AgentAccessConfig()`, so showing anything else here would silently
+/// change their behavior on the next save.
+const AgentAccessConfig newAgentAccess = AgentAccessConfig(
+  enableFileMemory: false,
+  enableFileAccess: false,
+  enableFileWriteTools: false,
+  enableWebSearch: false,
+  enableShell: false,
+  enableTodoList: false,
+  enableAgentMode: false,
+  enableSkills: false,
+  enableTemporal: false,
+  enableConnectivity: false,
+  enableAppInfo: false,
+  enableDeviceInfo: false,
+  enableLocation: false,
+  enableNetworkInfo: false,
+  enableWakeLock: false,
+  enablePushover: false,
+);
+
+/// Editor form for creating or updating a [SavedAgentConfig].
+class AgentEditor extends StatefulWidget {
+  /// Creates an [AgentEditor].
+  const AgentEditor({
+    required this.models,
+    required this.style,
+    required this.strings,
+    required this.onSubmit,
+    required this.onCancel,
+    this.initial,
+    this.onDirty,
+    this.agents = const [],
+    this.networkModelIds = const {},
+    this.initialInventoryEnabled,
+    this.onInventoryEnabled,
+    this.pushoverSettings,
+    this.onConfigurePushover,
+    super.key,
+  });
+
+  /// The agent being edited, or `null` to create a new one.
+  final SavedAgentConfig? initial;
+
+  /// Models the agent may run on. Must be non-empty.
+  final List<ModelConfig> models;
+
+  /// Saved agents offered as delegate targets. The agent being edited is
+  /// excluded automatically.
+  final List<SavedAgentConfig> agents;
+
+  /// Ids of models backed by remote network agents.
+  ///
+  /// Remote agents run inside their host's harness, so local tool access
+  /// and delegation settings do not apply and are hidden for them.
+  final Set<String> networkModelIds;
+
+  /// Resolved style.
+  final ConfiguredAgentsStyle style;
+
+  /// Resolved strings.
+  final ConfiguredAgentsStrings strings;
+
+  /// Called with the edited agent.
+  final void Function(SavedAgentConfig agent) onSubmit;
+
+  /// Called when the user cancels.
+  final VoidCallback onCancel;
+
+  /// The agent's current inventory-tools access, or `null` to hide the
+  /// switch on platforms without an inventory store.
+  ///
+  /// The flag is app-local (keyed by agent id, not part of
+  /// [SavedAgentConfig]), so the host supplies it separately and receives
+  /// the edited value through [onInventoryEnabled].
+  final bool? initialInventoryEnabled;
+
+  /// Called on submit with the agent's id and the chosen inventory access.
+  ///
+  /// Only invoked while [initialInventoryEnabled] is non-null.
+  final void Function(String agentId, bool enabled)? onInventoryEnabled;
+
+  /// The device's Pushover configuration, or `null` to omit the
+  /// not-configured hint.
+  ///
+  /// The Pushover tools only exist while credentials are stored on this
+  /// device, so enabling the switch without them silently grants nothing.
+  /// While that is the case a warning appears under the switch; it clears
+  /// itself the moment the settings report a configuration (they notify on
+  /// save).
+  final PushoverSettings? pushoverSettings;
+
+  /// Opens the Pushover credentials dialog from the warning's action.
+  ///
+  /// Without it the warning renders as text alone.
+  final VoidCallback? onConfigurePushover;
+
+  /// Called the first time the user modifies any field.
+  ///
+  /// Hosts use this to protect unsaved work: the Agent Center prompts
+  /// before discarding a dirty editor, and stays silent for an untouched
+  /// one (confirming a no-op change is exactly the kind of prompt the
+  /// app's UI rules forbid).
+  final VoidCallback? onDirty;
+
+  @override
+  State<AgentEditor> createState() => _AgentEditorState();
+}
+
+class _AgentEditorState extends State<AgentEditor> {
+  bool _dirty = false;
+
+  /// Reports the first user edit to the host.
+  ///
+  /// Every non-text control in this form mutates through [setState], and
+  /// text fields report through [Form.onChanged], so together these two
+  /// hooks cover the whole editor without threading a callback through
+  /// each individual field.
+  /// Set one frame after the first build; internal setup — controllers,
+  /// format detection — happens before it, so those changes are not user
+  /// edits and must not mark the form dirty.
+  bool _interactive = false;
+
+  void _markDirty() {
+    if (!_interactive || _dirty) return;
+    _dirty = true;
+    widget.onDirty?.call();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _markDirty();
+  }
+
+  final _formKey = GlobalKey<FormState>();
+
+  /// Fixed for the editor's lifetime: repeated submits (e.g. after a
+  /// storage failure) must overwrite one record, not mint duplicates.
+  late final String _entityId = widget.initial?.id ?? newConfiguredAgentsId();
+  late final TextEditingController _name;
+  late final TextEditingController _description;
+  late final TextEditingController _instructions;
+  late final TextEditingController _temperature;
+  late final TextEditingController _maxOutputTokens;
+  late String _modelId;
+  late AgentAccessConfig _access;
+  late bool _inventoryEnabled = widget.initialInventoryEnabled ?? false;
+  late List<SavedAgentConfig> _delegateCandidates;
+  final Set<String> _selectedDelegates = {};
+  final Map<String, TextEditingController> _delegationGuidance = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _interactive = true;
+    });
+    final initial = widget.initial;
+    _delegateCandidates = [
+      for (final agent in widget.agents)
+        if (agent.id != initial?.id) agent,
+    ];
+    final candidateIds = {for (final agent in _delegateCandidates) agent.id};
+    for (final delegation
+        in initial?.delegations ?? const <AgentDelegationConfig>[]) {
+      if (!candidateIds.contains(delegation.agentId)) continue;
+      _selectedDelegates.add(delegation.agentId);
+      _delegationGuidance[delegation.agentId] = TextEditingController(
+        text: delegation.instructions,
+      );
+    }
+    _name = TextEditingController(text: initial?.name ?? '');
+    _description = TextEditingController(text: initial?.description ?? '');
+    _instructions = TextEditingController(text: initial?.instructions ?? '');
+    _temperature = TextEditingController(
+      text: initial?.temperature?.toString() ?? '',
+    );
+    _maxOutputTokens = TextEditingController(
+      text: initial?.maxOutputTokens?.toString() ?? '',
+    );
+    final hasInitialModel = widget.models.any(
+      (model) => model.id == initial?.modelId,
+    );
+    _modelId = hasInitialModel ? initial!.modelId : widget.models.first.id;
+    _access = initial == null
+        ? newAgentAccess
+        : initial.access ?? const AgentAccessConfig();
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    _instructions.dispose();
+    _temperature.dispose();
+    _maxOutputTokens.dispose();
+    for (final controller in _delegationGuidance.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    final description = _description.text.trim();
+    final instructions = _instructions.text.trim();
+    if (widget.initialInventoryEnabled != null) {
+      widget.onInventoryEnabled?.call(_entityId, _inventoryEnabled);
+    }
+    widget.onSubmit(
+      SavedAgentConfig(
+        id: _entityId,
+        name: _name.text.trim(),
+        modelId: _modelId,
+        description: description,
+        instructions: instructions,
+        temperature: double.tryParse(_temperature.text.trim()),
+        maxOutputTokens: int.tryParse(_maxOutputTokens.text.trim()),
+        access: _access,
+        delegations: [
+          for (final candidate in _delegateCandidates)
+            if (_selectedDelegates.contains(candidate.id))
+              AgentDelegationConfig(
+                agentId: candidate.id,
+                instructions:
+                    _delegationGuidance[candidate.id]?.text.trim() ?? '',
+              ),
+        ],
+      ),
+    );
+  }
+
+  String? _validateOptionalNumber(String? value, {required bool integer}) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+    final parsed = integer ? int.tryParse(text) : double.tryParse(text);
+    return parsed == null ? widget.strings.invalidNumber : null;
+  }
+
+  /// The "Pushover isn't configured" warning under its switch, or null when
+  /// there is nothing to warn about.
+  ///
+  /// A [ListenableBuilder] rather than a listener on this state: saving
+  /// credentials from the warning's own action must clear it immediately,
+  /// but an external settings change is not a user edit and must not mark
+  /// the form dirty through this state's [setState] override.
+  Widget? _pushoverWarning(
+    ConfiguredAgentsStyle style,
+    ConfiguredAgentsStrings strings,
+  ) {
+    final settings = widget.pushoverSettings;
+    if (settings == null || !_access.enablePushover) return null;
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        if (settings.isConfigured) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                strings.pushoverNotConfiguredWarning,
+                style: style.subtitleTextStyle?.copyWith(
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+              if (widget.onConfigurePushover != null)
+                TextButton(
+                  onPressed: widget.onConfigurePushover,
+                  child: Text(strings.pushoverConfigureAction),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = widget.strings;
+    final style = widget.style;
+    return Form(
+      key: _formKey,
+      onChanged: _markDirty,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ConfiguredAgentsFormField(
+            label: strings.nameLabel,
+            controller: _name,
+            style: style,
+            validator: (value) => (value == null || value.trim().isEmpty)
+                ? strings.requiredField
+                : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(strings.modelLabel, style: style.labelTextStyle),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  initialValue: _modelId,
+                  decoration: const InputDecoration(isDense: true),
+                  items: [
+                    for (final model in widget.models)
+                      DropdownMenuItem(
+                        value: model.id,
+                        child: Text(model.label),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _modelId = value ?? _modelId),
+                ),
+              ],
+            ),
+          ),
+          ConfiguredAgentsFormField(
+            label: strings.descriptionLabel,
+            controller: _description,
+            style: style,
+          ),
+          ConfiguredAgentsFormField(
+            label: strings.instructionsLabel,
+            controller: _instructions,
+            style: style,
+            maxLines: 4,
+          ),
+          ConfiguredAgentsFormField(
+            label: strings.temperatureLabel,
+            controller: _temperature,
+            style: style,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            validator: (value) =>
+                _validateOptionalNumber(value, integer: false),
+          ),
+          ConfiguredAgentsFormField(
+            label: strings.maxOutputTokensLabel,
+            controller: _maxOutputTokens,
+            style: style,
+            keyboardType: TextInputType.number,
+            validator: (value) => _validateOptionalNumber(value, integer: true),
+          ),
+          const SizedBox(height: 8),
+          if (widget.networkModelIds.contains(_modelId))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'This agent runs on another device; its tools, context, '
+                'and delegations are configured on the host.',
+                style: style.subtitleTextStyle,
+              ),
+            )
+          else ...[
+            _buildAccessSection(
+              label: strings.agentToolsLabel,
+              style: style,
+              switches: [
+                _AccessSwitchConfig(
+                  label: strings.webSearchAccessLabel,
+                  value: _access.enableWebSearch,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableWebSearch: value)),
+                ),
+                // The run_shell tool spawns host processes, so it is only
+                // offered on desktop platforms.
+                if (UniversalPlatform.isDesktop)
+                  _AccessSwitchConfig(
+                    label: strings.shellAccessLabel,
+                    value: _access.enableShell,
+                    onChanged: (value) =>
+                        _updateAccess(_access.copyWith(enableShell: value)),
+                  ),
+                _AccessSwitchConfig(
+                  label: strings.temporalAccessLabel,
+                  value: _access.enableTemporal,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableTemporal: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.connectivityAccessLabel,
+                  value: _access.enableConnectivity,
+                  onChanged: (value) => _updateAccess(
+                    _access.copyWith(enableConnectivity: value),
+                  ),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.appInfoAccessLabel,
+                  value: _access.enableAppInfo,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableAppInfo: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.deviceInfoAccessLabel,
+                  value: _access.enableDeviceInfo,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableDeviceInfo: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.locationAccessLabel,
+                  value: _access.enableLocation,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableLocation: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.networkInfoAccessLabel,
+                  value: _access.enableNetworkInfo,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableNetworkInfo: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.wakeLockAccessLabel,
+                  value: _access.enableWakeLock,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableWakeLock: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.pushoverAccessLabel,
+                  value: _access.enablePushover,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enablePushover: value)),
+                  footer: _pushoverWarning(style, strings),
+                ),
+                if (widget.initialInventoryEnabled != null)
+                  _AccessSwitchConfig(
+                    label: strings.inventoryAccessLabel,
+                    value: _inventoryEnabled,
+                    onChanged: (value) =>
+                        setState(() => _inventoryEnabled = value),
+                  ),
+              ],
+            ),
+            _buildAccessSection(
+              label: strings.agentContextLabel,
+              style: style,
+              switches: [
+                _AccessSwitchConfig(
+                  label: strings.fileMemoryAccessLabel,
+                  value: _access.enableFileMemory,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableFileMemory: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.fileAccessLabel,
+                  value: _access.enableFileAccess,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableFileAccess: value)),
+                ),
+                if (_access.enableFileAccess)
+                  _AccessSwitchConfig(
+                    label: strings.fileWriteToolsLabel,
+                    value: _access.enableFileWriteTools,
+                    onChanged: (value) => _updateAccess(
+                      _access.copyWith(enableFileWriteTools: value),
+                    ),
+                  ),
+                _AccessSwitchConfig(
+                  label: strings.todoListAccessLabel,
+                  value: _access.enableTodoList,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableTodoList: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.agentModeAccessLabel,
+                  value: _access.enableAgentMode,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableAgentMode: value)),
+                ),
+                _AccessSwitchConfig(
+                  label: strings.skillsAccessLabel,
+                  value: _access.enableSkills,
+                  onChanged: (value) =>
+                      _updateAccess(_access.copyWith(enableSkills: value)),
+                ),
+              ],
+            ),
+            if (_access.enableFileAccess)
+              _buildFileApprovalModeField(style, strings),
+            if (_delegateCandidates.isNotEmpty)
+              _buildDelegationSection(style, strings),
+          ],
+          const SizedBox(height: 12),
+          EditorActions(
+            style: style,
+            strings: strings,
+            onCancel: widget.onCancel,
+            onSave: _submit,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _updateAccess(AgentAccessConfig access) {
+    setState(() => _access = access);
+  }
+
+  void _toggleDelegate(String agentId, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedDelegates.add(agentId);
+        _delegationGuidance.putIfAbsent(agentId, TextEditingController.new);
+      } else {
+        _selectedDelegates.remove(agentId);
+      }
+    });
+  }
+
+  Widget _buildDelegationSection(
+    ConfiguredAgentsStyle style,
+    ConfiguredAgentsStrings strings,
+  ) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(strings.delegationLabel, style: style.labelTextStyle),
+        const SizedBox(height: 6),
+        for (final candidate in _delegateCandidates) ...[
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(candidate.name, style: style.bodyTextStyle),
+            subtitle: candidate.description.isEmpty
+                ? null
+                : Text(candidate.description, style: style.bodyTextStyle),
+            value: _selectedDelegates.contains(candidate.id),
+            onChanged: (value) => _toggleDelegate(candidate.id, value),
+          ),
+          if (_selectedDelegates.contains(candidate.id))
+            ConfiguredAgentsFormField(
+              label: strings.delegationGuidanceLabel,
+              controller: _delegationGuidance[candidate.id]!,
+              style: style,
+              hintText: strings.delegationGuidanceHint,
+            ),
+        ],
+      ],
+    ),
+  );
+
+  Widget _buildFileApprovalModeField(
+    ConfiguredAgentsStyle style,
+    ConfiguredAgentsStrings strings,
+  ) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(strings.fileToolApprovalLabel, style: style.labelTextStyle),
+        const SizedBox(height: 6),
+        DropdownButton<FileToolApprovalMode>(
+          value: _access.fileToolApprovalMode,
+          isExpanded: true,
+          onChanged: (mode) {
+            if (mode != null) {
+              _updateAccess(_access.copyWith(fileToolApprovalMode: mode));
+            }
+          },
+          items: [
+            for (final mode in FileToolApprovalMode.values)
+              DropdownMenuItem(
+                value: mode,
+                child: Text(switch (mode) {
+                  FileToolApprovalMode.alwaysAsk =>
+                    strings.fileToolApprovalAlwaysAsk,
+                  FileToolApprovalMode.autoApproveReadOnly =>
+                    strings.fileToolApprovalAutoReadOnly,
+                  FileToolApprovalMode.autoApproveAll =>
+                    strings.fileToolApprovalAutoAll,
+                }, style: style.bodyTextStyle),
+              ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildAccessSection({
+    required String label,
+    required ConfiguredAgentsStyle style,
+    required List<_AccessSwitchConfig> switches,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: style.labelTextStyle),
+        const SizedBox(height: 6),
+        for (final accessSwitch in switches) ...[
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(accessSwitch.label, style: style.bodyTextStyle),
+            value: accessSwitch.value,
+            onChanged: accessSwitch.onChanged,
+          ),
+          if (accessSwitch.footer != null) accessSwitch.footer!,
+        ],
+      ],
+    ),
+  );
+}
+
+class _AccessSwitchConfig {
+  const _AccessSwitchConfig({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.footer,
+  });
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  /// Rendered directly under the switch, e.g. a misconfiguration warning.
+  final Widget? footer;
+}

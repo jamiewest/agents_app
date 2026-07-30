@@ -1,12 +1,12 @@
 // Accessibility behavior for the chat controls: real disabled states,
 // keyboard reachability, and semantic labels.
 
-import 'package:agents_app/ui/styles/action_button_style.dart';
-import 'package:agents_app/ui/styles/llm_chat_view_style.dart';
-import 'package:agents_app/ui/views/action_button.dart';
-import 'package:agents_app/ui/views/chat_input/input_button.dart';
-import 'package:agents_app/ui/views/chat_input/input_state.dart';
-import 'package:agents_app/ui/views/chat_message_view/hovering_buttons.dart';
+import 'package:agents_app/chat_toolkit/styles/action_button_style.dart';
+import 'package:agents_app/chat_toolkit/styles/llm_chat_view_style.dart';
+import 'package:agents_app/chat_toolkit/views/action_button.dart';
+import 'package:agents_app/chat_toolkit/views/chat_input/input_button.dart';
+import 'package:agents_app/chat_toolkit/views/chat_input/input_state.dart';
+import 'package:agents_app/chat_toolkit/views/chat_message_view/hovering_buttons.dart';
 import 'package:agents_app/ui/widgets/draggable_separator.dart';
 import 'package:agents_app/ui/widgets/side_panel_host.dart';
 import 'package:flutter/material.dart';

@@ -4,7 +4,7 @@
 
 import 'package:agents_app/ui/screens/agent_center_nav.dart';
 import 'package:agents_app/ui/screens/agent_editor_page.dart';
-import 'package:agents_app/ui/views/configured_agents/configured_agents.dart';
+import 'package:agents_app/chat_toolkit/views/configured_agents/configured_agents.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/extensions.dart';
 import 'package:flutter/material.dart';

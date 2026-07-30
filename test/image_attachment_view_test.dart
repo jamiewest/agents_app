@@ -7,10 +7,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agents_app/ui/dialogs/image_preview_dialog.dart';
-import 'package:agents_app/ui/providers/interface/attachments.dart';
-import 'package:agents_app/ui/views/attachment_view/attachment_view.dart';
-import 'package:agents_app/ui/views/attachment_view/image_attachment_view.dart';
-import 'package:agents_app/ui/views/attachment_view/link_attachment_view.dart';
+import 'package:agents_flutter/chat_provider.dart';
+import 'package:agents_app/chat_toolkit/views/attachment_view/attachment_view.dart';
+import 'package:agents_app/chat_toolkit/views/attachment_view/image_attachment_view.dart';
+import 'package:agents_app/chat_toolkit/views/attachment_view/link_attachment_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';

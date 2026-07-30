@@ -1,7 +1,7 @@
-import 'package:agents_app/ui/chat_view_model/chat_view_model.dart';
-import 'package:agents_app/ui/chat_view_model/chat_view_model_provider.dart';
-import 'package:agents_app/ui/providers/providers.dart';
-import 'package:agents_app/ui/views/chat_history_view.dart';
+import 'package:agents_app/chat_toolkit/chat_view_model/chat_view_model.dart';
+import 'package:agents_app/chat_toolkit/chat_view_model/chat_view_model_provider.dart';
+import 'package:agents_flutter/chat_provider.dart';
+import 'package:agents_app/chat_toolkit/views/chat_history_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,7 +9,7 @@ void main() {
   testWidgets('wraps the scrollable history in an edge fade shader', (
     tester,
   ) async {
-    final provider = EchoProvider(
+    final provider = EchoLlmProvider(
       history: [
         ChatMessage.user('hello', const []),
         ChatMessage(origin: MessageOrigin.llm, text: 'hi', attachments: []),

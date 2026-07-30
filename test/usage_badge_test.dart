@@ -2,14 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:agents_app/data/usage_store.dart';
-import 'package:agents_app/ui/chat_view_model/chat_view_model.dart';
-import 'package:agents_app/ui/chat_view_model/chat_view_model_provider.dart';
-import 'package:agents_app/ui/providers/interface/attachments.dart';
-import 'package:agents_app/ui/providers/interface/chat_message.dart';
-import 'package:agents_app/ui/providers/interface/llm_provider.dart';
-import 'package:agents_app/ui/providers/interface/message_origin.dart';
-import 'package:agents_app/ui/views/chat_message_view/llm_message_view.dart';
+import 'package:agents_app/chat_toolkit/chat_view_model/chat_view_model.dart';
+import 'package:agents_app/chat_toolkit/chat_view_model/chat_view_model_provider.dart';
+import 'package:agents_flutter/chat_provider.dart';
+import 'package:agents_app/chat_toolkit/views/chat_message_view/llm_message_view.dart';
 import 'package:agents_app/ui/widgets/usage_stats_sheet.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;

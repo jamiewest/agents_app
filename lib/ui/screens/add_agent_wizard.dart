@@ -10,19 +10,18 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/inventory_access_settings.dart';
-import '../../data/local_model_presets.dart';
-import '../../data/pushover_settings.dart';
+import '../../features/inventory/inventory_access_settings.dart';
+import '../../features/local_models/local_model_presets.dart';
 import '../../features/inventory/inventory_store.dart';
 import '../app_theme.dart';
 import '../dialogs/pushover_credentials.dart';
-import '../strings/configured_agents_strings.dart';
+import '../../chat_toolkit/strings/configured_agents_strings.dart';
 import '../widgets/page_body.dart';
-import '../styles/configured_agents_style.dart';
-import '../views/configured_agents/agent_editor.dart';
-import '../views/configured_agents/editor_actions.dart';
-import '../views/configured_agents/model_editor.dart';
-import '../views/configured_agents/source_editor.dart';
+import '../../chat_toolkit/styles/configured_agents_style.dart';
+import '../../chat_toolkit/views/configured_agents/agent_editor.dart';
+import '../../chat_toolkit/views/configured_agents/editor_actions.dart';
+import '../../chat_toolkit/views/configured_agents/model_editor.dart';
+import '../../chat_toolkit/views/configured_agents/source_editor.dart';
 
 /// The kind of agent the add-agent wizard is setting up.
 ///

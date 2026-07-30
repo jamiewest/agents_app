@@ -8,7 +8,7 @@ import 'package:agents_app/data/app_reset.dart';
 // The io variant directly: VM tests always run with dart:io, and the
 // analyzer resolves the conditional export to the stub, which has no
 // debugLocalModelStoreRoot.
-import 'package:agents_app/data/local_model_store_io.dart';
+import 'package:agents_app/features/local_models/local_model_store_io.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';

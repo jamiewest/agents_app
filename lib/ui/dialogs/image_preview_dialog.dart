@@ -4,7 +4,7 @@
 
 import 'package:flutter/widgets.dart';
 
-import '../providers/interface/attachments.dart';
+import 'package:agents_flutter/chat_provider.dart';
 
 /// Displays a dialog to preview the image when the user taps on an attached
 /// image.

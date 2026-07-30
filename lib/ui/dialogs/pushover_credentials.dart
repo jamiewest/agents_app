@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
-
-import '../../data/pushover_settings.dart';
 
 /// Shows the Pushover credentials dialog, prefilled with the stored values.
 ///

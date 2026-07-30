@@ -1,0 +1,258 @@
+// Copyright 2024 The Flutter Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'dart:async';
+
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/material.dart'
+    show MenuAnchor, MenuItemButton, MenuStyle;
+import 'package:flutter/widgets.dart';
+import '../../../ui/dialogs/url_input_dialog.dart';
+import '../../strings/llm_chat_view_strings.dart';
+import '../../utility.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../chat_view_model/chat_view_model_client.dart';
+import '../../dialogs/adaptive_snack_bar/adaptive_snack_bar.dart';
+import '../../platform_helper/platform_helper.dart';
+import 'package:agents_flutter/chat_provider.dart';
+import '../../styles/llm_chat_view_style.dart';
+import '../action_button.dart';
+import 'barcode_scanner_screen.dart';
+
+/// A widget that provides an action bar for attaching files or images.
+@immutable
+class AttachmentActionBar extends StatefulWidget {
+  /// Creates an [AttachmentActionBar].
+  ///
+  /// The [onAttachments] parameter is required and is called when attachments
+  /// are selected.
+  const AttachmentActionBar({
+    required this.onAttachments,
+    this.onInsertText,
+    super.key,
+  });
+
+  /// Callback function that is called when attachments are selected.
+  ///
+  /// The selected [Attachment]s are passed as an argument to this function.
+  final Function(Iterable<Attachment> attachments) onAttachments;
+
+  /// Callback invoked with text to insert into the message input, such as a
+  /// value decoded by the barcode scanner. Null disables the scan option.
+  final void Function(String text)? onInsertText;
+
+  @override
+  State<AttachmentActionBar> createState() => _AttachmentActionBarState();
+}
+
+class _AttachmentActionBarState extends State<AttachmentActionBar> {
+  late final bool _canCamera;
+  late final bool _canScan;
+
+  @override
+  void initState() {
+    super.initState();
+    _canCamera = canTakePhoto();
+    _canScan = canScanBarcode();
+  }
+
+  @override
+  Widget build(BuildContext context) => ChatViewModelClient(
+    builder: (context, viewModel, child) {
+      final chatStyle = LlmChatViewStyle.resolveFor(context, viewModel.style);
+      final chatStrings = viewModel.strings;
+      final enableImages = viewModel.enableImageAttachments;
+      final menuItems = [
+        if (_canCamera && enableImages)
+          MenuItemButton(
+            leadingIcon: Icon(
+              chatStyle.cameraButtonStyle!.icon!,
+              color: chatStyle.cameraButtonStyle!.iconColor,
+            ),
+            onPressed: () => _onCamera(chatStrings),
+            child: Text(
+              chatStyle.cameraButtonStyle!.text!,
+              style: chatStyle.cameraButtonStyle!.textStyle,
+            ),
+          ),
+        if (enableImages)
+          MenuItemButton(
+            leadingIcon: Icon(
+              chatStyle.galleryButtonStyle!.icon!,
+              color: chatStyle.galleryButtonStyle!.iconColor,
+            ),
+            onPressed: () => _onGallery(chatStrings),
+            child: Text(
+              chatStyle.galleryButtonStyle!.text!,
+              style: chatStyle.galleryButtonStyle!.textStyle,
+            ),
+          ),
+        if (_canScan && widget.onInsertText != null)
+          MenuItemButton(
+            leadingIcon: Icon(
+              LucideIcons.scanQrCode300,
+              color: chatStyle.attachFileButtonStyle!.iconColor,
+            ),
+            onPressed: _onScanBarcode,
+            child: Text(
+              chatStrings.scanBarcode,
+              style: chatStyle.attachFileButtonStyle!.textStyle,
+            ),
+          ),
+        MenuItemButton(
+          leadingIcon: Icon(
+            chatStyle.attachFileButtonStyle!.icon!,
+            color: chatStyle.attachFileButtonStyle!.iconColor,
+          ),
+          onPressed: () => _onFile(chatStrings),
+          child: Text(
+            chatStyle.attachFileButtonStyle!.text!,
+            style: chatStyle.attachFileButtonStyle!.textStyle,
+          ),
+        ),
+        MenuItemButton(
+          leadingIcon: Icon(
+            chatStyle.urlButtonStyle!.icon!,
+            color: chatStyle.urlButtonStyle!.iconColor,
+          ),
+          onPressed: () => _onUrl(chatStrings),
+          child: Text(
+            chatStyle.urlButtonStyle!.text!,
+            style: chatStyle.urlButtonStyle!.textStyle,
+          ),
+        ),
+      ];
+
+      return MenuAnchor(
+        style: MenuStyle(
+          backgroundColor: WidgetStateProperty.all(chatStyle.menuColor),
+        ),
+        // Force menu above by using negative offset equal to estimated menu
+        // height. NOTE: This is a hack to get the menu to appear above the
+        // button so that it doesn't appear below the soft keyboard. There
+        // should be no reason to set the alignmentOffset at all once this bug
+        // is fixed: https://github.com/flutter/flutter/issues/142921
+        alignmentOffset: _menuAnchorAlignmentOffsetHackForMobile(
+          chatStyle,
+          menuItems.length,
+        ),
+        consumeOutsideTap: true,
+        builder: (_, controller, _) => ActionButton(
+          onPressed: controller.isOpen ? controller.close : controller.open,
+          style: chatStyle.addButtonStyle!,
+        ),
+        menuChildren: menuItems,
+      );
+    },
+  );
+
+  Offset? _menuAnchorAlignmentOffsetHackForMobile(
+    LlmChatViewStyle chatStyle,
+    int menuItems,
+  ) {
+    // Limit the potential damage on this hack to mobile platforms
+    if (!isMobile) return null;
+
+    // From MenuAnchor source: minimum height is 48.0 + some padding for
+    // safety
+    final double itemHeight = 48.0 + 8.0;
+    final double menuPadding = 16.0;
+
+    // Calculate menu height based on actual number of items
+    final double estimatedMenuHeight = (menuItems * itemHeight) + menuPadding;
+    return Offset(0, -estimatedMenuHeight);
+  }
+
+  void _onScanBarcode() => unawaited(_scanBarcode());
+
+  Future<void> _scanBarcode() async {
+    final code = await scanBarcode(context);
+    if (code == null || code.isEmpty) return;
+    widget.onInsertText?.call(code);
+  }
+
+  void _onCamera(LlmChatViewStrings chatStrings) =>
+      unawaited(_pickImage(ImageSource.camera, chatStrings));
+  void _onGallery(LlmChatViewStrings chatStrings) =>
+      unawaited(_pickImage(ImageSource.gallery, chatStrings));
+
+  Future<void> _pickImage(
+    ImageSource source,
+    LlmChatViewStrings chatStrings,
+  ) async {
+    assert(
+      source == ImageSource.camera || source == ImageSource.gallery,
+      'Unsupported image source: $source',
+    );
+
+    final picker = ImagePicker();
+    try {
+      if (source == ImageSource.gallery) {
+        final pics = await picker.pickMultiImage();
+        final attachments = await Future.wait(
+          pics.map(ImageFileAttachment.fromFile),
+        );
+        widget.onAttachments(attachments);
+      } else {
+        final pic = await takePhoto(context);
+        if (pic == null) return;
+        widget.onAttachments([await ImageFileAttachment.fromFile(pic)]);
+      }
+    } on Exception catch (ex) {
+      final message = chatStrings.formatUnableToPickImage(ex.toString());
+      if (context.mounted) {
+        // I just checked this! ^^^
+        AdaptiveSnackBar.show(
+          // ignore: use_build_context_synchronously
+          context,
+          message,
+          copyText: message,
+          copyLabel: chatStrings.copy,
+        );
+      }
+    }
+  }
+
+  Future<void> _onFile(LlmChatViewStrings chatStrings) async {
+    try {
+      final files = await openFiles();
+      final attachments = await Future.wait(files.map(FileAttachment.fromFile));
+      widget.onAttachments(attachments);
+    } on Exception catch (ex) {
+      final message = chatStrings.formatUnableToPickFile(ex.toString());
+      if (context.mounted) {
+        // I just checked this! ^^^
+        AdaptiveSnackBar.show(
+          // ignore: use_build_context_synchronously
+          context,
+          message,
+          copyText: message,
+          copyLabel: chatStrings.copy,
+        );
+      }
+    }
+  }
+
+  Future<void> _onUrl(LlmChatViewStrings chatStrings) async {
+    try {
+      final url = await showUrlInputDialog(context);
+      if (url == null) return;
+      widget.onAttachments([LinkAttachment(name: url.name, url: url.url)]);
+    } on Exception catch (ex) {
+      final message = chatStrings.formatUnableToPickUrl(ex.toString());
+      if (context.mounted) {
+        // I just checked this! ^^^
+        AdaptiveSnackBar.show(
+          // ignore: use_build_context_synchronously
+          context,
+          message,
+          copyText: message,
+          copyLabel: chatStrings.copy,
+        );
+      }
+    }
+  }
+}

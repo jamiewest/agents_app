@@ -10,9 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/agent_task_store.dart';
-import '../../data/task_scheduler_service.dart';
-import '../../domain/agent_task.dart';
 import '../app_theme.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/empty_state.dart';

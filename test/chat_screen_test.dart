@@ -1,11 +1,6 @@
-import 'package:agents_app/data/app_activity_monitor.dart';
-import 'package:agents_app/data/chat_transcript_store.dart';
-import 'package:agents_app/data/conversation_store.dart';
-import 'package:agents_app/domain/agent_task.dart' show taskPromptAuthorName;
-import 'package:agents_app/domain/conversation.dart';
-import 'package:agents_app/main.dart';
-import 'package:agents_app/ui/views/chat_input/input_button.dart';
-import 'package:agents_app/ui/views/chat_input/input_state.dart';
+import 'package:agents_app/ui/screens/chat_screen.dart';
+import 'package:agents_app/chat_toolkit/views/chat_input/input_button.dart';
+import 'package:agents_app/chat_toolkit/views/chat_input/input_state.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
@@ -230,8 +225,13 @@ void main() {
       tester,
     ) async {
       final records = InMemoryRecordStore();
-      final services = buildTestServices(records);
+      final services = buildTestServices(records, includeChatUtilities: true);
       await seedTestAgent(services);
+      await services.getRequiredService<ConfiguredAgentsManager>().saveModel(
+        testModel.copyWith(
+          settings: const {ModelCapabilities.thinkingKey: 'true'},
+        ),
+      );
 
       await tester.pumpWidget(
         MaterialApp(
@@ -240,18 +240,53 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The old individual icon buttons are gone from the app bar.
+      // Every utility is hidden behind one horizontal-ellipsis button.
+      expect(find.byIcon(LucideIcons.ellipsis300), findsOneWidget);
+      expect(find.byIcon(LucideIcons.braces300), findsNothing);
+      expect(find.byIcon(LucideIcons.chartPie300), findsNothing);
+      expect(find.byIcon(LucideIcons.brain300), findsNothing);
       expect(find.byIcon(LucideIcons.userPlus300), findsNothing);
       expect(find.byIcon(LucideIcons.rotateCcw300), findsNothing);
       expect(find.byIcon(LucideIcons.pencil300), findsNothing);
+      expect(find.byIcon(LucideIcons.panelRightOpen300), findsNothing);
+      expect(find.byIcon(LucideIcons.panelRightClose300), findsNothing);
 
       await tester.tap(find.byTooltip('Conversation actions'));
       await tester.pumpAndSettle();
 
+      expect(find.text('Thinking'), findsOneWidget);
+      expect(find.text('Inspect'), findsOneWidget);
+      expect(find.text('Usage'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.brain300), findsOneWidget);
+      expect(find.byIcon(LucideIcons.braces300), findsOneWidget);
+      expect(find.byIcon(LucideIcons.chartPie300), findsOneWidget);
       expect(find.text('New session'), findsOneWidget);
       expect(find.text('Start group chat…'), findsOneWidget);
       expect(find.text('Rename'), findsOneWidget);
       expect(find.text('Delete conversation'), findsOneWidget);
+
+      await tester.tap(find.text('Thinking'));
+      await tester.pumpAndSettle();
+      expect(
+        services.getRequiredService<ThinkingSettings>().enabledFor(
+          testModel.id,
+        ),
+        isTrue,
+      );
+
+      await tester.tap(find.byTooltip('Conversation actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inspect'));
+      await tester.pumpAndSettle();
+      expect(find.text('Prompts sent to models'), findsOneWidget);
+      Navigator.of(tester.element(find.text('Prompts sent to models'))).pop();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Conversation actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Usage'));
+      await tester.pumpAndSettle();
+      expect(find.text('No token usage recorded yet.'), findsOneWidget);
     });
 
     testWidgets('hides task prompts from the displayed transcript', (

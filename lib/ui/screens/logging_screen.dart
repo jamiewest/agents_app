@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/prompt_log.dart';
 import '../widgets/prompt_inspector_panel.dart';
 import '../widgets/settings_section_shell.dart';
 

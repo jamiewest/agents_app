@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:agents_app/data/local_llama_model_host.dart';
+import 'package:agents_app/features/local_models/local_llama_model_host.dart';
 import 'package:llama_cpp_flutter/llama_cpp_flutter.dart' as llama;
 import 'package:flutter_test/flutter_test.dart';
 

@@ -6,7 +6,6 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../domain/agent_task.dart';
 import '../app_theme.dart';
 
 /// A prefilled starting point for a new task, shown in the Tasks gallery.

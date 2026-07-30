@@ -2,10 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:agents_app/data/pushover_settings.dart';
-import 'package:agents_app/ui/strings/configured_agents_strings.dart';
-import 'package:agents_app/ui/styles/configured_agents_style.dart';
-import 'package:agents_app/ui/views/configured_agents/agent_editor.dart';
+import 'package:agents_app/chat_toolkit/strings/configured_agents_strings.dart';
+import 'package:agents_app/chat_toolkit/styles/configured_agents_style.dart';
+import 'package:agents_app/chat_toolkit/views/configured_agents/agent_editor.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

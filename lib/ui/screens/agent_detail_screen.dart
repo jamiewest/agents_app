@@ -10,10 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/agent_center_overview.dart';
-import '../../data/agent_run_store.dart';
-import '../../data/inventory_access_settings.dart';
-import '../../data/usage_store.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
+import '../../features/inventory/inventory_access_settings.dart';
 import '../widgets/agent_dashboard.dart';
 
 /// A read-only view of one saved agent: its configuration, tool access,
@@ -207,6 +206,11 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
                           ?.enabledFor(agent.id) ??
                       false,
                 ),
+                if (widget.services.getService<NetworkSharingSettings>()
+                    case final sharing? when sharing.isSupported) ...[
+                  const SizedBox(height: 24),
+                  _SharingCard(settings: sharing, agentId: agent.id),
+                ],
                 if (agent.delegations.isNotEmpty) ...[
                   const SizedBox(height: 24),
                   _DelegationsCard(
@@ -368,6 +372,125 @@ class _AccessCard extends StatelessWidget {
               runSpacing: 8,
               children: [for (final tool in enabled) Chip(label: Text(tool))],
             ),
+    );
+  }
+}
+
+/// Offers this agent to paired devices on the local network.
+///
+/// Sharing lives on the agent rather than on a screen of its own: it is a
+/// property of this agent, and the decision is made while looking at what it
+/// can do. The pairing code sits here too — it is the only thing a peer needs
+/// once something is being served, and the host it pairs with exists only
+/// because an agent on some page like this one was switched on.
+class _SharingCard extends StatelessWidget {
+  const _SharingCard({required this.settings, required this.agentId});
+
+  final NetworkSharingSettings settings;
+  final String agentId;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: settings,
+    builder: (context, _) {
+      final scheme = Theme.of(context).colorScheme;
+      final shared = settings.isShared(agentId);
+      return DashboardCard(
+        title: 'Network sharing',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: shared,
+              title: const Text('Share on the network'),
+              subtitle: Text(
+                shared && settings.isRunning
+                    ? 'Paired devices can use this agent — serving on port '
+                          '${settings.port}'
+                    : 'Let paired devices on this network use this agent as '
+                          'their own teammate (A2A)',
+              ),
+              onChanged: settings.busy
+                  ? null
+                  : (value) => unawaited(settings.setShared(agentId, value)),
+            ),
+            Text(
+              'Keep the app open while sharing. Traffic is unencrypted local '
+              'HTTP — share only on networks you trust.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            if (settings.error case final error?) ...[
+              const SizedBox(height: 8),
+              Text(error, style: TextStyle(color: scheme.error)),
+            ],
+            if (settings.isRunning) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => unawaited(_showPairingCode(context)),
+                icon: const Icon(LucideIcons.qrCode300),
+                label: const Text('Show pairing code'),
+              ),
+            ],
+          ],
+        ),
+      );
+    },
+  );
+
+  Future<void> _showPairingCode(BuildContext context) async {
+    final PairingPayload offer;
+    try {
+      offer = await settings.createPairingOffer();
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$error')));
+      return;
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pairing code'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  // QR codes need a white quiet zone for scanner contrast in
+                  // both themes; not a theme role.
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(12),
+                  child: QrImageView(data: offer.encode(), size: 220),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Scan this on the other device, or paste the code below into '
+                'its "Add network agent" screen. Single-use; expires in two '
+                'minutes.',
+              ),
+              const SizedBox(height: 8),
+              SelectableText(
+                offer.encode(),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
     );
   }
 }

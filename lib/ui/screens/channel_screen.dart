@@ -11,10 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/channel_store.dart';
-import '../../data/conversation_store.dart';
-import '../../domain/channel.dart';
-import '../../domain/conversation.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/empty_state.dart';
 import 'chats_home.dart' show detailPaneLeading;
@@ -171,6 +167,7 @@ class _ChannelScreenState extends State<ChannelScreen>
         appBar: AppBar(
           leadingWidth: leading.leadingWidth,
           leading: leading.leading,
+          titleSpacing: leading.titleSpacing,
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -179,6 +176,7 @@ class _ChannelScreenState extends State<ChannelScreen>
       appBar: AppBar(
         leadingWidth: leading.leadingWidth,
         leading: leading.leading,
+        titleSpacing: leading.titleSpacing,
         title: Text(channel.name),
         actions: [
           IconButton(

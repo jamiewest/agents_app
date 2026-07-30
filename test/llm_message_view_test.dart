@@ -4,15 +4,12 @@
 
 import 'dart:convert';
 
-import 'package:agents_app/ui/chat_view_model/chat_view_model.dart';
-import 'package:agents_app/ui/chat_view_model/chat_view_model_provider.dart';
-import 'package:agents_app/ui/providers/interface/attachments.dart';
-import 'package:agents_app/ui/providers/interface/chat_message.dart';
-import 'package:agents_app/ui/providers/interface/llm_provider.dart';
-import 'package:agents_app/ui/providers/interface/message_origin.dart';
-import 'package:agents_app/ui/views/attachment_view/image_attachment_view.dart';
-import 'package:agents_app/ui/views/chat_message_view/llm_message_view.dart';
-import 'package:agents_app/ui/views/jumping_dots_progress_indicator/jumping_dots_progress_indicator.dart';
+import 'package:agents_app/chat_toolkit/chat_view_model/chat_view_model.dart';
+import 'package:agents_app/chat_toolkit/chat_view_model/chat_view_model_provider.dart';
+import 'package:agents_flutter/chat_provider.dart';
+import 'package:agents_app/chat_toolkit/views/attachment_view/image_attachment_view.dart';
+import 'package:agents_app/chat_toolkit/views/chat_message_view/llm_message_view.dart';
+import 'package:agents_app/chat_toolkit/views/jumping_dots_progress_indicator/jumping_dots_progress_indicator.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

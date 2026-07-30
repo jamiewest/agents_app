@@ -11,12 +11,10 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/agent_run_store.dart';
-import '../../data/usage_store.dart';
-import '../dialogs/adaptive_snack_bar/adaptive_snack_bar.dart';
+import '../../chat_toolkit/dialogs/adaptive_snack_bar/adaptive_snack_bar.dart';
 import '../dialogs/discard_changes.dart';
-import '../strings/configured_agents_strings.dart';
-import '../views/configured_agents/configured_agents.dart';
+import '../../chat_toolkit/strings/configured_agents_strings.dart';
+import '../../chat_toolkit/views/configured_agents/configured_agents.dart';
 import '../widgets/agent_dashboard.dart' show compactTokens;
 import '../widgets/draggable_separator.dart';
 import '../widgets/empty_state.dart';
@@ -46,7 +44,11 @@ const double catalogTwoPaneBreakpoint = 880;
 /// dashboard.
 class AgentCatalogView extends StatefulWidget {
   /// Creates an [AgentCatalogView].
-  const AgentCatalogView({required this.services, required this.kind, super.key});
+  const AgentCatalogView({
+    required this.services,
+    required this.kind,
+    super.key,
+  });
 
   /// The application service provider.
   final ServiceProvider services;
@@ -102,7 +104,8 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
   @override
   void initState() {
     super.initState();
-    final manager = widget.services.getRequiredService<ConfiguredAgentsManager>();
+    final manager = widget.services
+        .getRequiredService<ConfiguredAgentsManager>();
     _controller = ConfiguredAgentsController(manager);
     _runs = widget.services.getRequiredService<AgentRunTelemetryStore>();
     _usage = widget.services.getRequiredService<UsageStore>();
@@ -310,7 +313,8 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
       return EmptyState(
         icon: widget.kind.icon,
         title: 'Nothing selected',
-        message: 'Pick $_article from the list to see it here, or add a '
+        message:
+            'Pick $_article from the list to see it here, or add a '
             'new one.',
       );
     }
@@ -379,27 +383,25 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
 
   // --- Cards ---------------------------------------------------------------
 
-  List<Widget> _items({
-    required bool twoPane,
-    required String? selectedId,
-  }) => switch (widget.kind) {
-    AgentCenterTab.agents => [
-      for (final agent in _controller.agents)
-        if (_matches(agent.name, agent.description))
-          _agentCard(agent, twoPane: twoPane, selectedId: selectedId),
-    ],
-    AgentCenterTab.models => [
-      for (final model in _controller.models)
-        if (_matches(model.label, model.modelId))
-          _modelCard(model, twoPane: twoPane, selectedId: selectedId),
-    ],
-    AgentCenterTab.sources => [
-      for (final source in _controller.sources)
-        if (_matches(source.displayName, source.providerType.wireName))
-          _sourceCard(source, twoPane: twoPane, selectedId: selectedId),
-    ],
-    AgentCenterTab.overview => const [],
-  };
+  List<Widget> _items({required bool twoPane, required String? selectedId}) =>
+      switch (widget.kind) {
+        AgentCenterTab.agents => [
+          for (final agent in _controller.agents)
+            if (_matches(agent.name, agent.description))
+              _agentCard(agent, twoPane: twoPane, selectedId: selectedId),
+        ],
+        AgentCenterTab.models => [
+          for (final model in _controller.models)
+            if (_matches(model.label, model.modelId))
+              _modelCard(model, twoPane: twoPane, selectedId: selectedId),
+        ],
+        AgentCenterTab.sources => [
+          for (final source in _controller.sources)
+            if (_matches(source.displayName, source.providerType.wireName))
+              _sourceCard(source, twoPane: twoPane, selectedId: selectedId),
+        ],
+        AgentCenterTab.overview => const [],
+      };
 
   Widget _agentCard(
     SavedAgentConfig agent, {
@@ -426,7 +428,8 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
           : [
               _Metric('Runs', '${stats.completed}'),
               _Metric('Success', '${stats.successPercent}%'),
-              if (stats.tokens > 0) _Metric('Tokens', compactTokens(stats.tokens)),
+              if (stats.tokens > 0)
+                _Metric('Tokens', compactTokens(stats.tokens)),
             ],
       onTap: twoPane
           ? () => unawaited(_show(_Detail.viewing(agent.id)))
@@ -483,9 +486,7 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
           ? source.providerType.wireName
           : '${source.providerType.wireName} · ${source.endpoint}',
       selected: twoPane && selectedId == source.id,
-      metrics: [
-        _Metric('Models', '$models'),
-      ],
+      metrics: [_Metric('Models', '$models')],
       onTap: twoPane
           ? () => unawaited(_show(_Detail.editing(source.id)))
           : () => context.go('/settings/agents/sources/edit/${source.id}'),
@@ -542,9 +543,10 @@ class _AgentCatalogViewState extends State<AgentCatalogView> {
   String? get _prerequisite => switch (widget.kind) {
     AgentCenterTab.agents =>
       _controller.models.isEmpty ? _strings.selectModelFirst : null,
-    AgentCenterTab.models => _controller.sources.isEmpty
-        ? 'Add a source before adding a model.'
-        : null,
+    AgentCenterTab.models =>
+      _controller.sources.isEmpty
+          ? 'Add a source before adding a model.'
+          : null,
     _ => null,
   };
 

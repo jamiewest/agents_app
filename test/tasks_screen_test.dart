@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:agents_app/data/agent_task_store.dart';
-import 'package:agents_app/data/task_scheduler_service.dart';
-import 'package:agents_app/domain/agent_task.dart';
 import 'package:agents_app/ui/screens/task_detail_screen.dart';
 import 'package:agents_app/ui/screens/tasks_screen.dart';
 import 'package:agents_flutter/agents_flutter.dart';

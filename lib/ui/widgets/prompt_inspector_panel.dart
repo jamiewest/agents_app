@@ -1,10 +1,9 @@
+import 'package:agents_flutter/agents_flutter.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-
-import '../../data/prompt_log.dart';
 
 /// Opens a bottom sheet listing every prompt sent to any model.
 ///

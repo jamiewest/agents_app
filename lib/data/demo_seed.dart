@@ -6,11 +6,6 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions_flutter/extensions_flutter.dart';
 
-import '../domain/channel.dart';
-import '../domain/conversation.dart';
-import 'channel_store.dart';
-import 'conversation_store.dart';
-
 /// Seeds throwaway demo content — channels, conversations, and one
 /// markdown-rich transcript — for design review and screenshots.
 ///

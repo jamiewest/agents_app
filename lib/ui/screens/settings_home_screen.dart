@@ -11,14 +11,11 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/app_reset.dart';
-import '../../data/embedding_settings.dart';
-import '../../data/pushover_settings.dart';
 import '../../data/theme_settings.dart';
-import '../../data/web_search_settings.dart';
-import '../app_theme.dart';
 import '../dialogs/pushover_credentials.dart';
 import '../widgets/app_sliver_header.dart';
 import '../widgets/page_body.dart';
+import '../widgets/settings_page.dart';
 
 /// The Settings destination: entry points into configuration surfaces.
 class SettingsHomeScreen extends StatelessWidget {
@@ -49,31 +46,13 @@ class SettingsHomeScreen extends StatelessWidget {
                         .getRequiredService<ConfiguredAgentsManager>(),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: Text(
-                    'Appearance',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
+                const SettingsGroupLabel('You'),
+                _ProfileTile(
+                  settings: services.getRequiredService<UserProfileSettings>(),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _AppearanceSelector(
-                    settings: services.getRequiredService<ThemeSettings>(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(LucideIcons.radioTower300),
-                  title: const Text('Share agents on the network'),
-                  subtitle: const Text(
-                    'Let paired devices use this device\'s agents (A2A)',
-                  ),
-                  trailing: const Icon(LucideIcons.chevronRight300),
-                  onTap: () => context.go('/settings/hosting'),
+                const SettingsGroupLabel('App'),
+                _AppearanceTile(
+                  settings: services.getRequiredService<ThemeSettings>(),
                 ),
                 ListTile(
                   leading: const Icon(LucideIcons.receiptText300),
@@ -84,6 +63,7 @@ class SettingsHomeScreen extends StatelessWidget {
                   trailing: const Icon(LucideIcons.chevronRight300),
                   onTap: () => context.go('/settings/logging'),
                 ),
+                const SettingsGroupLabel('Agent tools'),
                 _PushoverTile(
                   settings: services.getRequiredService<PushoverSettings>(),
                 ),
@@ -92,17 +72,7 @@ class SettingsHomeScreen extends StatelessWidget {
                 if (services.getService<WebSearchSettings>()
                     case final webSearch?)
                   _WebSearchTile(settings: webSearch),
-                ListTile(
-                  leading: const Icon(LucideIcons.brain300),
-                  title: const Text('Memory embedding model'),
-                  subtitle: const Text(
-                    'How agent memory is searched. Defaults to keyword matching; '
-                    'pick an OpenAI-compatible model for semantic recall.',
-                  ),
-                  trailing: const Icon(LucideIcons.chevronRight300),
-                  onTap: () => _pickEmbeddingModel(context),
-                ),
-                const Divider(),
+                const Divider(height: 32),
                 ListTile(
                   leading: Icon(
                     LucideIcons.rotateCcw300,
@@ -169,56 +139,6 @@ class SettingsHomeScreen extends StatelessWidget {
     }
     restartApp();
   }
-
-  Future<void> _pickEmbeddingModel(BuildContext context) async {
-    final manager = services.getRequiredService<ConfiguredAgentsManager>();
-    final settings = services.getRequiredService<EmbeddingSettings>();
-    final sources = await manager.sources.listSources();
-    final models = await manager.sources.listModels();
-    final compatibleSourceIds = {
-      for (final source in sources)
-        if (source.providerType == ProviderType.openAiCompatible) source.id,
-    };
-    final candidates = [
-      for (final model in models)
-        if (compatibleSourceIds.contains(model.sourceId)) model,
-    ];
-    final current = await settings.selectedModelId;
-    if (!context.mounted) return;
-
-    final selection = await showDialog<(String?,)>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Memory embedding model'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop((null,)),
-            child: Row(
-              children: [
-                if (current == null) const Icon(LucideIcons.check300, size: 18),
-                if (current == null) const SizedBox(width: 8),
-                const Text('Keyword matching (no model)'),
-              ],
-            ),
-          ),
-          for (final model in candidates)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop((model.id,)),
-              child: Row(
-                children: [
-                  if (current == model.id)
-                    const Icon(LucideIcons.check300, size: 18),
-                  if (current == model.id) const SizedBox(width: 8),
-                  Flexible(child: Text(model.label)),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-    if (selection == null) return;
-    await settings.select(selection.$1);
-  }
 }
 
 /// The Settings row for the Pushover notification tools.
@@ -278,102 +198,59 @@ class _WebSearchTile extends StatelessWidget {
   );
 }
 
-class _AppearanceSelector extends StatelessWidget {
-  const _AppearanceSelector({required this.settings});
+/// The Settings row for the user's own profile.
+///
+/// Live: the subtitle names the person once one is set, so it is obvious at
+/// a glance whether agents are being told anything about you.
+class _ProfileTile extends StatelessWidget {
+  const _ProfileTile({required this.settings});
+
+  final UserProfileSettings settings;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: settings,
+    builder: (context, _) => ListTile(
+      leading: const Icon(LucideIcons.userRound300),
+      title: const Text('Profile'),
+      subtitle: Text(switch ((settings.name, settings.bio)) {
+        ('', '') => 'Tell agents your name and what you work on',
+        ('', _) => 'Agents know what you work on',
+        (final name, '') => 'Agents call you $name',
+        (final name, _) => 'Agents call you $name and know what you work on',
+      }),
+      trailing: const Icon(LucideIcons.chevronRight300),
+      onTap: () => context.go('/settings/profile'),
+    ),
+  );
+}
+
+/// The Settings row for theme mode and accent colour.
+///
+/// Live: the subtitle names the current mode and palette, which is what the
+/// block of controls that used to sit here communicated at a glance.
+class _AppearanceTile extends StatelessWidget {
+  const _AppearanceTile({required this.settings});
 
   final ThemeSettings settings;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: settings,
-    builder: (context, _) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SegmentedButton<ThemeMode>(
-          segments: const [
-            ButtonSegment(
-              value: ThemeMode.system,
-              icon: Icon(LucideIcons.sunMoon300),
-              label: Text('System'),
-            ),
-            ButtonSegment(
-              value: ThemeMode.light,
-              icon: Icon(LucideIcons.sun300),
-              label: Text('Light'),
-            ),
-            ButtonSegment(
-              value: ThemeMode.dark,
-              icon: Icon(LucideIcons.moon300),
-              label: Text('Dark'),
-            ),
-          ],
-          selected: {settings.mode},
-          onSelectionChanged: (selection) => settings.setMode(selection.single),
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final seed in AppThemeSeed.values)
-              _SeedSwatch(
-                seed: seed,
-                selected: seed == settings.seed,
-                onTap: () => settings.setSeed(seed),
-              ),
-          ],
-        ),
-      ],
+    builder: (context, _) => ListTile(
+      leading: const Icon(LucideIcons.palette300),
+      title: const Text('Appearance'),
+      subtitle: Text(
+        '${switch (settings.mode) {
+          ThemeMode.system => 'System',
+          ThemeMode.light => 'Light',
+          ThemeMode.dark => 'Dark',
+        }} \u00b7 ${settings.seed.label}',
+      ),
+      trailing: const Icon(LucideIcons.chevronRight300),
+      onTap: () => context.go('/settings/appearance'),
     ),
   );
-}
-
-/// A tappable color dot for one [AppThemeSeed] choice.
-class _SeedSwatch extends StatelessWidget {
-  const _SeedSwatch({
-    required this.seed,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final AppThemeSeed seed;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: seed.label,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: seed.color,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected ? scheme.onSurface : scheme.outlineVariant,
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: selected
-              ? Icon(
-                  LucideIcons.check300,
-                  size: 18,
-                  color:
-                      ThemeData.estimateBrightnessForColor(seed.color) ==
-                          Brightness.dark
-                      ? Colors.white
-                      : Colors.black,
-                )
-              : null,
-        ),
-      ),
-    );
-  }
 }
 
 /// The Settings entry point into the Agent Center.

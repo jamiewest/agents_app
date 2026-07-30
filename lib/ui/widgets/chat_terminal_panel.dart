@@ -1,9 +1,10 @@
+import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:xterm/xterm.dart';
 
-import '../../data/terminal_activity.dart';
 import '../app_theme.dart';
+import 'xterm_session_binding.dart';
 
 /// A live terminal docked in the chat, mirroring the shell commands the
 /// agent runs.
@@ -25,10 +26,26 @@ class ChatTerminalPanel extends StatefulWidget {
 
 class _ChatTerminalPanelState extends State<ChatTerminalPanel> {
   bool _expanded = true;
+  late XtermSessionBinding _binding = XtermSessionBinding(widget.session);
+
+  @override
+  void didUpdateWidget(ChatTerminalPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.session != oldWidget.session) {
+      _binding.dispose();
+      _binding = XtermSessionBinding(widget.session);
+    }
+  }
+
+  @override
+  void dispose() {
+    _binding.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.session,
+    listenable: Listenable.merge([widget.session, _binding]),
     builder: (context, _) {
       final session = widget.session;
       if (!session.hasOutput) return const SizedBox.shrink();
@@ -62,10 +79,10 @@ class _ChatTerminalPanelState extends State<ChatTerminalPanel> {
               SizedBox(
                 height: 220,
                 child: TerminalView(
-                  session.terminal,
-                  // The session swaps in a fresh Terminal on clear; the key
+                  _binding.terminal,
+                  // The binding swaps in a fresh Terminal on clear; the key
                   // rebinds the view to the new buffer.
-                  key: ObjectKey(session.terminal),
+                  key: ObjectKey(_binding.terminal),
                   theme: terminalTheme,
                   textStyle: const TerminalStyle(fontSize: 12),
                   padding: const EdgeInsets.all(AppSpacing.sm),

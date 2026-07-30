@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
@@ -11,14 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/channel_store.dart';
-import '../../data/chat_transcript_store.dart';
-import '../../data/conversation_store.dart';
-import '../../data/usage_store.dart';
-import '../../domain/channel.dart';
-import '../../domain/chats_filter.dart';
-import '../../domain/conversation.dart';
-import '../../main.dart' show ChatScreen;
+import 'chat_screen.dart';
 import '../app_theme.dart';
 import '../widgets/app_sliver_header.dart';
 import '../widgets/chats_filter_bar.dart';
@@ -76,6 +70,10 @@ class ChatsScope extends InheritedWidget {
       filters != oldWidget.filters;
 }
 
+/// The width [AppBar] reserves for a single leading button, and so the width
+/// anything standing in for one should occupy to line up with it.
+const double _kAppBarLeadingWidth = 56;
+
 /// The detail-pane button that opens/closes the conversations sidebar:
 /// the persistent two-pane sidebar on wide layouts, or the conversations
 /// drawer on single-pane widths that host one.
@@ -109,24 +107,41 @@ class SidebarToggleButton extends StatelessWidget {
 ///
 /// Two-pane layouts show only the [SidebarToggleButton]: the persistent
 /// sidebar handles navigation, so the back button is dropped. Single-pane
-/// layouts that host the conversations drawer pair the back button with the
-/// toggle, which needs the wider `leadingWidth`. Elsewhere both values are
-/// null so the app bar falls back to the implied back button.
-({Widget? leading, double? leadingWidth}) detailPaneLeading(
-  BuildContext context,
-) {
+/// layouts show the back button alone. Both sit in the standard leading
+/// slot; elsewhere all three values are null so the app bar falls back to
+/// the implied back button and Material's own title spacing.
+///
+/// `titleSpacing` is what puts the title on [AppChatPane.contentInset], the
+/// column the transcript below it already reads down — Material's default
+/// would instead push it a fixed gap past whatever the leading slot happens
+/// to be, which is how the heading and the conversation drifted apart.
+({Widget? leading, double? leadingWidth, double? titleSpacing})
+detailPaneLeading(BuildContext context) {
   final scope = ChatsScope.maybeOf(context);
   if (scope == null || scope.onToggleSidebar == null) {
-    return (leading: null, leadingWidth: null);
+    return (leading: null, leadingWidth: null, titleSpacing: null);
   }
   if (scope.twoPane) {
-    return (leading: const SidebarToggleButton(), leadingWidth: null);
+    return (
+      leading: const SidebarToggleButton(),
+      leadingWidth: null,
+      titleSpacing: _titleSpacingFor(_kAppBarLeadingWidth),
+    );
   }
   return (
-    leading: const Row(children: [BackButton(), SidebarToggleButton()]),
-    leadingWidth: 96,
+    leading: const BackButton(),
+    leadingWidth: null,
+    titleSpacing: _titleSpacingFor(_kAppBarLeadingWidth),
   );
 }
+
+/// The gap that lands the title on [AppChatPane.contentInset] given a
+/// leading slot of [leadingWidth].
+///
+/// Clamped at zero: a leading slot wider than the content column cannot be
+/// overlapped, so the title starts as close to the column as it can.
+double _titleSpacingFor(double leadingWidth) =>
+    math.max(0, AppChatPane.contentInset - leadingWidth);
 
 /// The Chats destination shell: a persistent conversations/channels sidebar
 /// beside the inner navigator that hosts the open chat, channel, or an
@@ -263,10 +278,19 @@ class ChatsRootPane extends StatelessWidget {
     if (ChatsScope.twoPaneOf(context)) {
       return Stack(
         children: [
+          // No app bar here, so stand in for one: the same leading slot an
+          // AppBar would give the toggle, so it lands on the header band
+          // beside the sidebar brand rather than floating above it.
           const Positioned(
-            top: AppSpacing.sm,
-            left: AppSpacing.sm,
-            child: SafeArea(child: SidebarToggleButton()),
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              child: SizedBox(
+                width: _kAppBarLeadingWidth,
+                height: AppHeaderBand.height,
+                child: Center(child: SidebarToggleButton()),
+              ),
+            ),
           ),
           Center(
             child: Column(
@@ -1372,24 +1396,28 @@ class _SidebarHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.lg,
-        AppSpacing.sm,
-        AppSpacing.sm,
-      ),
-      child: Row(
-        children: [
-          const Expanded(child: AgentTeamsBrand()),
-          ?expandCollapseButton,
-          ChatsFilterButton(query: query, onOpenFilters: onOpenFilters),
-          _NewMenuButton(
-            onNewChat: onNewChat,
-            onNewChannel: onNewChannel,
-            iconSize: 20,
-          ),
-        ],
+    // A fixed header band rather than padding around the row: the row's
+    // height would otherwise be set by whichever action buttons happen to be
+    // present, drifting the brand off the line the app bars sit on.
+    return SizedBox(
+      height: AppHeaderBand.height,
+      child: Padding(
+        padding: const EdgeInsets.only(
+          left: AppSpacing.lg,
+          right: AppSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            const Expanded(child: AgentTeamsBrand()),
+            ?expandCollapseButton,
+            ChatsFilterButton(query: query, onOpenFilters: onOpenFilters),
+            _NewMenuButton(
+              onNewChat: onNewChat,
+              onNewChannel: onNewChannel,
+              iconSize: 20,
+            ),
+          ],
+        ),
       ),
     );
   }

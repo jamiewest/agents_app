@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:agents_app/data/agent_run_store.dart';
-import 'package:agents_app/data/usage_store.dart';
 import 'package:agents_app/ui/screens/agent_detail_screen.dart';
 import 'package:agents_app/ui/widgets/charts.dart';
 import 'package:agents_flutter/agents_flutter.dart';

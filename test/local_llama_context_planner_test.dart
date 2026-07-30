@@ -1,4 +1,4 @@
-import 'package:agents_app/data/local_llama_context_planner.dart';
+import 'package:agents_app/features/local_models/local_llama_context_planner.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_cpp_flutter/orchestration.dart' as llama;
 

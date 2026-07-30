@@ -10,25 +10,18 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/agent_center_overview.dart';
-import '../../data/agent_run_store.dart';
-import '../../data/usage_store.dart';
 import '../widgets/agent_dashboard.dart';
 
 /// The Agent Center's operational dashboard.
 ///
-/// A sibling of the catalogs, reachable from the shared [AgentCenterNav].
+/// A sibling of the catalogs, reachable from the section shell's tabs.
 /// Leads with KPI cards and a configuration-issues list — the low-data view
 /// is the common one, because operational history only begins after this
 /// feature ships. Time-series charts appear once there is enough completed
 /// work to be worth plotting.
 class AgentCenterOverviewBody extends StatefulWidget {
   /// Creates an [AgentCenterOverviewBody].
-  const AgentCenterOverviewBody({
-    required this.services,
-    this.now,
-    super.key,
-  });
+  const AgentCenterOverviewBody({required this.services, this.now, super.key});
 
   /// The application service provider.
   final ServiceProvider services;

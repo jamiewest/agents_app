@@ -9,14 +9,13 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/inventory_access_settings.dart';
-import '../../data/pushover_settings.dart';
+import '../../features/inventory/inventory_access_settings.dart';
 import '../../features/inventory/inventory_store.dart';
 import '../dialogs/discard_changes.dart';
 import '../dialogs/pushover_credentials.dart';
-import '../strings/configured_agents_strings.dart';
-import '../styles/configured_agents_style.dart';
-import '../views/configured_agents/configured_agents.dart';
+import '../../chat_toolkit/strings/configured_agents_strings.dart';
+import '../../chat_toolkit/styles/configured_agents_style.dart';
+import '../../chat_toolkit/views/configured_agents/configured_agents.dart';
 import 'agent_center_nav.dart';
 
 /// The title an editor for [kind] carries, creating or editing.

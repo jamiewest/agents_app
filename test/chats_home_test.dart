@@ -1,9 +1,4 @@
-import 'package:agents_app/data/channel_store.dart';
-import 'package:agents_app/data/chat_transcript_store.dart';
-import 'package:agents_app/data/conversation_store.dart';
-import 'package:agents_app/domain/channel.dart';
-import 'package:agents_app/domain/conversation.dart';
-import 'package:agents_app/main.dart' show ChatScreen;
+import 'package:agents_app/ui/screens/chat_screen.dart' show ChatScreen;
 import 'package:agents_app/ui/screens/chats_home.dart'
     show ChatDetailPane, ChatsHome, ChatsRootPane;
 import 'package:agents_flutter/agents_flutter.dart';

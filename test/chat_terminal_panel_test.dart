@@ -1,5 +1,5 @@
+import 'package:agents_flutter/agents_flutter.dart';
 import 'package:agents/agents.dart' show ShellResult;
-import 'package:agents_app/data/terminal_activity.dart';
 import 'package:agents_app/ui/widgets/chat_terminal_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,9 +55,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  testWidgets('collapses to the header strip and expands back', (
-    tester,
-  ) async {
+  testWidgets('collapses to the header strip and expands back', (tester) async {
     final session = TerminalActivity().listen('conv-a');
     session
       ..beginCommand('echo hi')

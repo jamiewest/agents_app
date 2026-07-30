@@ -1,8 +1,8 @@
-import 'package:agents_app/ui/chat_view_model/chat_view_model.dart';
-import 'package:agents_app/ui/chat_view_model/chat_view_model_provider.dart';
-import 'package:agents_app/ui/providers/providers.dart';
-import 'package:agents_app/ui/views/chat_welcome_view.dart';
-import 'package:agents_app/ui/views/llm_chat_view/llm_chat_view.dart';
+import 'package:agents_app/chat_toolkit/chat_view_model/chat_view_model.dart';
+import 'package:agents_app/chat_toolkit/chat_view_model/chat_view_model_provider.dart';
+import 'package:agents_flutter/chat_provider.dart';
+import 'package:agents_app/chat_toolkit/views/chat_welcome_view.dart';
+import 'package:agents_app/chat_toolkit/views/llm_chat_view/llm_chat_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,7 +22,7 @@ void main() {
 
   testWidgets('empty history shows the centered welcome view', (tester) async {
     // Arrange
-    final provider = EchoProvider();
+    final provider = EchoLlmProvider();
 
     // Act
     await tester.pumpWidget(app(provider));
@@ -38,7 +38,7 @@ void main() {
     tester,
   ) async {
     // Arrange
-    final provider = EchoProvider();
+    final provider = EchoLlmProvider();
     await tester.pumpWidget(app(provider));
     await tester.pumpAndSettle();
     expect(find.byType(ChatWelcomeView), findsOneWidget);
@@ -61,7 +61,7 @@ void main() {
     // Arrange
     String? selected;
     final viewModel = ChatViewModel(
-      provider: EchoProvider(),
+      provider: EchoLlmProvider(),
       style: null,
       suggestions: const ['Try me'],
       welcomeMessage: 'Hi',

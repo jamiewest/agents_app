@@ -2,8 +2,7 @@
 // records, filters, and capture controls; the section shell switches between
 // the Events and Prompts tabs.
 
-import 'package:agents_app/data/prompt_log.dart';
-import 'package:agents_app/navigation/app_shell.dart';
+import 'package:agents_app/app/app_shell.dart';
 import 'package:agents_app/ui/screens/logging_screen.dart';
 import 'package:agents_app/ui/widgets/draggable_separator.dart';
 import 'package:agents_app/ui/widgets/prompt_inspector_panel.dart';
@@ -13,7 +12,6 @@ import 'package:extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 ServiceProvider _loggingServices() {
   final services = ServiceCollection()
@@ -118,8 +116,9 @@ void main() {
       expect(find.text('Capture levels'), findsOneWidget);
     });
 
-    testWidgets('the side panel starts at the chats sidebar width and '
-        'resizes by dragging the separator', (tester) async {
+    testWidgets('the section wears the Settings header, not a panel', (
+      tester,
+    ) async {
       final services = _loggingServices();
       tester.view.physicalSize = const Size(1200, 1400);
       tester.view.devicePixelRatio = 1;
@@ -128,56 +127,11 @@ void main() {
       await tester.pumpWidget(_loggingApp(services));
       await tester.pumpAndSettle();
 
-      // The separator sits at the panel's trailing edge, so its offset is
-      // the rendered panel width.
-      expect(_panelWidth(tester), SettingsSectionShell.defaultNavWidth);
-
-      await tester.drag(find.byType(DraggableSeparator), const Offset(60, 0));
-      await tester.pumpAndSettle();
-      expect(_panelWidth(tester), SettingsSectionShell.defaultNavWidth + 60);
-
-      // Past the maximum the panel stops growing.
-      await tester.drag(find.byType(DraggableSeparator), const Offset(400, 0));
-      await tester.pumpAndSettle();
-      expect(_panelWidth(tester), SettingsSectionShell.maxNavWidth);
-    });
-
-    testWidgets('a dragged width survives switching tabs', (tester) async {
-      final services = _loggingServices();
-      tester.view.physicalSize = const Size(1200, 1400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-
-      await tester.pumpWidget(_loggingApp(services));
-      await tester.pumpAndSettle();
-      await tester.drag(find.byType(DraggableSeparator), const Offset(60, 0));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Prompts'));
-      await tester.pumpAndSettle();
-
-      // The shell is built once and holds the width; a rebuilt shell would
-      // silently reset the drag to the default.
-      expect(find.byType(PromptInspectorPanel), findsOneWidget);
-      expect(_panelWidth(tester), SettingsSectionShell.defaultNavWidth + 60);
-    });
-
-    testWidgets('the panel falls back to its floor when the window cannot '
-        'afford the stored width', (tester) async {
-      final services = _loggingServices();
-      // 600 is the side-nav threshold: too narrow to give the panel its
-      // 300pt default and the content its 360pt minimum.
-      tester.view.physicalSize = const Size(600, 1400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-
-      await tester.pumpWidget(_loggingApp(services));
-      await tester.pumpAndSettle();
-
-      expect(_panelWidth(tester), SettingsSectionShell.minNavWidth);
-      // The upper-case heading is the widest thing in the panel; it must
-      // ellipsize rather than overflow at the floor.
-      expect(find.text('LOGS & DIAGNOSTICS'), findsOneWidget);
+      // The resizable side panel is gone: a section looks like the Settings
+      // page it was opened from at every width.
+      expect(find.byType(DraggableSeparator), findsNothing);
+      expect(find.text('Logs & diagnostics'), findsOneWidget);
+      expect(find.byType(SegmentedButton<int>), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -193,11 +147,11 @@ void main() {
 
       expect(find.byType(DraggableSeparator), findsNothing);
       expect(find.byType(SegmentedButton<int>), findsOneWidget);
-      expect(find.text('LOGS & DIAGNOSTICS'), findsOneWidget);
+      expect(find.text('Logs & diagnostics'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the compact layout drops the glyph for the app drawer '
+    testWidgets('the header leads with the back control, not the drawer '
         'button', (tester) async {
       final services = _loggingServices();
       tester.view.physicalSize = const Size(420, 900);
@@ -205,29 +159,22 @@ void main() {
       addTearDown(tester.view.reset);
 
       // How the section actually mounts on compact: inside the app shell,
-      // so the header leads with the hamburger and the heading loses its
-      // glyph — the narrowest the title ever gets.
+      // which offers a drawer. A sub-page still leads with back — the
+      // drawer is one tap further up, on the Settings page itself.
       var opened = 0;
       await tester.pumpWidget(
         _loggingApp(services, onOpenDrawer: () => opened++),
       );
       await tester.pumpAndSettle();
 
-      expect(find.byTooltip('Menu'), findsOneWidget);
-      expect(find.text('LOGS & DIAGNOSTICS'), findsOneWidget);
+      expect(find.byType(SettingsBackButton), findsOneWidget);
+      expect(find.byTooltip('Menu'), findsNothing);
+      expect(find.text('Logs & diagnostics'), findsOneWidget);
+      expect(opened, 0);
       expect(tester.takeException(), isNull);
-
-      await tester.tap(find.byTooltip('Menu'));
-      await tester.pumpAndSettle();
-      expect(opened, 1);
     });
   });
 }
-
-/// The rendered width of the section shell's side panel, read from where the
-/// resize handle sits.
-double _panelWidth(WidgetTester tester) =>
-    tester.getTopLeft(find.byType(DraggableSeparator)).dx;
 
 /// A minimal router with just the Logs section shell — the same branch
 /// structure the app router uses, without the full app around it.
@@ -244,7 +191,6 @@ Widget _loggingApp(ServiceProvider services, {VoidCallback? onOpenDrawer}) =>
               openDrawer: onOpenDrawer,
               child: SettingsSectionShell(
                 title: 'Logs & diagnostics',
-                icon: LucideIcons.receiptText300,
                 destinations: loggingDestinations,
                 shell: shell,
                 backLocation: '/settings',

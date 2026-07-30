@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/web_search_settings.dart';
+import '../widgets/settings_page.dart';
 
 /// Manages the local web-search configuration: saved search clients and the
 /// reusable user-agent profiles they can send.
@@ -24,50 +26,168 @@ class WebSearchSettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = services.getRequiredService<WebSearchSettings>();
-    return Scaffold(
-      appBar: AppBar(title: const Text('Web search')),
-      body: ListenableBuilder(
-        listenable: settings,
-        builder: (context, _) => ListView(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          children: [
-            const _SectionIntro(
-              'Agents search through the checked client: the query is '
-              'appended to its URL as the q parameter, then anything the '
-              'client adds after the query. A JSON response in SearXNG\'s '
-              'shape is parsed directly; anything else is read as HTML. '
-              'With no clients, agents fall back to the model provider\'s '
-              'built-in search, where available.',
-            ),
-            _SectionHeader('Search clients'),
-            if (settings.clients.isEmpty)
-              const _EmptyHint('No search clients yet.'),
-            for (final client in settings.clients)
-              _ClientTile(settings: settings, client: client),
-            _AddButton(
-              label: 'Add search client',
-              onPressed: () => _editClient(context, settings, null),
-            ),
-            const Divider(height: 32),
-            _SectionHeader('User agent profiles'),
-            const _SectionIntro(
-              'A search client can send one of these User-Agent values with '
-              'its requests. Clients without a profile use the default '
-              'user agent.',
-            ),
-            if (settings.profiles.isEmpty)
-              const _EmptyHint('No user agent profiles yet.'),
-            for (final profile in settings.profiles)
-              _ProfileTile(settings: settings, profile: profile),
-            _AddButton(
-              label: 'Add user agent profile',
-              onPressed: () => _editProfile(context, settings, null),
-            ),
-          ],
+    return SettingsPage(
+      title: 'Web search',
+      children: [
+        ListenableBuilder(
+          listenable: settings,
+          builder: (context, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _SectionIntro(
+                'Agents search through the checked client: the query is '
+                'appended to its URL as the q parameter, then anything the '
+                'client adds after the query. A JSON response in SearXNG\'s '
+                'shape is parsed directly; anything else is read as HTML. '
+                'Clients with a category — finance, technology — are offered '
+                'to agents as focus options, so a question searches the '
+                'endpoint suited to its topic. With no clients, agents fall '
+                'back to the model provider\'s built-in search, where '
+                'available.',
+              ),
+              _SectionHeader('Search clients'),
+              if (settings.clients.isEmpty)
+                const _EmptyHint('No search clients yet.'),
+              for (final client in settings.clients)
+                _ClientTile(settings: settings, client: client),
+              _AddButton(
+                label: 'Add search client',
+                onPressed: () => _editClient(context, settings, null),
+              ),
+              const Divider(height: 32),
+              _SectionHeader('User agent profiles'),
+              const _SectionIntro(
+                'A search client can send one of these User-Agent values with '
+                'its requests, and the browsing user agent below is sent when '
+                'agents open pages. Without a profile, the default user agent '
+                'is used.',
+              ),
+              if (settings.profiles.isEmpty)
+                const _EmptyHint('No user agent profiles yet.'),
+              for (final profile in settings.profiles)
+                _ProfileTile(settings: settings, profile: profile),
+              _AddButton(
+                label: 'Add user agent profile',
+                onPressed: () => _editProfile(context, settings, null),
+              ),
+              _BrowsingUserAgentTile(settings: settings),
+              if (services.getService<WebSearchTraceLog>()
+                  case final trace?) ...[
+                const Divider(height: 32),
+                _SectionHeader('Request tracing'),
+                const _SectionIntro(
+                  'While tracing is on, every web_search and open_web_page '
+                  'call an agent makes is captured for inspection: the exact '
+                  'request URL and query string, the user agent sent, the '
+                  'response status, and the data received. Events are kept '
+                  'in memory only and never leave this device.',
+                ),
+                _TracingSection(trace: trace),
+              ],
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
+}
+
+/// Picks the profile whose User-Agent is sent when agents open pages
+/// (`open_web_page`); "Default" keeps the platform WebView's own value.
+class _BrowsingUserAgentTile extends StatelessWidget {
+  const _BrowsingUserAgentTile({required this.settings});
+
+  final WebSearchSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = settings.browsingProfile;
+    return ListTile(
+      leading: const Icon(LucideIcons.globe300),
+      title: const Text('Browsing user agent'),
+      subtitle: Text(
+        profile == null
+            ? 'Default — pages open with the system WebView\'s user agent'
+            : 'Pages open as "${profile.name}"',
+      ),
+      trailing: const Icon(LucideIcons.chevronRight300),
+      onTap: () => _pick(context),
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final current = settings.browsingProfile?.id;
+    final selection = await showDialog<(String?,)>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Browsing user agent'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop((null,)),
+            child: Row(
+              children: [
+                if (current == null) const Icon(LucideIcons.check300, size: 18),
+                if (current == null) const SizedBox(width: 8),
+                const Text('Default (system WebView)'),
+              ],
+            ),
+          ),
+          for (final profile in settings.profiles)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop((profile.id,)),
+              child: Row(
+                children: [
+                  if (current == profile.id)
+                    const Icon(LucideIcons.check300, size: 18),
+                  if (current == profile.id) const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(profile.name, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (selection == null) return;
+    await settings.selectBrowsingProfile(selection.$1);
+  }
+}
+
+/// The tracing toggle plus the entry point into the captured-request list.
+class _TracingSection extends StatelessWidget {
+  const _TracingSection({required this.trace});
+
+  final WebSearchTraceLog trace;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: trace,
+    builder: (context, _) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SwitchListTile(
+          secondary: const Icon(LucideIcons.logs300),
+          title: const Text('Trace web requests'),
+          value: trace.isEnabled,
+          onChanged: (value) => trace.setEnabled(value),
+        ),
+        ListTile(
+          leading: const Icon(LucideIcons.list300),
+          title: const Text('Captured requests'),
+          subtitle: Text(
+            trace.events.isEmpty
+                ? 'None captured yet'
+                : trace.events.length == 1
+                ? '1 request'
+                : '${trace.events.length} requests',
+          ),
+          trailing: const Icon(LucideIcons.chevronRight300),
+          onTap: () => context.go('/settings/web-search/trace'),
+        ),
+      ],
+    ),
+  );
 }
 
 Future<void> _editClient(
@@ -206,6 +326,7 @@ class _ClientTile extends StatelessWidget {
       subtitle: Text(
         '${client.searchUrl}${client.urlSuffix.isEmpty ? '' : ' '
                   '(+${client.urlSuffix})'}\n'
+        '${client.category.isEmpty ? '' : 'Category: ${client.category} · '}'
         'User agent: ${profile?.name ?? 'default'}'
         '${client.renderJavaScript ? ' · renders JavaScript' : ''}',
       ),
@@ -286,6 +407,9 @@ class _ClientDialogState extends State<_ClientDialog> {
   late final TextEditingController _urlSuffix = TextEditingController(
     text: widget.client?.urlSuffix ?? '',
   );
+  late final TextEditingController _category = TextEditingController(
+    text: widget.client?.category ?? '',
+  );
   // Guarded against a dangling association: an id absent from the profile
   // list would leave the dropdown's initial value without a matching item.
   late String? _profileId =
@@ -302,6 +426,7 @@ class _ClientDialogState extends State<_ClientDialog> {
     _name.dispose();
     _searchUrl.dispose();
     _urlSuffix.dispose();
+    _category.dispose();
     super.dispose();
   }
 
@@ -315,6 +440,7 @@ class _ClientDialogState extends State<_ClientDialog> {
           urlSuffix: _urlSuffix.text,
           userAgentProfileId: _profileId,
           renderJavaScript: _renderJavaScript,
+          category: _category.text,
         ),
       );
     } on ArgumentError {
@@ -369,6 +495,20 @@ class _ClientDialogState extends State<_ClientDialog> {
               decoration: const InputDecoration(
                 labelText: 'After the query (optional)',
                 hintText: '&format=json&language=en',
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _category,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Category (optional)',
+                hintText: 'finance, technology, news…',
+                helperText:
+                    'Offered to agents as a search focus option; the '
+                    'category name is visible to models.',
+                helperMaxLines: 2,
                 isDense: true,
               ),
             ),

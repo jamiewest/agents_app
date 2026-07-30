@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:agents_app/data/local_llama_lease_client.dart';
-import 'package:agents_app/data/local_llama_model_host.dart';
+import 'package:agents_app/features/local_models/local_llama_lease_client.dart';
+import 'package:agents_app/features/local_models/local_llama_model_host.dart';
 import 'package:extensions/ai.dart';
 import 'package:extensions/system.dart';
 import 'package:llama_cpp_flutter/llama_cpp_flutter.dart' as llama;

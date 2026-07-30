@@ -4,11 +4,8 @@
 import 'dart:async';
 
 import 'package:agents/agents.dart' show InMemoryAgentFileStore;
-import 'package:agents_app/data/app_activity_monitor.dart';
-import 'package:agents_app/data/usage_store.dart';
-import 'package:agents_app/domain/conversation.dart';
-import 'package:agents_app/ui/views/action_button.dart';
-import 'package:agents_app/ui/views/chat_input/input_button.dart';
+import 'package:agents_app/chat_toolkit/views/action_button.dart';
+import 'package:agents_app/chat_toolkit/views/chat_input/input_button.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
@@ -55,6 +52,7 @@ ServiceProvider buildTestServices(
   InMemoryRecordStore records, {
   ai.ChatClient? chatClient,
   AppActivityMonitor? activityMonitor,
+  bool includeChatUtilities = false,
 }) {
   final services = ServiceCollection()
     ..addRecordStore(recordStore: (_) => records)
@@ -65,8 +63,9 @@ ServiceProvider buildTestServices(
       keyValueStore: (_) => InMemoryKeyValueStore(),
       secretStore: (_) => InMemorySecretStore(),
       chatClientFactory: (_) => ConfiguredChatClientFactory(
-        customClientResolver: ({required source, required model, httpClient}) =>
-            chatClient ?? EchoChatClient(),
+        customClientResolver:
+            ({required source, required model, httpClient, scope}) =>
+                chatClient ?? EchoChatClient(),
       ),
       configureHarness: (options) => options
         ..disableAgentSkillsProvider = true
@@ -88,6 +87,13 @@ ServiceProvider buildTestServices(
     );
   if (activityMonitor != null) {
     services.tryAddSingleton<AppActivityMonitor>((_) => activityMonitor);
+  }
+  if (includeChatUtilities) {
+    services
+      ..tryAddSingleton<PromptLog>((_) => PromptLog())
+      ..tryAddSingleton<ThinkingSettings>(
+        (sp) => ThinkingSettings(sp.getRequiredService<KeyValueStore>()),
+      );
   }
   return services.buildServiceProvider();
 }

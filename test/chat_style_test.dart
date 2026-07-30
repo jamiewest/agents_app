@@ -1,5 +1,5 @@
-import 'package:agents_app/ui/strings/strings.dart';
-import 'package:agents_app/ui/styles/styles.dart';
+import 'package:agents_app/chat_toolkit/strings/strings.dart';
+import 'package:agents_app/chat_toolkit/styles/styles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';

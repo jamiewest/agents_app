@@ -30,10 +30,8 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 
 import '../features/inventory/inventory_store.dart';
-import 'downloaded_model_artifacts.dart';
-import 'local_model_store.dart';
-import 'pushover_settings.dart';
-import 'web_search_settings.dart';
+import '../features/local_models/downloaded_model_artifacts.dart';
+import '../features/local_models/local_model_store.dart';
 
 export 'app_restart_stub.dart'
     if (dart.library.js_interop) 'app_restart_web.dart'

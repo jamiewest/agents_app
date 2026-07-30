@@ -1,9 +1,6 @@
 import 'dart:convert';
 
-import 'package:agents_app/data/chat_transcript_store.dart';
-import 'package:agents_app/data/conversation_store.dart';
-import 'package:agents_app/data/legacy_chat_migration.dart';
-import 'package:agents_app/domain/conversation.dart';
+import 'package:agents_app/data/legacy/legacy_chat_migration.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:flutter_test/flutter_test.dart';

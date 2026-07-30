@@ -6,12 +6,8 @@
 /// chats list, the channel screen, and the chat app bar.
 library;
 
+import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/material.dart';
-
-import '../../data/chat_transcript_store.dart';
-import '../../data/conversation_store.dart';
-import '../../data/usage_store.dart';
-import '../../domain/conversation.dart';
 
 /// Prompts for a new title and returns it trimmed, or `null` on cancel.
 ///
