@@ -29,11 +29,13 @@ import '../ui/screens/task_detail_screen.dart';
 import '../ui/screens/tasks_screen.dart';
 import '../ui/screens/web_search_settings_screen.dart';
 import '../ui/screens/web_search_trace_screen.dart';
+import '../ui/screens/workflow_editor_screen.dart';
+import '../ui/screens/workflows_screen.dart';
 import 'app_bootstrap.dart';
 import 'app_shell.dart';
 
 /// Builds the app's router: an onboarding guard plus a stateful shell with
-/// Chats, Tasks, and Settings branches.
+/// Chats, Tasks, Workflows, and Settings branches.
 GoRouter createAppRouter({
   required ServiceProvider services,
   required AppBootstrap bootstrap,
@@ -152,6 +154,24 @@ GoRouter createAppRouter({
                     services: services,
                     scheduler: scheduler,
                     taskId: state.pathParameters['id']!,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/workflows',
+              builder: (context, state) => WorkflowsScreen(services: services),
+              routes: [
+                GoRoute(
+                  path: 'edit/:id',
+                  builder: (context, state) => WorkflowEditorScreen(
+                    services: services,
+                    workflowId: state.pathParameters['id']!,
+                    template: state.uri.queryParameters['template'],
                   ),
                 ),
               ],

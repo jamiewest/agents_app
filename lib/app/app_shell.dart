@@ -42,7 +42,8 @@ class AppShellScope extends InheritedWidget {
       openDrawer != oldWidget.openDrawer;
 }
 
-/// The responsive top-level scaffold around the Chats/Tasks/Settings shell.
+/// The responsive top-level scaffold around the Chats/Tasks/Workflows/
+/// Settings shell.
 ///
 /// Built on the adaptive-layout primitives: a navigation [Drawer] (opened
 /// from a hamburger button in each page header) on compact widths and a
@@ -66,6 +67,7 @@ class _AppShellState extends State<AppShell> {
   static const _destinations = [
     (icon: LucideIcons.messageCircle300, label: 'Chats'),
     (icon: LucideIcons.alarmClock300, label: 'Tasks'),
+    (icon: LucideIcons.workflow300, label: 'Workflows'),
     (icon: LucideIcons.settings300, label: 'Settings'),
   ];
 

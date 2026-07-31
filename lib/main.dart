@@ -156,6 +156,15 @@ final _builder = Host.createApplicationBuilder()
       // One summary log record per agent run (request in, response out) in
       // the Agents.Traffic category — never one record per streamed update.
       logAgentTraffic: true,
+      // A research turn spends one iteration per tool call — a clock read, a
+      // search, then a page fetch per result — so the underlying default of
+      // 10 runs out mid-task on ordinary "what happened in X last week"
+      // questions. Reaching the limit is graceful (the loop spends one more
+      // call with the tools withheld, so the model answers from what it
+      // already gathered), but it answers from a half-finished search; the
+      // ceiling is raised for the quality of that answer, not to avoid a
+      // failure.
+      configureHarness: (options) => options.maximumIterationsPerRequest = 25,
       chatClientFactory: (sp) => LoggingConfiguredChatClientFactory(
         log: sp.getRequiredService<PromptLog>(),
         usageSink: sp.getRequiredService<UsageStore>(),
