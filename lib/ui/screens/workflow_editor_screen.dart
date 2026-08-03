@@ -281,10 +281,7 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
     setState(() => _starting = true);
     try {
       await _save();
-      final controller = await createSpecRunController(
-        widget.services,
-        spec,
-      );
+      final controller = await createSpecRunController(widget.services, spec);
       final previous = _run;
       setState(() => _run = controller);
       previous?.dispose();
@@ -509,85 +506,82 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
         focusNode: _canvasFocus,
         onKeyEvent: _onCanvasKey,
         child: InteractiveViewer(
-        transformationController: _canvas,
-        constrained: false,
-        minScale: 0.5,
-        maxScale: 2,
-        child: SizedBox(
-          key: _canvasKey,
-          width: _canvasSize.width,
-          height: _canvasSize.height,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapDown: (details) {
-                    _canvasFocus.requestFocus();
-                    setState(() {
-                      _selectedNodeId = null;
-                      _selectedEdge = _edgeAt(details.localPosition);
-                    });
-                  },
-                  child: CustomPaint(
-                    painter: _EditorEdgePainter(
-                      spec: spec,
-                      pendingEdge: _pendingEdge,
-                      selectedEdge: _selectedEdge,
-                      color: Theme.of(context).colorScheme.outline,
-                      pendingColor: Theme.of(context).colorScheme.primary,
+          transformationController: _canvas,
+          constrained: false,
+          minScale: 0.5,
+          maxScale: 2,
+          child: SizedBox(
+            key: _canvasKey,
+            width: _canvasSize.width,
+            height: _canvasSize.height,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (details) {
+                      _canvasFocus.requestFocus();
+                      setState(() {
+                        _selectedNodeId = null;
+                        _selectedEdge = _edgeAt(details.localPosition);
+                      });
+                    },
+                    child: CustomPaint(
+                      painter: _EditorEdgePainter(
+                        spec: spec,
+                        pendingEdge: _pendingEdge,
+                        selectedEdge: _selectedEdge,
+                        color: Theme.of(context).colorScheme.outline,
+                        pendingColor: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              for (final node in spec.nodes)
-                Positioned(
-                  left: node.x,
-                  top: node.y,
-                  width: _nodeWidth,
-                  height: _nodeHeight,
-                  child: _EditorNodeCard(
-                    node: node,
-                    selected: node.id == _selectedNodeId,
-                    onTap: () {
-                      _canvasFocus.requestFocus();
-                      setState(() {
-                        _selectedNodeId = node.id;
-                        _selectedEdge = null;
-                      });
-                    },
-                    onMoved: (delta) => setState(() {
-                      final scale = _canvas.value.getMaxScaleOnAxis();
-                      node.x = (node.x + delta.dx / scale).clamp(
-                        0,
-                        _canvasSize.width - _nodeWidth,
-                      );
-                      node.y = (node.y + delta.dy / scale).clamp(
-                        0,
-                        _canvasSize.height - _nodeHeight,
-                      );
-                    }),
-                    onPortDragStart: () => setState(() {
-                      _pendingEdge = (
-                        node.id,
-                        Offset(
-                          node.x + _nodeWidth,
-                          node.y + _nodeHeight / 2,
-                        ),
-                      );
-                    }),
-                    onPortDragUpdate: (globalPoint) => setState(() {
-                      final pending = _pendingEdge;
-                      if (pending != null) {
-                        _pendingEdge = (pending.$1, _toCanvas(globalPoint));
-                      }
-                    }),
-                    onPortDragEnd: _finishPendingEdge,
+                for (final node in spec.nodes)
+                  Positioned(
+                    left: node.x,
+                    top: node.y,
+                    width: _nodeWidth,
+                    height: _nodeHeight,
+                    child: _EditorNodeCard(
+                      node: node,
+                      selected: node.id == _selectedNodeId,
+                      onTap: () {
+                        _canvasFocus.requestFocus();
+                        setState(() {
+                          _selectedNodeId = node.id;
+                          _selectedEdge = null;
+                        });
+                      },
+                      onMoved: (delta) => setState(() {
+                        final scale = _canvas.value.getMaxScaleOnAxis();
+                        node.x = (node.x + delta.dx / scale).clamp(
+                          0,
+                          _canvasSize.width - _nodeWidth,
+                        );
+                        node.y = (node.y + delta.dy / scale).clamp(
+                          0,
+                          _canvasSize.height - _nodeHeight,
+                        );
+                      }),
+                      onPortDragStart: () => setState(() {
+                        _pendingEdge = (
+                          node.id,
+                          Offset(node.x + _nodeWidth, node.y + _nodeHeight / 2),
+                        );
+                      }),
+                      onPortDragUpdate: (globalPoint) => setState(() {
+                        final pending = _pendingEdge;
+                        if (pending != null) {
+                          _pendingEdge = (pending.$1, _toCanvas(globalPoint));
+                        }
+                      }),
+                      onPortDragEnd: _finishPendingEdge,
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
       ),
     ),
@@ -733,7 +727,9 @@ class _PropertiesPanel extends StatelessWidget {
       constraints: const BoxConstraints(maxHeight: 280),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
-        border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+        border: Border(
+          top: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
       ),
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: SingleChildScrollView(

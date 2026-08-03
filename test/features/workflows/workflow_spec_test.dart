@@ -68,19 +68,12 @@ void main() {
       // Duplicate labels.
       final duplicated = WorkflowSpec.starter('w2');
       duplicated.nodes.first.label = 'Output';
-      expect(
-        duplicated.validate().join(),
-        contains('unique'),
-      );
+      expect(duplicated.validate().join(), contains('unique'));
 
       // A cycle.
       final cyclic = WorkflowSpec.starter('w3');
       cyclic.nodes.add(
-        WorkflowNodeSpec(
-          id: 'n3',
-          kind: WorkflowNodeKind.agent,
-          label: 'Loop',
-        ),
+        WorkflowNodeSpec(id: 'n3', kind: WorkflowNodeKind.agent, label: 'Loop'),
       );
       cyclic.edges.addAll(const [
         WorkflowEdgeSpec('n1', 'n3'),
@@ -93,21 +86,9 @@ void main() {
         id: 'w4',
         name: 'bad fan-in',
         nodes: [
-          WorkflowNodeSpec(
-            id: 'a',
-            kind: WorkflowNodeKind.agent,
-            label: 'A',
-          ),
-          WorkflowNodeSpec(
-            id: 'b',
-            kind: WorkflowNodeKind.agent,
-            label: 'B',
-          ),
-          WorkflowNodeSpec(
-            id: 'c',
-            kind: WorkflowNodeKind.agent,
-            label: 'C',
-          ),
+          WorkflowNodeSpec(id: 'a', kind: WorkflowNodeKind.agent, label: 'A'),
+          WorkflowNodeSpec(id: 'b', kind: WorkflowNodeKind.agent, label: 'B'),
+          WorkflowNodeSpec(id: 'c', kind: WorkflowNodeKind.agent, label: 'C'),
           WorkflowNodeSpec(
             id: 'out',
             kind: WorkflowNodeKind.output,
@@ -124,69 +105,71 @@ void main() {
       expect(fanIn.validate().join(), contains('Merge'));
     });
 
-    test('compiled sequential spec with a review gate runs end to end',
-        () async {
-      final spec = WorkflowSpec(
-        id: 'w5',
-        name: 'Reviewed pipeline',
-        nodes: [
-          WorkflowNodeSpec(
-            id: 'n1',
-            kind: WorkflowNodeKind.agent,
-            label: 'Drafter',
-          ),
-          WorkflowNodeSpec(
-            id: 'n2',
-            kind: WorkflowNodeKind.review,
-            label: 'Check with me',
-          ),
-          WorkflowNodeSpec(
-            id: 'n3',
-            kind: WorkflowNodeKind.agent,
-            label: 'Editor',
-          ),
-          WorkflowNodeSpec(
-            id: 'n4',
-            kind: WorkflowNodeKind.output,
-            label: 'Result',
-          ),
-        ],
-        edges: const [
-          WorkflowEdgeSpec('n1', 'n2'),
-          WorkflowEdgeSpec('n2', 'n3'),
-          WorkflowEdgeSpec('n3', 'n4'),
-        ],
-      );
-      expect(spec.validate(), isEmpty);
+    test(
+      'compiled sequential spec with a review gate runs end to end',
+      () async {
+        final spec = WorkflowSpec(
+          id: 'w5',
+          name: 'Reviewed pipeline',
+          nodes: [
+            WorkflowNodeSpec(
+              id: 'n1',
+              kind: WorkflowNodeKind.agent,
+              label: 'Drafter',
+            ),
+            WorkflowNodeSpec(
+              id: 'n2',
+              kind: WorkflowNodeKind.review,
+              label: 'Check with me',
+            ),
+            WorkflowNodeSpec(
+              id: 'n3',
+              kind: WorkflowNodeKind.agent,
+              label: 'Editor',
+            ),
+            WorkflowNodeSpec(
+              id: 'n4',
+              kind: WorkflowNodeKind.output,
+              label: 'Result',
+            ),
+          ],
+          edges: const [
+            WorkflowEdgeSpec('n1', 'n2'),
+            WorkflowEdgeSpec('n2', 'n3'),
+            WorkflowEdgeSpec('n3', 'n4'),
+          ],
+        );
+        expect(spec.validate(), isEmpty);
 
-      final compiled = await compileWorkflowSpec(
-        spec,
-        buildAgent: buildScriptedAgent,
-      );
-      final controller = WorkflowRunController(
-        workflow: compiled.workflow,
-        encodeResponse: compiled.encodeResponse,
-      );
+        final compiled = await compileWorkflowSpec(
+          spec,
+          buildAgent: buildScriptedAgent,
+        );
+        final controller = WorkflowRunController(
+          workflow: compiled.workflow,
+          encodeResponse: compiled.encodeResponse,
+        );
 
-      await controller.start('hello');
-      await waitFor(
-        controller,
-        () => controller.status == RunStatus.pendingRequests,
-      );
-      final request = controller.pendingRequests.single;
-      expect(request.port.id, 'Check with me');
-      expect('${request.request}', contains('Drafter-reply'));
+        await controller.start('hello');
+        await waitFor(
+          controller,
+          () => controller.status == RunStatus.pendingRequests,
+        );
+        final request = controller.pendingRequests.single;
+        expect(request.port.id, 'Check with me');
+        expect('${request.request}', contains('Drafter-reply'));
 
-      await controller.respond(request, 'looks good');
-      await waitFor(controller, () => controller.isFinished);
+        await controller.respond(request, 'looks good');
+        await waitFor(controller, () => controller.isFinished);
 
-      expect(controller.runError, isNull);
-      expect(
-        controller.finalOutput.map((m) => m.text),
-        contains('Editor-reply'),
-      );
-      controller.dispose();
-    });
+        expect(controller.runError, isNull);
+        expect(
+          controller.finalOutput.map((m) => m.text),
+          contains('Editor-reply'),
+        );
+        controller.dispose();
+      },
+    );
 
     test('every template produces a valid, compilable spec', () async {
       for (final template in WorkflowTemplate.values) {
@@ -200,8 +183,7 @@ void main() {
       }
     });
 
-    test('checkpointed run records checkpoints and replays from one',
-        () async {
+    test('checkpointed run records checkpoints and replays from one', () async {
       final spec = WorkflowSpec.fromTemplate('w7', WorkflowTemplate.pipeline);
       final manager = InMemoryCheckpointManager(sessionId: 'w7');
 
@@ -234,10 +216,7 @@ void main() {
       await waitFor(replay, () => replay.isFinished);
 
       expect(replay.runError, isNull);
-      expect(
-        replay.finalOutput.map((m) => m.text),
-        contains('Editor-reply'),
-      );
+      expect(replay.finalOutput.map((m) => m.text), contains('Editor-reply'));
       first.dispose();
       replay.dispose();
     });

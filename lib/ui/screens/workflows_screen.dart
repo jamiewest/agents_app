@@ -197,10 +197,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
     setState(() => _starting = true);
     try {
       _lastSpec = spec;
-      final controller = await createSpecRunController(
-        widget.services,
-        spec,
-      );
+      final controller = await createSpecRunController(widget.services, spec);
       final previous = _run;
       setState(() => _run = controller);
       previous?.dispose();
@@ -509,27 +506,28 @@ class _SavedWorkflowsSection extends StatelessWidget {
                         onPressed: busy ? null : () => onRun(spec),
                       ),
                       IconButton(
-                    tooltip: 'Delete',
-                    icon: const Icon(LucideIcons.trash2300, size: 18),
-                    onPressed: () async {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text('Delete "${spec.name}"?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancel'),
+                        tooltip: 'Delete',
+                        icon: const Icon(LucideIcons.trash2300, size: 18),
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: Text('Delete "${spec.name}"?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
                             ),
-                            FilledButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Delete'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirmed ?? false) await store.delete(spec.id);
-                    },
+                          );
+                          if (confirmed ?? false) await store.delete(spec.id);
+                        },
                       ),
                     ],
                   ),

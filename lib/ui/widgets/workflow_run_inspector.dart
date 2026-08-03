@@ -257,7 +257,9 @@ class _StatusChip extends StatelessWidget {
       ),
       RunStatus.ended => (
         run.runError == null ? 'Finished' : 'Failed',
-        run.runError == null ? scheme.secondaryContainer : scheme.errorContainer,
+        run.runError == null
+            ? scheme.secondaryContainer
+            : scheme.errorContainer,
         run.runError == null
             ? scheme.onSecondaryContainer
             : scheme.onErrorContainer,

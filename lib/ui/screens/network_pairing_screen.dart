@@ -146,9 +146,13 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             const Text(
-              'On the hosting device, open Settings → Share agents and '
-              'generate a pairing code. Paste it here. Codes are single-use '
-              'and expire after two minutes.\n\n'
+              'On the device sharing the agent, open that agent from '
+              'Settings → Agents, turn on sharing, and show its pairing '
+              'code. Scan or paste it here — codes are single-use and '
+              'expire after two minutes.\n\n'
+              'Sharing over Tor works the same way, and reaches the device '
+              'from anywhere rather than only the local network. Turn on '
+              'Settings → Tor first, on both devices.\n\n'
               'Agents you add join your agent list like any other agent: '
               'chat with them from Chats, or manage them in Settings.',
             ),

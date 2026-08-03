@@ -107,9 +107,10 @@ class SidebarToggleButton extends StatelessWidget {
 ///
 /// Two-pane layouts show only the [SidebarToggleButton]: the persistent
 /// sidebar handles navigation, so the back button is dropped. Single-pane
-/// layouts show the back button alone. Both sit in the standard leading
-/// slot; elsewhere all three values are null so the app bar falls back to
-/// the implied back button and Material's own title spacing.
+/// layouts show the back button alone ([detailPaneActions] carries the
+/// drawer toggle instead). Both sit in the standard leading slot; elsewhere
+/// all three values are null so the app bar falls back to the implied back
+/// button and Material's own title spacing.
 ///
 /// `titleSpacing` is what puts the title on [AppChatPane.contentInset], the
 /// column the transcript below it already reads down — Material's default
@@ -133,6 +134,22 @@ detailPaneLeading(BuildContext context) {
     leadingWidth: null,
     titleSpacing: _titleSpacingFor(_kAppBarLeadingWidth),
   );
+}
+
+/// The app-bar actions that pair with [detailPaneLeading].
+///
+/// Single-pane layouts that host the conversations drawer (medium widths)
+/// still need the [SidebarToggleButton], but the leading slot is one button
+/// wide so the title can start on [AppChatPane.contentInset]. The toggle
+/// rides the trailing side instead. Empty everywhere else: two-pane layouts
+/// carry the toggle in the leading slot, and compact widths have no drawer
+/// here to open.
+List<Widget> detailPaneActions(BuildContext context) {
+  final scope = ChatsScope.maybeOf(context);
+  if (scope == null || scope.onToggleSidebar == null || scope.twoPane) {
+    return const [];
+  }
+  return const [SidebarToggleButton()];
 }
 
 /// The gap that lands the title on [AppChatPane.contentInset] given a
@@ -1270,6 +1287,7 @@ class _ChatDetailPaneState extends State<ChatDetailPane> {
             appBar: AppBar(
               leadingWidth: leading.leadingWidth,
               leading: leading.leading,
+              actions: detailPaneActions(context),
             ),
             body: const Center(
               child: Text('This conversation\'s agent no longer exists.'),

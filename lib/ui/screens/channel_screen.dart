@@ -13,7 +13,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../widgets/conversation_actions.dart';
 import '../widgets/empty_state.dart';
-import 'chats_home.dart' show detailPaneLeading;
+import 'chats_home.dart' show detailPaneActions, detailPaneLeading;
 
 /// One channel workspace: its conversations, shared files, and member
 /// agents.
@@ -179,6 +179,7 @@ class _ChannelScreenState extends State<ChannelScreen>
         titleSpacing: leading.titleSpacing,
         title: Text(channel.name),
         actions: [
+          ...detailPaneActions(context),
           IconButton(
             tooltip: 'New channel chat',
             icon: const Icon(LucideIcons.messageSquarePlus300),

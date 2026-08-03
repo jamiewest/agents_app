@@ -45,7 +45,8 @@ class WorkflowNodeSpec {
   factory WorkflowNodeSpec.fromRecord(Map<String, Object?> record) =>
       WorkflowNodeSpec(
         id: record['id']! as String,
-        kind: WorkflowNodeKind.values.asNameMap()[record['kind']] ??
+        kind:
+            WorkflowNodeKind.values.asNameMap()[record['kind']] ??
             WorkflowNodeKind.agent,
         label: record['label'] as String? ?? '',
         instructions: record['instructions'] as String? ?? '',
@@ -114,9 +115,7 @@ class WorkflowSpec {
         name: record['name'] as String? ?? 'Untitled workflow',
         nodes: [
           for (final node in (record['nodes'] as List?) ?? const [])
-            WorkflowNodeSpec.fromRecord(
-              (node as Map).cast<String, Object?>(),
-            ),
+            WorkflowNodeSpec.fromRecord((node as Map).cast<String, Object?>()),
         ],
         edges: [
           for (final edge in (record['edges'] as List?) ?? const [])
@@ -366,8 +365,7 @@ class WorkflowSpec {
           (outgoing[node.id] ?? 0) > 0) {
         problems.add('Output "${node.label}" cannot have outgoing edges.');
       }
-      if ((incoming[node.id] ?? 0) > 1 &&
-          node.kind != WorkflowNodeKind.merge) {
+      if ((incoming[node.id] ?? 0) > 1 && node.kind != WorkflowNodeKind.merge) {
         problems.add(
           'Only Merge nodes may have multiple incoming connections '
           '("${node.label}" has ${incoming[node.id]}).',
@@ -430,7 +428,10 @@ enum WorkflowTemplate {
 /// A spec compiled into a runnable [Workflow].
 class CompiledWorkflow {
   /// Creates a compiled workflow.
-  const CompiledWorkflow({required this.workflow, required this.encodeResponse});
+  const CompiledWorkflow({
+    required this.workflow,
+    required this.encodeResponse,
+  });
 
   /// The runnable workflow.
   final Workflow workflow;
@@ -485,11 +486,11 @@ Future<CompiledWorkflow> compileWorkflowSpec(
       case WorkflowNodeKind.merge:
         executors[node.id] = _MergeExecutor(label);
       case WorkflowNodeKind.output:
-        executors[node.id] = FunctionExecutor<List<ChatMessage>,
-            List<ChatMessage>>(
-          label,
-          (input, context, cancellationToken) => input,
-        );
+        executors[node.id] =
+            FunctionExecutor<List<ChatMessage>, List<ChatMessage>>(
+              label,
+              (input, context, cancellationToken) => input,
+            );
         outputLabels.add(label);
     }
   }
@@ -497,7 +498,9 @@ Future<CompiledWorkflow> compileWorkflowSpec(
   final entry = spec.nodes.singleWhere(
     (n) => (incoming[n.id] ?? const []).isEmpty,
   );
-  final builder = WorkflowBuilder(ExecutorInstanceBinding(executors[entry.id]!));
+  final builder = WorkflowBuilder(
+    ExecutorInstanceBinding(executors[entry.id]!),
+  );
   for (final node in spec.nodes) {
     if (node.id != entry.id) builder.bindExecutor(executors[node.id]!);
   }
@@ -510,10 +513,9 @@ Future<CompiledWorkflow> compileWorkflowSpec(
   for (final node in spec.nodes) {
     final sources = incoming[node.id] ?? const [];
     if (node.kind == WorkflowNodeKind.merge && sources.length > 1) {
-      builder.addFanInEdge(
-        [for (final edge in sources) labelOf(edge.from)],
-        labelOf(node.id),
-      );
+      builder.addFanInEdge([
+        for (final edge in sources) labelOf(edge.from),
+      ], labelOf(node.id));
       fanInEdges.addAll(sources);
     }
   }
@@ -565,9 +567,7 @@ class _MergeExecutor extends Executor<Object?, List<ChatMessage>> {
       return List<ChatMessage>.of(message);
     }
     if (message is Iterable<Object?>) {
-      return [
-        for (final item in message) ...ChatProtocol.toChatMessages(item),
-      ];
+      return [for (final item in message) ...ChatProtocol.toChatMessages(item)];
     }
     return ChatProtocol.toChatMessages(message);
   }

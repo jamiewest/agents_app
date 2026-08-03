@@ -4,10 +4,14 @@
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:tor_flutter/tor_flutter.dart';
 
 import '../data/demo_seed.dart';
 import '../features/local_models/downloaded_model_artifacts.dart';
 import '../features/inventory/inventory_access_settings.dart';
+import '../features/tor/tor_settings.dart';
+import '../features/tor/tor_sharing_settings.dart';
 import '../data/legacy/legacy_chat_migration.dart';
 import '../features/local_models/local_model_store.dart';
 import '../data/theme_settings.dart';
@@ -47,12 +51,42 @@ class AppBootstrap {
     // Brings the A2A host back up when agents were left shared, so a switch
     // that reads "on" means the agent is actually reachable.
     await _services.getService<NetworkSharingSettings>()?.load();
+    // Where Arti keeps its consensus cache, guard state, and its own copy of
+    // the onion key. Resolved here rather than at registration because the
+    // path is only available asynchronously, and the runtime cannot start
+    // without it.
+    await _resolveTorDataDirectory();
+    // Brings Tor back up when it was left on, so a switch that reads "on"
+    // means onion addresses are actually reachable. Starts in the background:
+    // bootstrap takes tens of seconds and must not hold up the first frame.
+    await _services.getService<TorSettings>()?.load();
+    // Republishes the onion service, and reads back the address the user has
+    // already shared, so a peer's saved pairing keeps working. Must follow
+    // the host coming up: there is no local port to publish before that.
+    await _services.getService<TorSharingSettings>()?.load();
     // Runs left `running` by a crash or force-quit are recovered before any
     // new run can start; a sweep after that point would mark a legitimately
     // in-flight run as interrupted.
     await _services.getService<AgentRunTelemetryStore>()?.recoverInterrupted();
     await _restoreLocalModelFiles();
     await _pruneDownloadedModelArtifacts();
+  }
+
+  /// Points Tor at a private directory under application support.
+  ///
+  /// Guard state must persist across launches — churning guards every start is
+  /// bad for anonymity — so this is a stable location rather than a temporary
+  /// one. Absent when no Tor backend is registered, which is the normal case
+  /// on platforms that cannot host.
+  Future<void> _resolveTorDataDirectory() async {
+    final options = _services.getService<TorOptions>();
+    if (options == null || options.dataDirectory != null) return;
+    // Only reached when a Tor backend is registered, which never happens on
+    // web — so path_provider is never asked for a directory it cannot give.
+    // Arti creates the tree itself, so there is nothing to make here and no
+    // reason to pull dart:io into a file that also compiles for web.
+    final support = await getApplicationSupportDirectory();
+    options.dataDirectory = '${support.path}/tor';
   }
 
   /// Reclaims managed storage from downloaded GGUFs no configured model asks

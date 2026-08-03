@@ -9,11 +9,13 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:tor_flutter/tor_flutter.dart';
 
 import '../../data/app_reset.dart';
 import '../../data/theme_settings.dart';
 import '../dialogs/pushover_credentials.dart';
 import '../widgets/app_sliver_header.dart';
+import '../../features/tor/tor_settings.dart';
 import '../widgets/page_body.dart';
 import '../widgets/settings_page.dart';
 
@@ -72,6 +74,14 @@ class SettingsHomeScreen extends StatelessWidget {
                 if (services.getService<WebSearchSettings>()
                     case final webSearch?)
                   _WebSearchTile(settings: webSearch),
+                const SettingsGroupLabel('Connections'),
+                // Absent where there is no Tor backend, so the row never
+                // offers something the device cannot do. Pairing is listed
+                // regardless: consuming someone else's code is a client
+                // action, and works over the local network without Tor.
+                if (services.getService<TorSettings>() case final tor?)
+                  _TorTile(settings: tor),
+                const _PairDeviceTile(),
                 const Divider(height: 32),
                 ListTile(
                   leading: Icon(
@@ -194,6 +204,55 @@ class _WebSearchTile extends StatelessWidget {
       ),
       trailing: const Icon(LucideIcons.chevronRight300),
       onTap: () => context.go('/settings/web-search'),
+    ),
+  );
+}
+
+/// The Settings row for pairing with an agent shared by another device.
+///
+/// The pairing screen already existed but nothing in Settings led to it — the
+/// only way in was a card buried in the add-agent wizard, which is not where
+/// anyone holding a pairing code thinks to look.
+class _PairDeviceTile extends StatelessWidget {
+  const _PairDeviceTile();
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: const Icon(LucideIcons.qrCode300),
+    title: const Text('Pair with a device'),
+    subtitle: const Text(
+      'Use an agent shared by another device. It joins your agent list.',
+    ),
+    trailing: const Icon(LucideIcons.chevronRight300),
+    onTap: () => context.go('/settings/network/pair'),
+  );
+}
+
+/// The Settings row for the app-wide Tor switch.
+///
+/// Live: the subtitle reports bootstrap progress, because a cold start takes
+/// tens of seconds and a row that just read "on" would look stuck.
+class _TorTile extends StatelessWidget {
+  const _TorTile({required this.settings});
+
+  final TorSettings settings;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: settings,
+    builder: (context, _) => ListTile(
+      leading: const Icon(LucideIcons.shield300),
+      title: const Text('Tor'),
+      subtitle: Text(switch (settings.status) {
+        TorBootstrapping(:final progress) when settings.enabled =>
+          'Connecting… ${(progress * 100).round()}%',
+        TorReady() when settings.enabled =>
+          'Connected — agents shared at a .onion address are reachable',
+        TorFailed() when settings.enabled => 'Could not connect',
+        _ => 'Reach agents shared at a .onion address from anywhere',
+      }),
+      trailing: const Icon(LucideIcons.chevronRight300),
+      onTap: () => context.go('/settings/tor'),
     ),
   );
 }

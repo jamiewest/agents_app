@@ -23,6 +23,7 @@ import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/logging_screen.dart';
 import '../ui/screens/profile_settings_screen.dart';
 import '../ui/screens/network_pairing_screen.dart';
+import '../ui/screens/tor_settings_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../ui/widgets/settings_section_shell.dart';
 import '../ui/screens/task_detail_screen.dart';
@@ -207,6 +208,14 @@ GoRouter createAppRouter({
                     state,
                     AppearanceSettingsScreen(services: services),
                     pageKey: '/settings/appearance',
+                  ),
+                ),
+                GoRoute(
+                  path: 'tor',
+                  pageBuilder: (context, state) => _fadeThroughPage(
+                    state,
+                    TorSettingsScreen(services: services),
+                    pageKey: '/settings/tor',
                   ),
                 ),
                 GoRoute(

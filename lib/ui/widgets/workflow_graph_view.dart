@@ -30,9 +30,9 @@ class WorkflowGraphView extends StatelessWidget {
     if (layers.isEmpty) return const SizedBox.shrink();
 
     final columns = layers.length;
-    final rows = layers.map((layer) => layer.length).reduce(
-      (a, b) => a > b ? a : b,
-    );
+    final rows = layers
+        .map((layer) => layer.length)
+        .reduce((a, b) => a > b ? a : b);
     final width = columns * _nodeWidth + (columns - 1) * _columnGap;
     final height = rows * _nodeHeight + (rows - 1) * _rowGap;
 

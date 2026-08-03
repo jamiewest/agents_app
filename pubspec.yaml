@@ -24,6 +24,7 @@ dependencies:
   flutter_context_menu: ^0.4.2
   flutter_markdown_plus: ^1.0.7
   flutter_picture_taker: ^0.2.0
+  flutter_secure_storage: ^10.3.1
   flutter_test:
     sdk: flutter
   go_router: ^17.3.0
@@ -37,6 +38,20 @@ dependencies:
   path: ^1.9.0
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0
+  # Not on pub.dev (both are publish_to: none), so they are pulled from git —
+  # which is what lets CI resolve them without the developer-local path
+  # overrides in pubspec_overrides.yaml. Tracking `main` rather than a pinned
+  # commit while these are still moving; pin a `ref` once the API settles, or
+  # a red build here will be someone else's push.
+  tor_flutter:
+    git:
+      url: https://github.com/jamiewest/tor_flutter.git
+      ref: main
+  tor_flutter_arti:
+    git:
+      url: https://github.com/jamiewest/tor_flutter.git
+      path: arti
+      ref: main
   sqflite: ^2.4.2
   sqflite_common: ^2.5.6
   universal_platform: ^1.1.0
@@ -48,6 +63,32 @@ dependencies:
 dev_dependencies:
   flutter_lints: ^6.0.0
   sqflite_common_ffi: ^2.3.4
+
+# Overrides CI needs, because pubspec_overrides.yaml is developer-local and
+# gitignored. Working locally still uses that file's path entries; these git
+# entries are what a clean checkout resolves.
+dependency_overrides:
+  # The Tor sharing work these depend on (loopbackOnly, advertisedHost) is not
+  # in the published 2.0.0 / 0.8.0 yet. Kept as overrides rather than direct
+  # git dependencies so the hosted constraints above still describe what this
+  # app actually needs once the changes are released.
+  agents:
+    git:
+      url: https://github.com/jamiewest/agents.git
+      path: packages/agents
+      ref: main
+  agents_flutter:
+    git:
+      url: https://github.com/jamiewest/agents.git
+      path: packages/agents_flutter
+      ref: main
+  # Upstream's 10s connect / 30s request defaults kill agent turns over Tor;
+  # neither a2a nor oxy exposes a knob. Fork of medz/oxy (MIT) — see that
+  # repo's README_PATCH.md for the single change and what would retire it.
+  oxy:
+    git:
+      url: https://github.com/jamiewest/oxy_tor.git
+      ref: main
 
 flutter:
   uses-material-design: true

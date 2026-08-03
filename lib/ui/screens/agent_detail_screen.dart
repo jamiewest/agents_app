@@ -7,12 +7,15 @@ import 'dart:async';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:tor_flutter/tor_flutter.dart';
 
 import '../../features/inventory/inventory_access_settings.dart';
+import '../../features/tor/tor_sharing_settings.dart';
 import '../widgets/agent_dashboard.dart';
 
 /// A read-only view of one saved agent: its configuration, tool access,
@@ -209,7 +212,11 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
                 if (widget.services.getService<NetworkSharingSettings>()
                     case final sharing? when sharing.isSupported) ...[
                   const SizedBox(height: 24),
-                  _SharingCard(settings: sharing, agentId: agent.id),
+                  _SharingCard(
+                    settings: sharing,
+                    tor: widget.services.getService<TorSharingSettings>(),
+                    agentId: agent.id,
+                  ),
                 ],
                 if (agent.delegations.isNotEmpty) ...[
                   const SizedBox(height: 24),
@@ -384,14 +391,19 @@ class _AccessCard extends StatelessWidget {
 /// once something is being served, and the host it pairs with exists only
 /// because an agent on some page like this one was switched on.
 class _SharingCard extends StatelessWidget {
-  const _SharingCard({required this.settings, required this.agentId});
+  const _SharingCard({required this.settings, required this.agentId, this.tor});
 
   final NetworkSharingSettings settings;
+
+  /// Tor sharing, when the app registered it. Absent on platforms that
+  /// cannot host.
+  final TorSharingSettings? tor;
+
   final String agentId;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: settings,
+    listenable: Listenable.merge([settings, tor]),
     builder: (context, _) {
       final scheme = Theme.of(context).colorScheme;
       final shared = settings.isShared(agentId);
@@ -404,13 +416,21 @@ class _SharingCard extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               value: shared,
               title: const Text('Share on the network'),
-              subtitle: Text(
-                shared && settings.isRunning
-                    ? 'Paired devices can use this agent — serving on port '
-                          '${settings.port}'
-                    : 'Let paired devices on this network use this agent as '
-                          'their own teammate (A2A)',
-              ),
+              subtitle: Text(switch ((
+                shared && settings.isRunning,
+                settings.loopbackOnly,
+              )) {
+                // Bound to loopback for the onion forward, so the port is
+                // real but nothing on this network can reach it.
+                (true, true) =>
+                  'Reachable over Tor only — not served on this network',
+                (true, false) =>
+                  'Paired devices can use this agent — serving on port '
+                      '${settings.port}',
+                _ =>
+                  'Let paired devices on this network use this agent as '
+                      'their own teammate (A2A)',
+              }),
               onChanged: settings.busy
                   ? null
                   : (value) => unawaited(settings.setShared(agentId, value)),
@@ -434,16 +454,29 @@ class _SharingCard extends StatelessWidget {
                 label: const Text('Show pairing code'),
               ),
             ],
+            if (tor case final tor? when tor.isSupported && shared) ...[
+              const Divider(height: 32),
+              _TorSharingSection(
+                tor: tor,
+                onShowPairingCode: () =>
+                    unawaited(_showPairingCode(context, tor: tor)),
+              ),
+            ],
           ],
         ),
       );
     },
   );
 
-  Future<void> _showPairingCode(BuildContext context) async {
+  Future<void> _showPairingCode(
+    BuildContext context, {
+    TorSharingSettings? tor,
+  }) async {
     final PairingPayload offer;
     try {
-      offer = await settings.createPairingOffer();
+      offer = await (tor == null
+          ? settings.createPairingOffer()
+          : tor.createPairingOffer());
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
@@ -456,32 +489,44 @@ class _SharingCard extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Pairing code'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  // QR codes need a white quiet zone for scanner contrast in
-                  // both themes; not a theme role.
-                  color: Colors.white,
-                  padding: const EdgeInsets.all(12),
-                  child: QrImageView(data: offer.encode(), size: 220),
+        // An explicit width is load-bearing, not styling. Without it the
+        // dialog measures its content's intrinsic width, and QrImageView
+        // renders through a LayoutBuilder, which cannot answer an intrinsic
+        // query — it throws during layout, so the barrier appears with
+        // nothing on it and the app looks wedged.
+        content: SizedBox(
+          width: 320,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    // QR codes need a white quiet zone for scanner contrast
+                    // in both themes; not a theme role.
+                    color: Colors.white,
+                    padding: const EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 220,
+                      height: 220,
+                      child: QrImageView(data: offer.encode(), size: 220),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Scan this on the other device, or paste the code below into '
-                'its "Add network agent" screen. Single-use; expires in two '
-                'minutes.',
-              ),
-              const SizedBox(height: 8),
-              SelectableText(
-                offer.encode(),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+                const SizedBox(height: 12),
+                const Text(
+                  'Scan this on the other device, or paste the code below '
+                  'into its "Add network agent" screen. Single-use; expires '
+                  'in two minutes.',
+                ),
+                const SizedBox(height: 8),
+                SelectableText(
+                  offer.encode(),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -524,4 +569,184 @@ class _DelegationsCard extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// Offers the same shared agents over Tor, so peers do not have to be on this
+/// network.
+///
+/// Sits under network sharing rather than beside it because it is a second
+/// route to the same host: the agents on offer are the ones already switched
+/// on above.
+class _TorSharingSection extends StatelessWidget {
+  const _TorSharingSection({
+    required this.tor,
+    required this.onShowPairingCode,
+  });
+
+  final TorSharingSettings tor;
+  final VoidCallback onShowPairingCode;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: tor.enabled,
+          title: const Text('Share over Tor'),
+          subtitle: Text(_subtitleFor(tor)),
+          // Disabled once the key is lost rather than left to bounce back:
+          // every attempt fails on the same missing key, and a switch that
+          // refuses without saying why is what left people stuck here.
+          onChanged: tor.busy || tor.isIdentityUnrecoverable
+              ? null
+              : (value) => unawaited(tor.setEnabled(value)),
+        ),
+        if (tor.address case final address?) ...[
+          const SizedBox(height: 4),
+          _OnionAddress(address: address, dimmed: !tor.isPublished),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          'Your address stays the same, so a peer only has to pair once. '
+          'Keep the app open — agents are reachable only while it runs.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        if (tor.error case final error?) ...[
+          const SizedBox(height: 8),
+          Text(error, style: TextStyle(color: scheme.error)),
+        ],
+        if (tor.isIdentityUnrecoverable) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Sharing over Tor cannot start again until this device gets a new '
+            'identity. That means a new address, so everyone already paired '
+            'over Tor has to pair again.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            // The escape hatch. Without it the only fix is editing storage by
+            // hand outside the app.
+            onPressed: tor.busy
+                ? null
+                : () => unawaited(_confirmReset(context)),
+            style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+            icon: const Icon(LucideIcons.trash2300, size: 18),
+            label: const Text('Reset Tor identity'),
+          ),
+        ],
+        if (tor.isPublished) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onShowPairingCode,
+            icon: const Icon(LucideIcons.qrCode300),
+            label: const Text('Show Tor pairing code'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Asks before throwing away the identity, because the cost lands on the
+  /// user's peers rather than on this device: a mis-tap silently breaks every
+  /// pairing they have, and nothing can undo it.
+  Future<void> _confirmReset(BuildContext context) async {
+    final scheme = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Tor identity?'),
+        content: const Text(
+          'This device gets a brand new onion address. The old one stops '
+          'working for good, so every device paired over Tor has to be '
+          'paired again with a new code.\n\n'
+          'The current address cannot be recovered — resetting is the only '
+          'way to share over Tor from this device again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: scheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset identity'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed ?? false) await tor.resetIdentity();
+  }
+
+  static String _subtitleFor(TorSharingSettings tor) {
+    // Takes precedence over the lifecycle: Tor itself may be perfectly fine,
+    // and reporting that would leave the switch looking merely off.
+    if (tor.isIdentityUnrecoverable) {
+      return 'Unavailable — this device lost its Tor identity';
+    }
+    return switch (tor.status) {
+      TorBootstrapping(:final progress) when tor.enabled =>
+        'Connecting to Tor… ${(progress * 100).round()}%',
+      TorReady() when tor.isPublished =>
+        'Reachable from anywhere at the address below',
+      TorFailed() => 'Tor is not running',
+      _ => 'Let peers use this agent without being on your network',
+    };
+  }
+}
+
+/// The onion address, with a copy action.
+///
+/// Shown even while unpublished — it is the identity the user has already
+/// handed out, and blanking it would suggest it had changed.
+class _OnionAddress extends StatelessWidget {
+  const _OnionAddress({required this.address, required this.dimmed});
+
+  final String address;
+  final bool dimmed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SelectableText(
+              address,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                color: dimmed ? scheme.onSurfaceVariant : scheme.onSurface,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Copy address',
+            icon: const Icon(LucideIcons.copy300, size: 18),
+            onPressed: () {
+              unawaited(Clipboard.setData(ClipboardData(text: address)));
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Address copied')));
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }

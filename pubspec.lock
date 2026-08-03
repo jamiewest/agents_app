@@ -20,16 +20,20 @@ packages:
   agents:
     dependency: "direct main"
     description:
-      path: "../agents/packages/agents"
-      relative: true
-    source: path
+      path: "packages/agents"
+      ref: main
+      resolved-ref: "16e0eeecc3a71008ca0f59f556f04020b049792f"
+      url: "https://github.com/jamiewest/agents.git"
+    source: git
     version: "2.0.0"
   agents_flutter:
     dependency: "direct main"
     description:
-      path: "../agents/packages/agents_flutter"
-      relative: true
-    source: path
+      path: "packages/agents_flutter"
+      ref: main
+      resolved-ref: "16e0eeecc3a71008ca0f59f556f04020b049792f"
+      url: "https://github.com/jamiewest/agents.git"
+    source: git
     version: "0.8.0"
   analyzer:
     dependency: transitive
@@ -573,7 +577,7 @@ packages:
     source: hosted
     version: "2.0.35"
   flutter_secure_storage:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: flutter_secure_storage
       sha256: "7686b1d6a29985dcbb808c59518226e603e3bfa7c0ddfd1a0d00e4cda77c868e"
@@ -1127,12 +1131,13 @@ packages:
     source: hosted
     version: "0.18.11"
   oxy:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: oxy
-      sha256: "577b4972e0e1095e2b3925c7017e3e2df79a6143c7ae463d5b855de63774c8af"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: main
+      resolved-ref: "100a2e0bb4fbd2669aab345def261e81474d567a"
+      url: "https://github.com/jamiewest/oxy_tor.git"
+    source: git
     version: "0.1.0"
   package_config:
     dependency: transitive
@@ -1619,6 +1624,24 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.11.1"
+  tor_flutter:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: main
+      resolved-ref: "0292b69403e237f49c36914421e8dcf4f8a6e761"
+      url: "https://github.com/jamiewest/tor_flutter.git"
+    source: git
+    version: "0.1.0"
+  tor_flutter_arti:
+    dependency: "direct main"
+    description:
+      path: arti
+      ref: main
+      resolved-ref: "0292b69403e237f49c36914421e8dcf4f8a6e761"
+      url: "https://github.com/jamiewest/tor_flutter.git"
+    source: git
+    version: "0.1.0"
   typed_data:
     dependency: transitive
     description:

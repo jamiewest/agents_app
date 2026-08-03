@@ -106,7 +106,10 @@ class WorkflowRunController extends ChangeNotifier {
   final Workflow workflow;
 
   /// Optional adapter from reply text to a port's response value.
-  final Object? Function(ExternalRequest<dynamic, dynamic> request, String text)?
+  final Object? Function(
+    ExternalRequest<dynamic, dynamic> request,
+    String text,
+  )?
   encodeResponse;
 
   /// Optional checkpoint manager; enables [checkpointList] and resume.

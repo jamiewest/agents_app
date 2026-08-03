@@ -57,10 +57,7 @@ void main() {
       await controller.start('hello');
       await waitFor(controller, () => controller.isFinished);
 
-      expect(
-        controller.nodes['Drafter']!.status,
-        WorkflowNodeStatus.done,
-      );
+      expect(controller.nodes['Drafter']!.status, WorkflowNodeStatus.done);
       expect(controller.nodes['Editor']!.status, WorkflowNodeStatus.done);
       expect(controller.nodes['Drafter']!.text.toString(), 'draft');
       expect(controller.nodes['Editor']!.text.toString(), 'final');
@@ -102,11 +99,13 @@ void main() {
       final workflow = DemoWorkflows.concurrent([
         ScriptedAgent(
           name: 'Optimist',
-          onRun: (messages, options) => assistantResponse('yes', author: 'Optimist'),
+          onRun: (messages, options) =>
+              assistantResponse('yes', author: 'Optimist'),
         ),
         ScriptedAgent(
           name: 'Skeptic',
-          onRun: (messages, options) => assistantResponse('no', author: 'Skeptic'),
+          onRun: (messages, options) =>
+              assistantResponse('no', author: 'Skeptic'),
         ),
       ], name: 'Test debate');
       final controller = WorkflowRunController(workflow: workflow);
@@ -174,32 +173,35 @@ void main() {
       controller.dispose();
     });
 
-    test('RoleAgent renames the agent and prepends role instructions', () async {
-      late List<ChatMessage> seen;
-      final inner = ScriptedAgent(
-        name: 'inner',
-        onRun: (messages, options) {
-          seen = messages;
-          return assistantResponse('ok');
-        },
-      );
-      final role = RoleAgent(
-        inner,
-        role: 'Critic',
-        roleInstructions: 'Be critical.',
-      );
+    test(
+      'RoleAgent renames the agent and prepends role instructions',
+      () async {
+        late List<ChatMessage> seen;
+        final inner = ScriptedAgent(
+          name: 'inner',
+          onRun: (messages, options) {
+            seen = messages;
+            return assistantResponse('ok');
+          },
+        );
+        final role = RoleAgent(
+          inner,
+          role: 'Critic',
+          roleInstructions: 'Be critical.',
+        );
 
-      expect(role.name, 'Critic');
-      final session = await role.createSession();
-      await role.run(
-        session,
-        null,
-        messages: [ChatMessage.fromText(ChatRole.user, 'hi')],
-      );
+        expect(role.name, 'Critic');
+        final session = await role.createSession();
+        await role.run(
+          session,
+          null,
+          messages: [ChatMessage.fromText(ChatRole.user, 'hi')],
+        );
 
-      expect(seen.first.role, ChatRole.system);
-      expect(seen.first.text, 'Be critical.');
-      expect(seen.last.text, 'hi');
-    });
+        expect(seen.first.role, ChatRole.system);
+        expect(seen.first.text, 'Be critical.');
+        expect(seen.last.text, 'hi');
+      },
+    );
   });
 }

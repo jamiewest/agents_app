@@ -9,8 +9,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:llama_cpp_flutter/chat.dart' as llama;
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sqflite;
+import 'package:tor_flutter/tor_flutter.dart';
 
 import 'app/agents_app.dart';
+import 'data/mac_keychain_secret_store.dart';
 import 'data/prompt_log_inspector.dart';
 import 'data/theme_settings.dart';
 import 'features/inventory/inventory_access_settings.dart';
@@ -18,6 +20,9 @@ import 'features/inventory/inventory_store.dart';
 import 'features/inventory/inventory_tools.dart';
 import 'features/local_models/local_llama_agent_factory.dart';
 import 'features/local_models/local_llama_model_host.dart';
+import 'features/tor/secure_onion_identity_store.dart';
+import 'features/tor/tor_settings.dart';
+import 'features/tor/tor_sharing_settings.dart';
 
 // This is how we build and run the application, dont stray.
 // <start>
@@ -151,11 +156,46 @@ final _builder = Host.createApplicationBuilder()
     flutter.services.tryAddSingleton<NetworkSharingSettings>(
       NetworkSharingSettings.new,
     );
+    // Tor sharing, on the platforms that carry the Arti runtime. Registering
+    // it is what makes the sharing card offer the option at all; elsewhere the
+    // section stays hidden rather than presenting a dead switch.
+    //
+    // The onion address a user shares is derived from a key, so that key has
+    // to outlive the process or every paired peer breaks — hence the keychain
+    // -backed identity store rather than the in-memory default.
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      flutter.services
+        ..addTor(
+          (tor) => tor
+            ..usePlatform((_) => ArtiTorPlatform())
+            ..useIdentityStore(SecureOnionIdentityStore.fromServices),
+        )
+        // The master switch. Reaching a peer's onion address needs the runtime
+        // running but not the ability to host one, so this is deliberately
+        // separate from the per-agent sharing switch.
+        ..tryAddSingleton<TorSettings>(TorSettings.fromServices);
+    }
+    if (flutter.services.any((d) => d.serviceType == TorRuntime)) {
+      flutter.services.tryAddSingleton<TorSharingSettings>(
+        (sp) => TorSharingSettings(
+          sp.getRequiredService<KeyValueStore>(),
+          sp.getRequiredService<TorRuntime>(),
+          sp.getRequiredService<NetworkSharingSettings>(),
+          sp.getRequiredService<OnionIdentityStore>(),
+        ),
+      );
+    }
     flutter.useFlutterHarnessAgent();
     flutter.useConfiguredAgents(
       // One summary log record per agent run (request in, response out) in
       // the Agents.Traffic category — never one record per streamed update.
       logAgentTraffic: true,
+      // macOS keeps its secrets in the data protection keychain rather than
+      // the package default's login keychain, which prompts for the login
+      // password on every read from a freshly built binary.
+      secretStore: macKeychainSecretStore,
       // A research turn spends one iteration per tool call — a clock read, a
       // search, then a page fetch per result — so the underlying default of
       // 10 runs out mid-task on ordinary "what happened in X last week"
@@ -225,4 +265,5 @@ Future<void> main() async {
   });
   await host.run();
 }
+
 // </start>

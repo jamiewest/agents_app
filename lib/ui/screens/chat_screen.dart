@@ -19,7 +19,7 @@ import '../widgets/chat_terminal_panel.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/prompt_inspector_panel.dart';
 import '../widgets/usage_stats_sheet.dart';
-import 'chats_home.dart' show detailPaneLeading;
+import 'chats_home.dart' show detailPaneActions, detailPaneLeading;
 
 /// Resolves a saved agent and shows a chat against it.
 class ChatScreen extends StatefulWidget {
@@ -934,6 +934,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       actions: [
+        ...detailPaneActions(context),
         Builder(
           builder: (context) {
             final log = widget.services.getService<PromptLog>();
