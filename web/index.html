@@ -40,6 +40,17 @@
       import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.5.1/esm/index.js';
       globalThis.Wllama = Wllama;
     </script>
+    <!--
+      Installs globalThis.torBridge and replaces globalThis.fetch so .onion
+      requests route through Tor. Loaded before flutter_bootstrap.js because
+      package:oxy binds @JS('fetch') to the global, and HTTP stacks that cache
+      a client on first use would otherwise capture the unshimmed fetch.
+
+      Failure here is deliberately not fatal: the shim only affects .onion
+      hosts, so an app whose Tor features are switched off still runs. Dart
+      reports the missing bridge if anything tries to start Tor.
+    -->
+    <script type="module" src="tor_bridge.js"></script>
   </head>
   <body>
     <script src="flutter_bootstrap.js" async></script>

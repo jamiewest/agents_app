@@ -31,6 +31,7 @@ class TorSettings extends ChangeNotifier {
   );
 
   static const String _enabledKey = 'agents_app.tor.enabled';
+  static const String _gatewayKey = 'agents_app.tor.gateway';
 
   final KeyValueStore _keyValueStore;
   final TorRuntime _runtime;
@@ -43,6 +44,7 @@ class TorSettings extends ChangeNotifier {
   bool _enabled = false;
   bool _busy = false;
   String? _error;
+  String _gateway = '';
 
   /// Whether Tor is switched on.
   bool get enabled => _enabled;
@@ -60,7 +62,44 @@ class TorSettings extends ChangeNotifier {
   String? get error => _error;
 
   /// Whether this platform has a Tor backend at all.
-  bool get isSupported => !kIsWeb;
+  ///
+  /// True on the web as well as natively, but the two get there differently:
+  /// natively the backend talks to the Tor network itself, while a browser
+  /// cannot open a connection to a relay and has to be pointed at a [gateway]
+  /// that forwards on its behalf.
+  bool get isSupported => true;
+
+  /// Whether a gateway address has to be supplied before Tor can start.
+  bool get requiresGateway => kIsWeb;
+
+  /// The gateway to dial, as `ip:port:certhash`.
+  ///
+  /// Empty when unset. Ignored off the web, where the backend reaches relays
+  /// directly.
+  String get gateway => _gateway;
+
+  /// The gateway list handed to the web backend.
+  ///
+  /// A single entry today. The backend takes a list because several gateways
+  /// can be given for redundancy, and reads it at every start so a correction
+  /// takes effect without a restart.
+  List<String> get gateways =>
+      _gateway.trim().isEmpty ? const [] : [_gateway.trim()];
+
+  /// Whether Tor could be started right now.
+  bool get canStart => !requiresGateway || gateways.isNotEmpty;
+
+  /// Records the gateway to dial.
+  ///
+  /// Does not restart a running client: changing the address while connected
+  /// would drop circuits mid-request. It takes effect on the next start.
+  Future<void> setGateway(String value) async {
+    final trimmed = value.trim();
+    if (trimmed == _gateway) return;
+    _gateway = trimmed;
+    await _keyValueStore.write(_gatewayKey, trimmed);
+    notifyListeners();
+  }
 
   /// Loads the persisted preference and starts Tor if it was left on.
   ///
@@ -68,9 +107,13 @@ class TorSettings extends ChangeNotifier {
   /// and holding up the first frame for it would read as a hang.
   Future<void> load() async {
     if (!isSupported) return;
+    _gateway = await _keyValueStore.read(_gatewayKey) ?? '';
     _enabled = await _keyValueStore.read(_enabledKey) == 'true';
     notifyListeners();
-    if (_enabled) unawaited(_apply());
+    // Not started without somewhere to connect: on the web that is a
+    // configuration gap, not a failure, and reporting it as one on every
+    // launch would be noise.
+    if (_enabled && canStart) unawaited(_apply());
   }
 
   /// Switches Tor on or off.

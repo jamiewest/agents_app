@@ -70,10 +70,14 @@ class _Body extends StatelessWidget {
           value: settings.enabled,
           title: const Text('Enable Tor'),
           subtitle: Text(_subtitleFor(settings)),
-          onChanged: settings.busy
+          // Disabled rather than hidden when no gateway is set: the switch is
+          // the thing people look for, and removing it would read as Tor being
+          // unavailable rather than unconfigured.
+          onChanged: settings.busy || !settings.canStart
               ? null
               : (value) => unawaited(settings.setEnabled(value)),
         ),
+        if (settings.requiresGateway) _GatewayField(settings: settings),
         if (settings.status case final TorBootstrapping status
             when settings.enabled) ...[
           const SizedBox(height: 8),
@@ -107,6 +111,69 @@ class _Body extends StatelessWidget {
       'Connecting… ${(progress * 100).round()}%',
     TorReady() when settings.enabled => 'Connected',
     TorFailed() when settings.enabled => 'Could not connect',
+    _ when !settings.canStart => 'Add a gateway below to switch this on',
     _ => 'Reach agents shared at a .onion address from anywhere',
   };
+}
+
+/// Where the browser sends its Tor traffic.
+///
+/// Only shown on the web. A browser cannot open a connection to a Tor relay,
+/// so it needs a gateway to forward bytes on its behalf — one that sees only
+/// encrypted Tor cells, never the destination or the content.
+class _GatewayField extends StatefulWidget {
+  const _GatewayField({required this.settings});
+
+  final TorSettings settings;
+
+  @override
+  State<_GatewayField> createState() => _GatewayFieldState();
+}
+
+class _GatewayFieldState extends State<_GatewayField> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.settings.gateway,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            // Saved on submit rather than on every keystroke: a half-typed
+            // address is never a valid one, and persisting each character
+            // would make the stored value briefly nonsense.
+            onSubmitted: (value) =>
+                unawaited(widget.settings.setGateway(value)),
+            enabled: !widget.settings.enabled,
+            decoration: const InputDecoration(
+              labelText: 'Gateway address',
+              hintText: '203.0.113.5:12298:uEiAx…9Qw',
+              helperText: 'Press enter to save. Takes effect on next connect.',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'A gateway forwards encrypted Tor traffic for browsers, which '
+            'cannot reach relays directly. It never learns which address you '
+            'are contacting.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

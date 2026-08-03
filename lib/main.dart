@@ -176,6 +176,24 @@ final _builder = Host.createApplicationBuilder()
         // running but not the ability to host one, so this is deliberately
         // separate from the per-agent sharing switch.
         ..tryAddSingleton<TorSettings>(TorSettings.fromServices);
+    } else if (kIsWeb) {
+      // The browser gets a client, never a host: it cannot listen on a socket,
+      // so there is no local port an onion service could forward to. No
+      // identity store is registered for the same reason — nothing here mints
+      // an address.
+      //
+      // The gateway is read from TorSettings on every start rather than
+      // captured here, because it is a user-entered setting and this factory
+      // runs long before anyone has typed one.
+      flutter.services
+        ..addTor(
+          (tor) => tor.usePlatform(
+            (sp) => WebTorPlatform(
+              gateways: () => sp.getRequiredService<TorSettings>().gateways,
+            ),
+          ),
+        )
+        ..tryAddSingleton<TorSettings>(TorSettings.fromServices);
     }
     if (flutter.services.any((d) => d.serviceType == TorRuntime)) {
       flutter.services.tryAddSingleton<TorSharingSettings>(
