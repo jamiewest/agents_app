@@ -1629,7 +1629,7 @@ packages:
     description:
       path: "."
       ref: main
-      resolved-ref: cf606827619c7d42e17a64376ae1a883bf921a6e
+      resolved-ref: "2623ef2f649a94b6dcb584782face233f28dd56a"
       url: "https://github.com/jamiewest/tor_flutter.git"
     source: git
     version: "0.1.0"
@@ -1638,7 +1638,7 @@ packages:
     description:
       path: arti
       ref: main
-      resolved-ref: cf606827619c7d42e17a64376ae1a883bf921a6e
+      resolved-ref: "2623ef2f649a94b6dcb584782face233f28dd56a"
       url: "https://github.com/jamiewest/tor_flutter.git"
     source: git
     version: "0.1.0"

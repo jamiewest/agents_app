@@ -7,6 +7,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:tor_flutter/tor_flutter.dart';
 
 /// Adds agents hosted on another device: paste a pairing code, redeem it,
 /// pick which of the host's agents to add as teammates.
@@ -43,8 +44,13 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
       _busy = true;
       _error = null;
     });
+    // Routed through Tor when the code carries a .onion address. Injected
+    // rather than left to the default client because the browser's HTTP stack
+    // may use XMLHttpRequest, which the globalThis.fetch shim cannot
+    // intercept; off the web this is a pass-through and the process-wide
+    // overrides do the routing. LAN codes are unaffected either way.
+    final client = PairingClient(httpClient: TorHttpClient());
     try {
-      final client = PairingClient();
       final result = await client.pair(
         payload,
         clientName: 'agents_app',
@@ -64,6 +70,7 @@ class _NetworkPairingScreenState extends State<NetworkPairingScreen> {
     } catch (e) {
       if (mounted) setState(() => _error = 'Pairing failed: $e');
     } finally {
+      client.close();
       if (mounted) setState(() => _busy = false);
     }
   }
