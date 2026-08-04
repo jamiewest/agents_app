@@ -4,6 +4,7 @@
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:tor_flutter/tor_flutter.dart';
 
@@ -79,10 +80,15 @@ class AppBootstrap {
   /// one. Absent when no Tor backend is registered, which is the normal case
   /// on platforms that cannot host.
   Future<void> _resolveTorDataDirectory() async {
+    // The web backend keeps its own state in the browser and has no directory
+    // to be given, while path_provider throws when asked for one. Checked
+    // before the registration test rather than relying on it: a Tor backend
+    // *is* registered on web now, and the throw happened here — inside the
+    // future the router waits on — so the whole app stayed blank with nothing
+    // logged.
+    if (kIsWeb) return;
     final options = _services.getService<TorOptions>();
     if (options == null || options.dataDirectory != null) return;
-    // Only reached when a Tor backend is registered, which never happens on
-    // web — so path_provider is never asked for a directory it cannot give.
     // Arti creates the tree itself, so there is nothing to make here and no
     // reason to pull dart:io into a file that also compiles for web.
     final support = await getApplicationSupportDirectory();
