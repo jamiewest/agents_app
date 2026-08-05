@@ -22,7 +22,7 @@ packages:
     description:
       path: "packages/agents"
       ref: main
-      resolved-ref: "338eefbe78de26d459a30313938e9f73ce8e5272"
+      resolved-ref: "9360d514f8d82c1f0a925438f7727156109a72b3"
       url: "https://github.com/jamiewest/agents.git"
     source: git
     version: "2.0.0"
@@ -31,10 +31,10 @@ packages:
     description:
       path: "packages/agents_flutter"
       ref: main
-      resolved-ref: "338eefbe78de26d459a30313938e9f73ce8e5272"
+      resolved-ref: "9360d514f8d82c1f0a925438f7727156109a72b3"
       url: "https://github.com/jamiewest/agents.git"
     source: git
-    version: "0.8.1"
+    version: "0.8.2"
   analyzer:
     dependency: transitive
     description:
