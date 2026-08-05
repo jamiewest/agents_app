@@ -131,6 +131,56 @@ physical memory sampled from the llama.cpp memory monitor (exact on Apple
 platforms via `sysctl hw.memsize`). Unknown or estimated memory skips the
 memory filter rather than emptying the list.
 
+**Local models on iOS come from the built-in list or a file the user picks.**
+The model editor had free-text GGUF URL fields validated only as "is this an
+absolute URI" — any host, any scheme. That weakens the 2.5.2 answer below
+(curated weights from a known host is a much better sentence than "the user
+types any URL and we download it"), and it is a 2.1 quality risk in its own
+right: an unvetted GGUF can be the wrong architecture, wrong quantization, or
+simply too large, and it crashes on the reviewer's device. iOS now shows a
+read-only summary of where a preset's weights came from instead of the URL
+fields, and a model that has no URL yet starts on the file picker. Importing a
+file through the system picker stays available — a file the user explicitly
+chose is exactly the sanctioned model. macOS keeps URL entry.
+
+**Preset model URLs are pinned to commit SHAs**, not `resolve/main`. A shipped
+build cannot be re-pointed, so a mutable ref means an upstream rename breaks
+the download for everyone already on that version. This was not hypothetical:
+the Gemma 4 E4B preset's MTP drafter URL already 404s against `main` today
+because upstream renamed the file, so that preset has been shipping a broken
+artifact. Fixed along with the pinning, and a test now fails any preset URL
+that is not pinned to a 40-character commit.
+
+**Web search keeps custom endpoints on iOS but not custom user agents.**
+Configurable user agents violate no App Store rule — Safari's own "Request
+Desktop Site" is user-agent switching — but an arbitrary UA sitting next to
+JavaScript rendering and free-text query parameters reads as bot-detection
+evasion tooling, and it earns a phone almost nothing. The user-agent profile
+editor and browsing-UA override are hidden on iOS; clients there send the
+platform default. Choosing the search endpoint, which is the part people
+actually want (a self-hosted SearXNG is privacy-positive), stays.
+
+Search endpoints saved or edited from now on must use **https** unless the host
+is on the local network — loopback, RFC 1918, link-local, or a `.local` /
+`localhost` name. A self-hosted SearXNG on a LAN rarely has a certificate and
+its traffic never leaves the network, so blocking it outright would have
+removed the very use case that justified keeping custom endpoints on iOS.
+Anything routable must be https: a search query is the user's own text, and
+over http it crosses the internet in the clear.
+
+Two limits worth knowing. The rule runs in `saveClient`, so a cleartext client
+saved by an earlier build keeps working until someone edits it — nothing
+re-validates on load. And a local cleartext client with **Render JavaScript**
+enabled still goes through the platform WebView, where App Transport Security
+governs the request; that combination can fail even though the plain-HTTP
+search path works.
+
+Note what this does *not* change: `open_web_page` loads arbitrary URLs in a
+headless WebKit view with JavaScript enabled, and it is registered
+independently of search configuration. That is the app's unrestricted web
+access, and it is the thing the age-rating answer has to reflect — hiding
+search settings would not have removed it.
+
 **Shell access can no longer be wired on mobile.** The editor offered the
 toggle only on desktop, but `ConfiguredAgentFactory` gated only on `!kIsWeb` —
 so a config arriving with the flag already set (imported from a paired peer,
@@ -342,10 +392,30 @@ at export.
 ## Verification performed
 
 - `flutter analyze` clean in `agents_app` and `agents_flutter`.
-- Full test suites pass: 419 tests in `agents_app`, 831 in `agents_flutter`,
-  including new coverage for the preset filter, the shell policy deny-list, the
-  desktop-only shell gate on iOS and Android, paired-device revocation, and Tor
-  hosting staying hidden on iOS.
+- Test suites: 834 pass in `agents_flutter`; in `agents_app` 423 pass and 2
+  fail, both in `test/tasks_screen_test.dart` and both unrelated to this work —
+  that test still exercises the task-template feature that a concurrent change
+  removed from `tasks_screen.dart`. New coverage here spans the preset filter,
+  preset URL pinning, the shell policy deny-list, the desktop-only shell gate
+  on iOS and Android, paired-device revocation, Tor hosting staying hidden on
+  iOS, search-endpoint scheme rules, the iOS user-agent gate, and the iOS model
+  editor — including that a preset's download URL survives a save with the
+  field hidden.
+
+> **Check what `agents_flutter` actually resolved to before trusting a run.**
+> `pubspec.yaml` overrides `agents`/`agents_flutter` to git at `ref: main`, and
+> the gitignored `pubspec_overrides.yaml` overrides that again to the local
+> checkout. If the local override is missing or `pub get` has not re-run,
+> everything still compiles — against the *git cache copy*, silently ignoring
+> local package edits. Confirm with:
+>
+> ```bash
+> python3 -c "import json;print([p['rootUri'] for p in json.load(open('.dart_tool/package_config.json'))['packages'] if p['name']=='agents_flutter'])"
+> ```
+>
+> A `.pub-cache/git/...` path there means package changes are not being tested.
+> Note also that running `pub get` with the override present rewrites
+> `pubspec.lock` to local paths; that rewrite should not be committed.
 - `flutter build ios --release` succeeds **with signing**, so both new
   entitlements provision against the App ID. Verified in the signed binary:
   `com.apple.developer.kernel.increased-memory-limit` and

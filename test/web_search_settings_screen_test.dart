@@ -5,6 +5,7 @@
 import 'package:agents_app/ui/screens/web_search_settings_screen.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/extensions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -56,7 +57,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(settings.clients, isEmpty);
-    expect(find.textContaining('Enter a valid web address'), findsOneWidget);
+    expect(
+      find.textContaining('Enter a valid https web address'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('rejects a cleartext search URL inline', (tester) async {
+    final (services, settings) = _webSearchServices();
+    await _pump(tester, services);
+
+    await tester.tap(find.text('Add search client'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Search URL'),
+      'http://searx.example.com/search',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(settings.clients, isEmpty);
+    expect(
+      find.textContaining('Enter a valid https web address'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('associates a profile with a client', (tester) async {
@@ -170,5 +194,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(settings.selectedClientId, second.id);
+  });
+
+  testWidgets('iOS hides user-agent authoring but keeps search clients', (
+    tester,
+  ) async {
+    // Custom user agents break no App Store rule, but an arbitrary UA beside
+    // JavaScript rendering reads as bot-detection evasion and buys a phone
+    // nothing. Choosing the search endpoint stays.
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      final (services, _) = _webSearchServices();
+      await _pump(tester, services);
+
+      expect(find.text('User agent profiles'), findsNothing);
+      expect(find.text('No user agent profiles yet.'), findsNothing);
+      expect(find.text('Browsing user agent'), findsNothing);
+      expect(find.text('Add search client'), findsOneWidget);
+
+      await tester.tap(find.text('Add search client'));
+      await tester.pumpAndSettle();
+      expect(find.text('User agent profile'), findsNothing);
+      expect(find.widgetWithText(TextField, 'Search URL'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }

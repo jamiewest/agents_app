@@ -33,6 +33,27 @@ void main() {
       }
     });
 
+    test('every artifact URL is pinned to a commit, never a branch', () {
+      // A shipped build cannot be re-pointed, so `resolve/main` means an
+      // upstream rename breaks the download for everyone already on that
+      // version. This caught the E4B drafter link, which had rotted to a
+      // 404 against a file name upstream no longer used.
+      final pinned = RegExp(r'/resolve/[0-9a-f]{40}/');
+      for (final preset in localModelPresets) {
+        for (final url in [
+          preset.url,
+          ?preset.mmprojUrl,
+          ?preset.draftModelUrl,
+        ]) {
+          expect(
+            url,
+            matches(pinned),
+            reason: '${preset.name} is not pinned to a commit: $url',
+          );
+        }
+      }
+    });
+
     test('multi-artifact presets keep model, mmproj, and MTP paired', () {
       String repoOf(String url) => url.split('/resolve/').first.toLowerCase();
 

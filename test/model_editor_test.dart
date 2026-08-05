@@ -9,6 +9,7 @@ import 'package:agents_app/chat_toolkit/strings/configured_agents_strings.dart';
 import 'package:agents_app/chat_toolkit/styles/configured_agents_style.dart';
 import 'package:agents_app/chat_toolkit/views/configured_agents/model_editor.dart';
 import 'package:agents_flutter/agents_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -394,6 +395,89 @@ void main() {
       expect(saved, isNotNull);
       expect(selectedLlamaModelFilePathFor('model-file'), picked.path);
       expect(saved!.settings['llama.modelPath'], picked.path);
+    });
+  });
+
+  group('ModelEditor iOS model sourcing', () {
+    const preset = ModelConfig(
+      id: 'model-preset',
+      sourceId: 'src-llama',
+      modelId: 'gemma-3-1b',
+      displayName: 'Gemma 3 1B',
+      settings: {
+        'llama.modelUrl':
+            'https://huggingface.co/org/repo/resolve/abc123/model.gguf',
+        'llama.contextSize': '8192',
+      },
+    );
+
+    testWidgets('hides URL entry and the source picker', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        await tester.pumpWidget(
+          _editor(
+            initial: preset,
+            sources: const [_llamaSource],
+            onSubmit: (_) {},
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('GGUF model URL'), findsNothing);
+        expect(find.text('Model source'), findsNothing);
+        // The summary still says where the weights came from.
+        expect(find.text('model.gguf'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('a preset keeps its download URL across a save', (
+      tester,
+    ) async {
+      // The field is hidden, not cleared: dropping the URL here would leave
+      // a preset-derived model with nothing to download.
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        ModelConfig? saved;
+        await tester.pumpWidget(
+          _editor(
+            initial: preset,
+            sources: const [_llamaSource],
+            onSubmit: (m) => saved = m,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        expect(
+          saved?.settings['llama.modelUrl'],
+          'https://huggingface.co/org/repo/resolve/abc123/model.gguf',
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('macOS still offers URL entry', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      try {
+        await tester.pumpWidget(
+          _editor(
+            initial: preset,
+            sources: const [_llamaSource],
+            onSubmit: (_) {},
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('GGUF model URL'), findsOneWidget);
+        expect(find.text('Model source'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
   });
 }

@@ -59,6 +59,16 @@ String _filenameFromPath(String path) {
 
 enum _LlamaModelSource { url, file }
 
+/// Whether this platform hides free-text GGUF URL entry.
+///
+/// iOS ships curated presets and file import only. Typing an arbitrary
+/// download URL weakens the "model weights are data, not code" position the
+/// App Store review rests on, and an unvetted GGUF is also the easiest way
+/// to crash the app — wrong architecture, wrong quantization, or simply too
+/// large for the device. macOS keeps the field.
+bool get _restrictsModelUrlEntry =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
 /// Editor form for creating or updating a [ModelConfig].
 class ModelEditor extends StatefulWidget {
   /// Creates a [ModelEditor].
@@ -242,6 +252,14 @@ class _ModelEditorState extends State<ModelEditor> {
             settings.containsKey('llama.modelPath')
         ? _LlamaModelSource.file
         : _LlamaModelSource.url;
+    // Where URL entry is hidden, a model that has no URL yet must start on
+    // the file picker — otherwise it would open in URL mode with no field to
+    // fill in. A preset arrives with its URL already set and stays in URL
+    // mode, so the editor shows where the model came from and round-trips it
+    // on save.
+    if (_restrictsModelUrlEntry && _llamaModelUrl.text.trim().isEmpty) {
+      _llamaModelSource = _LlamaModelSource.file;
+    }
     _llamaModelPath = kIsWeb ? null : settings['llama.modelPath'];
     _llamaModelFileName = settings['llama.modelFileName'];
     _llamaMmprojPath = kIsWeb ? null : settings['llama.mmprojPath'];
@@ -720,36 +738,43 @@ class _ModelEditorState extends State<ModelEditor> {
             ),
           ),
           if (_selectedSource.providerType == ProviderType.localLlama) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Model source', style: style.labelTextStyle),
-                  const SizedBox(height: 6),
-                  DropdownButtonFormField<_LlamaModelSource>(
-                    initialValue: _llamaModelSource,
-                    decoration: const InputDecoration(isDense: true),
-                    items: const [
-                      DropdownMenuItem(
-                        value: _LlamaModelSource.url,
-                        child: Text('URL'),
-                      ),
-                      DropdownMenuItem(
-                        value: _LlamaModelSource.file,
-                        child: Text('File'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _llamaModelSource = value ?? _llamaModelSource;
-                      });
-                    },
-                  ),
-                ],
+            // The picker only makes sense where both sources are offered.
+            // Where URL entry is hidden the source is already decided: a
+            // preset stays on its URL, anything else uses a chosen file.
+            if (!_restrictsModelUrlEntry)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Model source', style: style.labelTextStyle),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<_LlamaModelSource>(
+                      initialValue: _llamaModelSource,
+                      decoration: const InputDecoration(isDense: true),
+                      items: const [
+                        DropdownMenuItem(
+                          value: _LlamaModelSource.url,
+                          child: Text('URL'),
+                        ),
+                        DropdownMenuItem(
+                          value: _LlamaModelSource.file,
+                          child: Text('File'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _llamaModelSource = value ?? _llamaModelSource;
+                        });
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
-            if (_llamaModelSource == _LlamaModelSource.url) ...[
+            if (_llamaModelSource == _LlamaModelSource.url &&
+                _restrictsModelUrlEntry)
+              _PresetModelSummary(url: _llamaModelUrl.text, style: style)
+            else if (_llamaModelSource == _LlamaModelSource.url) ...[
               ConfiguredAgentsFormField(
                 label: 'GGUF model URL',
                 controller: _llamaModelUrl,
@@ -884,6 +909,51 @@ class _ModelEditorState extends State<ModelEditor> {
             strings: strings,
             onCancel: widget.onCancel,
             onSave: () => unawaited(_submit()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Read-only stand-in for the URL fields where free-text entry is hidden.
+///
+/// A preset-derived model still has a download URL; showing it keeps the
+/// editor honest about where the weights come from, without turning the
+/// field into a way to point the app at an arbitrary file.
+class _PresetModelSummary extends StatelessWidget {
+  const _PresetModelSummary({required this.url, required this.style});
+
+  final String url;
+  final ConfiguredAgentsStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fileName = Uri.tryParse(url)?.pathSegments.lastOrNull ?? url;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Model', style: style.labelTextStyle),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(LucideIcons.package300, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(fileName, style: theme.textTheme.bodyMedium),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Downloaded from the built-in model list. To use a different '
+            'model, add one from a file.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

@@ -4,11 +4,22 @@
 
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../widgets/settings_page.dart';
+
+/// Whether this platform lets the user author `User-Agent` values.
+///
+/// Hidden on iOS. Custom user agents are not against any App Store rule, but
+/// an arbitrary UA next to JavaScript rendering and free-text query
+/// parameters reads as bot-detection evasion, and it earns a phone almost
+/// nothing — the search endpoint itself is the part people actually want to
+/// choose. Clients there send the platform default instead.
+bool get _allowsUserAgentEditing =>
+    kIsWeb || defaultTargetPlatform != TargetPlatform.iOS;
 
 /// Manages the local web-search configuration: saved search clients and the
 /// reusable user-agent profiles they can send.
@@ -54,23 +65,25 @@ class WebSearchSettingsScreen extends StatelessWidget {
                 label: 'Add search client',
                 onPressed: () => _editClient(context, settings, null),
               ),
-              const Divider(height: 32),
-              _SectionHeader('User agent profiles'),
-              const _SectionIntro(
-                'A search client can send one of these User-Agent values with '
-                'its requests, and the browsing user agent below is sent when '
-                'agents open pages. Without a profile, the default user agent '
-                'is used.',
-              ),
-              if (settings.profiles.isEmpty)
-                const _EmptyHint('No user agent profiles yet.'),
-              for (final profile in settings.profiles)
-                _ProfileTile(settings: settings, profile: profile),
-              _AddButton(
-                label: 'Add user agent profile',
-                onPressed: () => _editProfile(context, settings, null),
-              ),
-              _BrowsingUserAgentTile(settings: settings),
+              if (_allowsUserAgentEditing) ...[
+                const Divider(height: 32),
+                _SectionHeader('User agent profiles'),
+                const _SectionIntro(
+                  'A search client can send one of these User-Agent values '
+                  'with its requests, and the browsing user agent below is '
+                  'sent when agents open pages. Without a profile, the '
+                  'default user agent is used.',
+                ),
+                if (settings.profiles.isEmpty)
+                  const _EmptyHint('No user agent profiles yet.'),
+                for (final profile in settings.profiles)
+                  _ProfileTile(settings: settings, profile: profile),
+                _AddButton(
+                  label: 'Add user agent profile',
+                  onPressed: () => _editProfile(context, settings, null),
+                ),
+                _BrowsingUserAgentTile(settings: settings),
+              ],
               if (services.getService<WebSearchTraceLog>()
                   case final trace?) ...[
                 const Divider(height: 32),
@@ -327,7 +340,8 @@ class _ClientTile extends StatelessWidget {
         '${client.searchUrl}${client.urlSuffix.isEmpty ? '' : ' '
                   '(+${client.urlSuffix})'}\n'
         '${client.category.isEmpty ? '' : 'Category: ${client.category} · '}'
-        'User agent: ${profile?.name ?? 'default'}'
+        '${_allowsUserAgentEditing ? 'User agent: '
+                  '${profile?.name ?? 'default'}' : ''}'
         '${client.renderJavaScript ? ' · renders JavaScript' : ''}',
       ),
       isThreeLine: true,
@@ -446,7 +460,7 @@ class _ClientDialogState extends State<_ClientDialog> {
     } on ArgumentError {
       setState(() {
         _error =
-            'Enter a valid web address, like '
+            'Enter a valid https web address, like '
             'https://searx.example.com/search.';
       });
       return;
@@ -512,24 +526,31 @@ class _ClientDialogState extends State<_ClientDialog> {
                 isDense: true,
               ),
             ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _profileId ?? '',
-              decoration: const InputDecoration(
-                labelText: 'User agent profile',
-                isDense: true,
+            if (_allowsUserAgentEditing) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _profileId ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'User agent profile',
+                  isDense: true,
+                ),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('Default')),
+                  for (final profile in widget.settings.profiles)
+                    DropdownMenuItem(
+                      value: profile.id,
+                      child: Text(
+                        profile.name,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (value) =>
+                    _profileId = (value == null || value.isEmpty)
+                    ? null
+                    : value,
               ),
-              items: [
-                const DropdownMenuItem(value: '', child: Text('Default')),
-                for (final profile in widget.settings.profiles)
-                  DropdownMenuItem(
-                    value: profile.id,
-                    child: Text(profile.name, overflow: TextOverflow.ellipsis),
-                  ),
-              ],
-              onChanged: (value) =>
-                  _profileId = (value == null || value.isEmpty) ? null : value,
-            ),
+            ],
             const SizedBox(height: 8),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,

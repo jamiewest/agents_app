@@ -31,8 +31,7 @@ enum _TaskSort {
 ///
 /// Tasks run while the app is open (foreground scheduler); each run
 /// executes in the task's own conversation, reachable from the task's
-/// detail page. Below the list, a gallery of templates prefills the
-/// create dialog with common task ideas.
+/// detail page.
 class TasksScreen extends StatefulWidget {
   /// Creates a [TasksScreen].
   const TasksScreen({
@@ -95,7 +94,7 @@ class _TasksScreenState extends State<TasksScreen> {
       .agents
       .listAgents();
 
-  Future<void> _createTask({AgentTaskTemplate? template}) async {
+  Future<void> _createTask() async {
     final agents = await _agents();
     if (!mounted) return;
     if (agents.isEmpty) {
@@ -115,7 +114,6 @@ class _TasksScreenState extends State<TasksScreen> {
       context,
       agents: agents,
       newId: _tasks.newTaskId,
-      template: template,
     );
     if (created != null) await _tasks.save(created);
   }
@@ -238,21 +236,6 @@ class _TasksScreenState extends State<TasksScreen> {
                 )
               else ...[
                 _taskListSliver(_visibleTasks(tasks), tasks.isEmpty),
-                _centered(
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AppSpacing.xxl,
-                    ),
-                    child: _WavyDivider(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                  ),
-                ),
-                _centered(
-                  _TemplateGallery(
-                    onSelected: (template) => _createTask(template: template),
-                  ),
-                ),
                 const SliverToBoxAdapter(
                   child: SizedBox(height: AppSpacing.xxxl),
                 ),
@@ -546,146 +529,4 @@ class _TaskCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The template gallery: common task ideas that prefill the create dialog.
-class _TemplateGallery extends StatelessWidget {
-  const _TemplateGallery({required this.onSelected});
-
-  final ValueChanged<AgentTaskTemplate> onSelected;
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final twoColumns = constraints.maxWidth >= 560;
-      final width = twoColumns
-          ? (constraints.maxWidth - AppSpacing.xl) / 2
-          : constraints.maxWidth;
-      return Wrap(
-        spacing: AppSpacing.xl,
-        runSpacing: AppSpacing.xl,
-        children: [
-          for (final template in agentTaskTemplates)
-            SizedBox(
-              width: width,
-              child: _TemplateTile(
-                template: template,
-                onTap: () => onSelected(template),
-              ),
-            ),
-        ],
-      );
-    },
-  );
-}
-
-class _TemplateTile extends StatelessWidget {
-  const _TemplateTile({required this.template, required this.onTap});
-
-  final AgentTaskTemplate template;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppShape.inner),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: AppSpacing.lg,
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(AppShape.inner),
-              ),
-              child: Icon(
-                template.icon,
-                size: 22,
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                spacing: AppSpacing.xs,
-                children: [
-                  Text(template.title, style: theme.textTheme.titleSmall),
-                  Text(
-                    template.description,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  Row(
-                    spacing: AppSpacing.xs,
-                    children: [
-                      Icon(
-                        LucideIcons.clock300,
-                        size: 14,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                      Text(
-                        taskScheduleLabel(template.schedule),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A gentle sine-wave rule separating the user's tasks from the template
-/// gallery.
-class _WavyDivider extends StatelessWidget {
-  const _WavyDivider({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 8,
-    width: double.infinity,
-    child: CustomPaint(painter: _WavyDividerPainter(color: color)),
-  );
-}
-
-class _WavyDividerPainter extends CustomPainter {
-  const _WavyDividerPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final mid = size.height / 2;
-    final path = Path()..moveTo(0, mid);
-    var up = true;
-    for (var x = 0.0; x + 12 <= size.width; x += 12) {
-      path.quadraticBezierTo(x + 6, up ? 0 : size.height, x + 12, mid);
-      up = !up;
-    }
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(_WavyDividerPainter oldDelegate) =>
-      color != oldDelegate.color;
 }

@@ -11,8 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../features/workflows/demo_workflows.dart';
-import '../../features/workflows/role_agent.dart';
 import '../../features/workflows/workflow_launcher.dart';
 import '../../features/workflows/workflow_run_controller.dart';
 import '../../features/workflows/workflow_spec.dart';
@@ -23,38 +21,12 @@ import '../widgets/app_sliver_header.dart';
 import '../widgets/page_body.dart';
 import '../widgets/workflow_run_inspector.dart';
 
-/// The orchestration patterns the demo can run.
-enum _WorkflowPattern {
-  sequential(
-    'Sequential',
-    'A Drafter answers first, then an Editor reviews and improves it.',
-  ),
-  concurrent(
-    'Concurrent',
-    'An Optimist and a Skeptic answer in parallel; their takes are merged.',
-  ),
-  reviewed(
-    'Reviewed',
-    'A Drafter answers, the run pauses for your feedback, and an Editor '
-        'applies it.',
-  );
-
-  const _WorkflowPattern(this.label, this.blurb);
-
-  /// Segmented-button label.
-  final String label;
-
-  /// One-line description under the picker.
-  final String blurb;
-}
-
-/// The Workflows destination: compose a small multi-agent workflow from a
-/// configured agent and watch it run.
+/// The Workflows destination: run a saved multi-agent workflow and watch it
+/// work.
 ///
-/// This is the first slice of the workflow tech in `package:agents`: a
-/// pattern picker builds a real [Workflow], and the inspector below renders
-/// the live graph, per-stage streamed output, the event log, and any
-/// human-in-the-loop requests.
+/// Saved specs are built on the canvas and run from here against the prompt
+/// below; the inspector renders the live graph, per-stage streamed output,
+/// the event log, and any human-in-the-loop requests.
 class WorkflowsScreen extends StatefulWidget {
   /// Creates a [WorkflowsScreen].
   const WorkflowsScreen({required this.services, super.key});
@@ -71,8 +43,6 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
   final TextEditingController _prompt = TextEditingController(
     text: 'Suggest a name for a coffee shop run by robots.',
   );
-  _WorkflowPattern _pattern = _WorkflowPattern.sequential;
-  String? _agentId;
   WorkflowRunController? _run;
   bool _starting = false;
 
@@ -105,79 +75,6 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
     null => false,
     final run => !run.isFinished,
   };
-
-  Future<void> _startRun(String agentId) async {
-    final prompt = _prompt.text.trim();
-    if (prompt.isEmpty || _starting || _runActive) return;
-    setState(() => _starting = true);
-    try {
-      final factory = widget.services
-          .getRequiredService<ConfiguredAgentFactory>();
-      Future<RoleAgent> role(String name, String instructions) async =>
-          RoleAgent(
-            await factory.createAgentById(agentId),
-            role: name,
-            roleInstructions: instructions,
-          );
-      final workflow = switch (_pattern) {
-        _WorkflowPattern.sequential => DemoWorkflows.sequential([
-          await role(
-            'Drafter',
-            'You are the first stage of a two-stage pipeline. Draft a '
-                'direct, complete answer to the request. Keep it brief.',
-          ),
-          await role(
-            'Editor',
-            'You are the final stage of a two-stage pipeline. Review the '
-                'draft above and reply with an improved final answer '
-                'only. Keep it brief.',
-          ),
-        ], name: 'Draft, then edit'),
-        _WorkflowPattern.concurrent => DemoWorkflows.concurrent([
-          await role(
-            'Optimist',
-            'Answer the request emphasizing the best ideas and '
-                'opportunities. Keep it brief.',
-          ),
-          await role(
-            'Skeptic',
-            'Answer the request emphasizing risks, pitfalls, and '
-                'counterpoints. Keep it brief.',
-          ),
-        ], name: 'Answer in parallel'),
-        _WorkflowPattern.reviewed => DemoWorkflows.reviewed([
-          await role(
-            'Drafter',
-            'You are the first stage of a pipeline. Draft a direct, '
-                'complete answer to the request. Keep it brief.',
-          ),
-          await role(
-            'Editor',
-            'You are the final stage of a pipeline. Revise the draft '
-                'according to the reviewer feedback and reply with the '
-                'final answer only. Keep it brief.',
-          ),
-        ], name: 'Draft, review, edit'),
-      };
-      _lastSpec = null;
-      final previous = _run;
-      final controller = WorkflowRunController(
-        workflow: workflow,
-        encodeResponse: DemoWorkflows.encodeResponse,
-      );
-      setState(() => _run = controller);
-      previous?.dispose();
-      await controller.start(prompt);
-    } on Exception catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not start run: $error')));
-      }
-    } finally {
-      if (mounted) setState(() => _starting = false);
-    }
-  }
 
   /// Stops watching the active run so a new one can start.
   ///
@@ -240,14 +137,13 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
   }
 
   Widget _pageColumn(
-    BuildContext context,
-    List<SavedAgentConfig> agents, {
+    BuildContext context, {
     required WorkflowRunController? run,
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(
-        'Compose a small multi-agent workflow and watch it run.',
+        'Run a saved multi-agent workflow and watch it work.',
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
@@ -259,18 +155,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
         onRun: (spec) => _runSavedSpec(spec),
       ),
       const SizedBox(height: AppSpacing.lg),
-      Text('Quick demos', style: Theme.of(context).textTheme.titleSmall),
-      const SizedBox(height: AppSpacing.sm),
-      _SetupCard(
-        agents: agents,
-        agentId: _agentId ?? agents.first.id,
-        pattern: _pattern,
-        prompt: _prompt,
-        busy: _starting || _runActive,
-        onAgentChanged: (id) => setState(() => _agentId = id),
-        onPatternChanged: (pattern) => setState(() => _pattern = pattern),
-        onRun: () => _startRun(_agentId ?? agents.first.id),
-      ),
+      _PromptCard(prompt: _prompt, busy: _starting || _runActive),
       if (run != null) ...[
         const SizedBox(height: AppSpacing.lg),
         WorkflowRunInspector(
@@ -317,11 +202,10 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                   // the Run button's enabled state tracks the live run, not
                   // just setState.
                   child: switch (_run) {
-                    null => _pageColumn(context, agents, run: null),
+                    null => _pageColumn(context, run: null),
                     final run => ListenableBuilder(
                       listenable: run,
-                      builder: (context, _) =>
-                          _pageColumn(context, agents, run: run),
+                      builder: (context, _) => _pageColumn(context, run: run),
                     ),
                   },
                 ),
@@ -333,101 +217,27 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
   );
 }
 
-/// The pattern/agent/prompt form that starts a run.
-class _SetupCard extends StatelessWidget {
-  const _SetupCard({
-    required this.agents,
-    required this.agentId,
-    required this.pattern,
-    required this.prompt,
-    required this.busy,
-    required this.onAgentChanged,
-    required this.onPatternChanged,
-    required this.onRun,
-  });
+/// The prompt every saved workflow runs against.
+class _PromptCard extends StatelessWidget {
+  const _PromptCard({required this.prompt, required this.busy});
 
-  final List<SavedAgentConfig> agents;
-  final String agentId;
-  final _WorkflowPattern pattern;
   final TextEditingController prompt;
   final bool busy;
-  final ValueChanged<String> onAgentChanged;
-  final ValueChanged<_WorkflowPattern> onPatternChanged;
-  final VoidCallback onRun;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return WorkflowSectionCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SegmentedButton<_WorkflowPattern>(
-            segments: [
-              for (final pattern in _WorkflowPattern.values)
-                ButtonSegment(value: pattern, label: Text(pattern.label)),
-            ],
-            selected: {pattern},
-            onSelectionChanged: busy
-                ? null
-                : (selection) => onPatternChanged(selection.single),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            pattern.blurb,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          DropdownButtonFormField<String>(
-            initialValue: agentId,
-            decoration: const InputDecoration(
-              labelText: 'Agent',
-              helperText: 'One agent plays every role.',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              for (final agent in agents)
-                DropdownMenuItem(value: agent.id, child: Text(agent.name)),
-            ],
-            onChanged: busy
-                ? null
-                : (id) {
-                    if (id != null) onAgentChanged(id);
-                  },
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          TextField(
-            controller: prompt,
-            enabled: !busy,
-            minLines: 1,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Prompt',
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => onRun(),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: busy ? null : onRun,
-              icon: busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(LucideIcons.play300, size: 18),
-              label: Text(busy ? 'Running…' : 'Run workflow'),
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) => WorkflowSectionCard(
+    child: TextField(
+      controller: prompt,
+      enabled: !busy,
+      minLines: 1,
+      maxLines: 4,
+      decoration: const InputDecoration(
+        labelText: 'Prompt',
+        helperText: 'Every saved workflow runs against this.',
+        border: OutlineInputBorder(),
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// The saved-workflows list: open in the editor, create, or delete.

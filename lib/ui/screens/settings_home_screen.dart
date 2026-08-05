@@ -13,7 +13,6 @@ import 'package:tor_flutter/tor_flutter.dart';
 
 import '../../data/app_reset.dart';
 import '../../data/theme_settings.dart';
-import '../dialogs/pushover_credentials.dart';
 import '../widgets/app_sliver_header.dart';
 import '../../features/tor/tor_settings.dart';
 import '../widgets/page_body.dart';
@@ -65,15 +64,14 @@ class SettingsHomeScreen extends StatelessWidget {
                   trailing: const Icon(LucideIcons.chevronRight300),
                   onTap: () => context.go('/settings/logging'),
                 ),
-                const SettingsGroupLabel('Agent tools'),
-                _PushoverTile(
-                  settings: services.getRequiredService<PushoverSettings>(),
-                ),
-                // Absent on web, where the local web tools are unsupported
-                // and the service is never registered.
+                // The whole group is absent on web, where the local web tools
+                // are unsupported and the service is never registered — web
+                // search is the only row left in it.
                 if (services.getService<WebSearchSettings>()
-                    case final webSearch?)
+                    case final webSearch?) ...[
+                  const SettingsGroupLabel('Agent tools'),
                   _WebSearchTile(settings: webSearch),
+                ],
                 const SettingsGroupLabel('Connections'),
                 // Absent where there is no Tor backend, so the row never
                 // offers something the device cannot do. Pairing is listed
@@ -150,35 +148,6 @@ class SettingsHomeScreen extends StatelessWidget {
     }
     restartApp();
   }
-}
-
-/// The Settings row for the Pushover notification tools.
-///
-/// Live: the subtitle flips between "not configured" and "agents can send
-/// notifications" the moment credentials are saved or cleared.
-class _PushoverTile extends StatelessWidget {
-  const _PushoverTile({required this.settings});
-
-  final PushoverSettings settings;
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: settings,
-    builder: (context, _) => ListTile(
-      leading: const Icon(LucideIcons.bellRing300),
-      title: const Text('Pushover notifications'),
-      subtitle: Text(
-        settings.isConfigured
-            ? 'Configured — enable per agent under the agent\'s tools'
-            : 'Let agents send push notifications to your devices',
-      ),
-      trailing: const Icon(LucideIcons.chevronRight300),
-      onTap: () => _edit(context),
-    ),
-  );
-
-  Future<void> _edit(BuildContext context) =>
-      showPushoverCredentialsDialog(context, settings);
 }
 
 /// The Settings row for the local web-search tools.

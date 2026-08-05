@@ -39,6 +39,16 @@ class LocalModelPreset {
   final String subtitle;
 
   /// Direct GGUF download URL (Hugging Face resolve link).
+  ///
+  /// Pinned to a commit SHA rather than `main`. A shipped build cannot be
+  /// re-pointed, so a mutable ref means an upstream rename breaks the
+  /// download for everyone already on that version — which is exactly how
+  /// the E4B drafter link rotted before it was caught. Re-resolve the SHA
+  /// deliberately when moving a preset to a newer upload:
+  ///
+  /// ```bash
+  /// curl -s https://huggingface.co/api/models/<org>/<repo> | jq -r .sha
+  /// ```
   final String url;
 
   /// Vision projector (mmproj) GGUF URL, from the same repo as [url].
@@ -119,7 +129,8 @@ const List<LocalModelPreset> localModelPresets = [
     // which is every in-app download.
     url:
         'https://huggingface.co/lmstudio-community/gemma-3-1B-it-qat-GGUF/'
-        'resolve/main/gemma-3-1B-it-QAT-Q4_0.gguf',
+        'resolve/c8ffb6497c1f3d54cb012c85b5ef3901fe6878e7/'
+        'gemma-3-1B-it-QAT-Q4_0.gguf',
     // 8192 so the harness system prompt + tool declarations (~5k tokens) fit;
     // 4096 overflowed and stalled prefill.
     contextSize: 8192,
@@ -130,7 +141,8 @@ const List<LocalModelPreset> localModelPresets = [
     subtitle: 'Q4_0 QAT · ~2.5 GB file · 8 GB RAM · good quality',
     url:
         'https://huggingface.co/lmstudio-community/gemma-3-4B-it-qat-GGUF/'
-        'resolve/main/gemma-3-4B-it-QAT-Q4_0.gguf',
+        'resolve/34701dc3de023d018ac5cc78e8b1af773cdf9936/'
+        'gemma-3-4B-it-QAT-Q4_0.gguf',
     contextSize: 8192,
     minMemoryMb: 8192,
   ),
@@ -139,7 +151,8 @@ const List<LocalModelPreset> localModelPresets = [
     subtitle: 'Q4_K_M · ~2.5 GB file · 8 GB RAM · supports thinking',
     url:
         'https://huggingface.co/Qwen/Qwen3-4B-GGUF/'
-        'resolve/main/Qwen3-4B-Q4_K_M.gguf',
+        'resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/'
+        'Qwen3-4B-Q4_K_M.gguf',
     contextSize: 8192,
     minMemoryMb: 8192,
     supportsThinking: true,
@@ -149,7 +162,8 @@ const List<LocalModelPreset> localModelPresets = [
     subtitle: 'Q4_K_M · ~2 GB file · 8 GB RAM · balanced',
     url:
         'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/'
-        'resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+        'resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/'
+        'Llama-3.2-3B-Instruct-Q4_K_M.gguf',
     contextSize: 8192,
     minMemoryMb: 8192,
   ),
@@ -170,7 +184,8 @@ const List<LocalModelPreset> localModelPresets = [
         'runs in the browser',
     url:
         'https://huggingface.co/unsloth/gemma-4-E2B-it-qat-GGUF/'
-        'resolve/main/gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf',
+        'resolve/66a399f68ddd113b06dff02fca9523e55465d11d/'
+        'gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf',
     chatFormat: 'gemma',
     contextSize: 8192,
     minMemoryMb: 8192,
@@ -192,13 +207,16 @@ const List<LocalModelPreset> localModelPresets = [
         'vision + audio + thinking + speculative decoding, all-Metal',
     url:
         'https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/'
-        'resolve/main/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf',
+        'resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/'
+        'gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf',
     mmprojUrl:
         'https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/'
-        'resolve/main/mmproj-F16.gguf',
+        'resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/'
+        'mmproj-F16.gguf',
     draftModelUrl:
         'https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/'
-        'resolve/main/MTP/gemma-4-E4B-it-Q4_0-MTP.gguf',
+        'resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/'
+        'MTP/mtp-gemma-4-E4B-it-Q4_0.gguf',
     chatFormat: 'gemma',
     contextSize: 16384,
     minMemoryMb: 16384,
@@ -219,10 +237,12 @@ const List<LocalModelPreset> localModelPresets = [
     subtitle: 'Q8_0 · ~1.2 GB + 0.8 GB vision · 8 GB RAM · fast vision model',
     url:
         'https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B-GGUF/'
-        'resolve/main/LFM2.5-VL-1.6B-Q8_0.gguf',
+        'resolve/0df8719db7180cedababc2bc589abfe5e8ebcd1f/'
+        'LFM2.5-VL-1.6B-Q8_0.gguf',
     mmprojUrl:
         'https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B-GGUF/'
-        'resolve/main/mmproj-LFM2.5-VL-1.6b-F16.gguf',
+        'resolve/0df8719db7180cedababc2bc589abfe5e8ebcd1f/'
+        'mmproj-LFM2.5-VL-1.6b-F16.gguf',
     chatFormat: 'lfm2.5-vl',
     contextSize: 16384,
     minMemoryMb: 8192,
