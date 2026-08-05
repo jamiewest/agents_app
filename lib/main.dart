@@ -86,6 +86,10 @@ final _builder = Host.createApplicationBuilder()
     flutter.services
       ..addConversations()
       ..addTaskScheduler()
+      // User- and agent-authored skills: the store backs the Skills screen,
+      // and ConversationScopeWiring connects it to every durable
+      // conversation (skills provider + create_skill tool).
+      ..addSkillStore()
       ..addChatTitleSummarizer(
         residentTitleClient: (sp) => residentLocalTitleClient(sp),
       );
@@ -195,7 +199,14 @@ final _builder = Host.createApplicationBuilder()
         )
         ..tryAddSingleton<TorSettings>(TorSettings.fromServices);
     }
-    if (flutter.services.any((d) => d.serviceType == TorRuntime)) {
+    // Hosting is macOS-only even though iOS carries the same runtime. A
+    // backgrounded iPhone app is suspended, so a phone-hosted onion address is
+    // unreachable almost all of the time — shipping the switch there would be
+    // offering a feature that does not work. iOS keeps the client half:
+    // dialing peers and pairing still function with the runtime alone.
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.macOS &&
+        flutter.services.any((d) => d.serviceType == TorRuntime)) {
       flutter.services.tryAddSingleton<TorSharingSettings>(
         (sp) => TorSharingSettings(
           sp.getRequiredService<KeyValueStore>(),

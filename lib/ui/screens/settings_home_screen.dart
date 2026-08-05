@@ -82,6 +82,7 @@ class SettingsHomeScreen extends StatelessWidget {
                 if (services.getService<TorSettings>() case final tor?)
                   _TorTile(settings: tor),
                 const _PairDeviceTile(),
+                const _PairedDevicesTile(),
                 const Divider(height: 32),
                 ListTile(
                   leading: Icon(
@@ -225,6 +226,25 @@ class _PairDeviceTile extends StatelessWidget {
     ),
     trailing: const Icon(LucideIcons.chevronRight300),
     onTap: () => context.go('/settings/network/pair'),
+  );
+}
+
+/// The Settings row into the paired-devices list.
+///
+/// Listed on every platform: revoking a pairing is host-side bookkeeping over
+/// the key-value store, so it works even where hosting itself does not run.
+class _PairedDevicesTile extends StatelessWidget {
+  const _PairedDevicesTile();
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: const Icon(LucideIcons.monitorSmartphone300),
+    title: const Text('Paired devices'),
+    subtitle: const Text(
+      'Devices that can use your shared agents, and the way to remove them',
+    ),
+    trailing: const Icon(LucideIcons.chevronRight300),
+    onTap: () => context.go('/settings/network/devices'),
   );
 }
 

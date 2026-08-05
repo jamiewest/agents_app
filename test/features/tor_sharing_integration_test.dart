@@ -11,6 +11,7 @@ import 'package:agents_app/features/tor/tor_sharing_settings.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tor_flutter/tor_flutter.dart';
@@ -57,6 +58,12 @@ ServiceProvider _buildServices(InMemoryKeyValueStore kv) =>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  // Hosting is macOS-only (see TorSharingSettings.isSupported), and the test
+  // binding reports Android unless told otherwise — so every case here is a
+  // Mac.
+  setUpAll(() => debugDefaultTargetPlatformOverride = TargetPlatform.macOS);
+  tearDownAll(() => debugDefaultTargetPlatformOverride = null);
 
   setUpAll(() {
     final messenger =

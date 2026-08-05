@@ -9,6 +9,7 @@ import 'package:agents_app/ui/screens/agent_detail_screen.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,6 +32,24 @@ const _agent = SavedAgentConfig(
   modelId: 'model-1',
   description: 'Finds things',
 );
+
+/// [testWidgets] with the platform pinned to macOS, where Tor hosting lives.
+///
+/// Hosting is macOS-only (see `TorSharingSettings.isSupported`) and the test
+/// binding reports Android unless told otherwise, so every case in this file
+/// needs the override. It has to be set and cleared inside the body: the
+/// widget-test framework asserts every foundation debug variable is back to
+/// its default before the body returns, which rules out `setUp`.
+void testHostWidgets(String description, WidgetTesterCallback body) {
+  testWidgets(description, (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      await body(tester);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -167,27 +186,45 @@ void main() {
       );
     }
 
-    testWidgets('is hidden until the agent is shared at all', (tester) async {
+    testHostWidgets('is hidden until the agent is shared at all', (
+      tester,
+    ) async {
       await render(tester);
 
       expect(find.text('Share over Tor'), findsNothing);
     });
 
-    testWidgets('appears once the agent is shared', (tester) async {
+    testHostWidgets('appears once the agent is shared', (tester) async {
       await render(tester, shared: true);
 
       expect(find.text('Share over Tor'), findsOneWidget);
       expect(find.text('Show Tor pairing code'), findsNothing);
     });
 
-    testWidgets('shows the onion address once published', (tester) async {
+    // A backgrounded iPhone is suspended, so an onion address it published
+    // would be unreachable almost all of the time. The switch stays off iOS
+    // rather than shipping a feature that cannot work.
+    testWidgets('stays hidden on iOS even when the agent is shared', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        await render(tester, shared: true);
+
+        expect(find.text('Share over Tor'), findsNothing);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testHostWidgets('shows the onion address once published', (tester) async {
       await render(tester, shared: true, overTor: true);
 
       expect(find.textContaining('.onion'), findsOneWidget);
       expect(find.text('Show Tor pairing code'), findsOneWidget);
     });
 
-    testWidgets('says the LAN is no longer serving while Tor is on', (
+    testHostWidgets('says the LAN is no longer serving while Tor is on', (
       tester,
     ) async {
       await render(tester, shared: true, overTor: true);
@@ -226,7 +263,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('offers a way out when the identity key is lost', (
+    testHostWidgets('offers a way out when the identity key is lost', (
       tester,
     ) async {
       await tester.runAsync(loseTheKey);
@@ -241,7 +278,7 @@ void main() {
       expect(switchTile.onChanged, isNull);
     });
 
-    testWidgets('does not reset on a single tap', (tester) async {
+    testHostWidgets('does not reset on a single tap', (tester) async {
       await tester.runAsync(loseTheKey);
       await render(tester, shared: true);
 
@@ -257,7 +294,7 @@ void main() {
       expect(find.text('Reset Tor identity'), findsOneWidget);
     });
 
-    testWidgets('clears the wedge once confirmed', (tester) async {
+    testHostWidgets('clears the wedge once confirmed', (tester) async {
       await tester.runAsync(loseTheKey);
       await render(tester, shared: true);
 
@@ -276,7 +313,7 @@ void main() {
       expect(switchTile.onChanged, isNotNull);
     });
 
-    testWidgets('keeps showing the address after sharing is turned off', (
+    testHostWidgets('keeps showing the address after sharing is turned off', (
       tester,
     ) async {
       await render(tester, shared: true, overTor: true);

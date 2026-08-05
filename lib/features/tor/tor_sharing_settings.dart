@@ -92,7 +92,11 @@ class TorSharingSettings extends ChangeNotifier {
   /// Whether this platform can host at all.
   ///
   /// Browsers cannot open server sockets, so there is nothing to publish.
-  bool get isSupported => !kIsWeb;
+  /// iOS carries the runtime but is suspended in the background, which leaves
+  /// a phone-hosted onion address unreachable most of the time — so hosting
+  /// is desktop-only and iOS stays a Tor client.
+  bool get isSupported =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
 
   /// Loads the persisted preference and the previously issued address.
   ///

@@ -8,6 +8,7 @@ import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:llama_cpp_flutter/orchestration.dart' as llama;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../features/inventory/inventory_access_settings.dart';
@@ -78,6 +79,10 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
   ModelConfig? _model;
   ModelConfig? _presetModel;
 
+  /// Physical memory in megabytes when an exact measurement exists, else
+  /// null; sizes the preset list to the device.
+  int? _totalMemoryMb;
+
   /// The agent-step prefill, created once per saved model so rebuilds and
   /// repeated submits keep one stable agent id.
   SavedAgentConfig? _agentDraft;
@@ -88,6 +93,16 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
     _manager = widget.services.getRequiredService<ConfiguredAgentsManager>();
     _kind = widget.initialKind;
     if (_kind == AgentSetupKind.local) unawaited(_prepareLocalSource());
+    unawaited(_sampleMemory());
+  }
+
+  /// Reads physical memory once so the preset list can hide models this
+  /// device cannot hold. Estimated measurements are discarded — filtering
+  /// on a guessed total would hide models from machines that have the RAM.
+  Future<void> _sampleMemory() async {
+    final memory = await llama.createSystemMemoryMonitor().sample();
+    if (!mounted || memory.isEstimated) return;
+    setState(() => _totalMemoryMb = memory.totalBytes ~/ (1024 * 1024));
   }
 
   List<String> get _stepTitles => switch (_kind) {
@@ -313,7 +328,7 @@ class _AddAgentWizardState extends State<AddAgentWizard> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final preset in availableLocalModelPresets)
+                for (final preset in presetsFor(totalMemoryMb: _totalMemoryMb))
                   Tooltip(
                     message: preset.subtitle,
                     child: ActionChip(

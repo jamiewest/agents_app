@@ -113,7 +113,11 @@ class WorkflowRunController extends ChangeNotifier {
   encodeResponse;
 
   /// Optional checkpoint manager; enables [checkpointList] and resume.
-  final InMemoryCheckpointManager? checkpoints;
+  ///
+  /// The manager's session id becomes the run's session id, so the
+  /// engine's checkpoints land in the manager's store under that session
+  /// and a later manager over the same store can list and resume them.
+  final CheckpointManagerImpl? checkpoints;
 
   /// Checkpoints recorded so far, oldest first.
   List<Checkpoint> checkpointList = const [];
@@ -163,6 +167,7 @@ class WorkflowRunController extends ChangeNotifier {
     final handle = AsyncRunHandle.open<List<ChatMessage>>(
       workflow,
       input: [ChatMessage.fromText(ChatRole.user, prompt)],
+      sessionId: checkpoints?.sessionId,
       checkpointManager: checkpoints,
     );
     _handle = handle;
@@ -233,9 +238,11 @@ class WorkflowRunController extends ChangeNotifier {
   }
 
   Future<void> _refreshCheckpoints() async {
-    final store = checkpoints?.jsonStore;
-    if (store == null) return;
-    final list = await store.listCheckpointsAsync();
+    final manager = checkpoints;
+    if (manager == null) return;
+    final list = await manager.store.listCheckpointsAsync(
+      sessionId: manager.sessionId,
+    );
     if (_disposed) return;
     checkpointList = list;
     notifyListeners();

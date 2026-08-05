@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../features/workflows/workflow_checkpoint_store.dart';
 import '../../features/workflows/workflow_launcher.dart';
 import '../../features/workflows/workflow_run_controller.dart';
 import '../../features/workflows/workflow_spec.dart';
@@ -54,6 +55,7 @@ class WorkflowEditorScreen extends StatefulWidget {
 
 class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
   late final WorkflowSpecStore _store;
+  late final WorkflowCheckpointStore _checkpoints;
   late final Future<List<SavedAgentConfig>> _agentsFuture;
   final TextEditingController _name = TextEditingController();
   final TransformationController _canvas = TransformationController();
@@ -61,6 +63,9 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
   final GlobalKey _canvasKey = GlobalKey();
   final FocusNode _canvasFocus = FocusNode(debugLabel: 'workflow-canvas');
   WorkflowSpec? _spec;
+
+  /// The last run's persisted checkpoint trail, replayable while idle.
+  List<Checkpoint> _savedCheckpoints = const [];
   String? _selectedNodeId;
   WorkflowEdgeSpec? _selectedEdge;
   (String fromNodeId, Offset point)? _pendingEdge;
@@ -76,9 +81,9 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
   @override
   void initState() {
     super.initState();
-    _store = WorkflowSpecStore(
-      widget.services.getRequiredService<RecordStore>(),
-    );
+    final records = widget.services.getRequiredService<RecordStore>();
+    _store = WorkflowSpecStore(records);
+    _checkpoints = WorkflowCheckpointStore(records);
     _agentsFuture = widget.services
         .getRequiredService<ConfiguredAgentsManager>()
         .agents
@@ -99,6 +104,16 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
       _spec = spec;
       _name.text = spec.name;
     });
+    await _refreshSavedCheckpoints();
+  }
+
+  /// Reloads the persisted checkpoint trail behind this workflow.
+  Future<void> _refreshSavedCheckpoints() async {
+    final saved = await _checkpoints.listCheckpointsAsync(
+      sessionId: widget.workflowId,
+    );
+    if (!mounted) return;
+    setState(() => _savedCheckpoints = saved);
   }
 
   @override
@@ -335,23 +350,27 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
     final run = _run;
     setState(() => _run = null);
     run?.dispose();
+    unawaited(_refreshSavedCheckpoints());
   }
 
   /// Rewinds to [checkpoint]: a fresh compile of the same spec resumed
-  /// against the finished run's checkpoint store.
+  /// against the workflow's persisted checkpoint trail.
+  ///
+  /// The trail lives in the record store, so this also replays runs
+  /// recorded before an app restart.
   Future<void> _replayCheckpoint(Checkpoint checkpoint) async {
     final spec = _spec;
-    final finished = _run;
-    if (spec == null || finished == null || _starting) return;
+    if (spec == null || _starting) return;
     setState(() => _starting = true);
     try {
       final controller = await createSpecRunController(
         widget.services,
         spec,
-        checkpoints: finished.checkpoints,
+        checkpoints: _checkpoints.managerFor(spec.id),
       );
+      final previous = _run;
       setState(() => _run = controller);
-      finished.dispose();
+      previous?.dispose();
       await controller.startFromCheckpoint(checkpoint.info);
     } on Exception catch (error) {
       if (mounted) {
@@ -394,6 +413,13 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
                     )
                   else ...[
                     _palette(context),
+                    if (_savedCheckpoints.isNotEmpty)
+                      _ReplayBar(
+                        checkpoints: _savedCheckpoints,
+                        busy: _starting,
+                        onReplay: (checkpoint) =>
+                            unawaited(_replayCheckpoint(checkpoint)),
+                      ),
                     if (_selectedEdge case final edge?)
                       _EdgeBar(
                         label:
@@ -905,6 +931,62 @@ class _EditorEdgePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_EditorEdgePainter oldDelegate) => true;
+}
+
+/// The slim bar offering replays of the last run's persisted checkpoints.
+class _ReplayBar extends StatelessWidget {
+  const _ReplayBar({
+    required this.checkpoints,
+    required this.busy,
+    required this.onReplay,
+  });
+
+  final List<Checkpoint> checkpoints;
+  final bool busy;
+  final ValueChanged<Checkpoint> onReplay;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      color: theme.colorScheme.surfaceContainerLow,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: Row(
+        children: [
+          Icon(
+            LucideIcons.history300,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'The last run saved ${checkpoints.length} '
+              'checkpoint${checkpoints.length == 1 ? '' : 's'}.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          MenuAnchor(
+            alignmentOffset: const Offset(0, 4),
+            menuChildren: [
+              for (final checkpoint in checkpoints)
+                MenuItemButton(
+                  onPressed: busy ? null : () => onReplay(checkpoint),
+                  child: Text('After superstep ${checkpoint.superStep}'),
+                ),
+            ],
+            builder: (context, menu, _) => TextButton.icon(
+              onPressed: busy
+                  ? null
+                  : () => menu.isOpen ? menu.close() : menu.open(),
+              icon: const Icon(LucideIcons.history300, size: 14),
+              label: const Text('Replay'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The slim bar shown while a connection is selected.

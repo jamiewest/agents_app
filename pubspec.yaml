@@ -1,7 +1,7 @@
 name: agents_app
 description: Demonstrates the agents_flutter chat UI.
 publish_to: none
-version: 0.0.1
+version: 0.1.0+1
 repository: https://github.com/jamiewest/agents_app
 
 environment:

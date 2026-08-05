@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:extensions_flutter/extensions_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:tor_flutter/tor_flutter.dart';
 
@@ -90,14 +91,19 @@ class _Body extends StatelessWidget {
           'can go through it.',
           style: theme.textTheme.bodyMedium,
         ),
-        const SizedBox(height: 12),
-        Text(
-          'Sharing your own agents over Tor is a separate switch on each '
-          "agent's page, and needs this on first.",
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
+        // Hosting exists only on macOS (see TorSharingSettings.isSupported),
+        // so pointing at the per-agent switch anywhere else would describe a
+        // control that isn't there.
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Sharing your own agents over Tor is a separate switch on each '
+            "agent's page, and needs this on first.",
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
-        ),
+        ],
         if (settings.error case final error?) ...[
           const SizedBox(height: 16),
           Text(error, style: TextStyle(color: scheme.error)),

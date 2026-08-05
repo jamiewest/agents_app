@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:developer' as developer;
+
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:tor_flutter/tor_flutter.dart';
 
@@ -92,7 +95,39 @@ class AppBootstrap {
     // Arti creates the tree itself, so there is nothing to make here and no
     // reason to pull dart:io into a file that also compiles for web.
     final support = await getApplicationSupportDirectory();
-    options.dataDirectory = '${support.path}/tor';
+    final directory = '${support.path}/tor';
+    options.dataDirectory = directory;
+    await _excludeFromBackup(directory);
+  }
+
+  /// Keeps [directory] out of iCloud and iTunes backups on iOS.
+  ///
+  /// Arti keeps guard state and its consensus cache here — on a host, its own
+  /// copy of the onion service key too. None of it should ride along in a
+  /// backup that leaves the device: guard choices are linkable, and a key
+  /// that syncs is a key in two places. Run on every launch rather than once,
+  /// because the flag lives on the directory and deleting the tree drops it.
+  ///
+  /// iOS only — macOS Application Support is not part of a device backup, and
+  /// no other platform has the concept.
+  Future<void> _excludeFromBackup(String directory) async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    const channel = MethodChannel('dev.jamiewest.agentsApp/backup');
+    try {
+      await channel.invokeMethod<bool>('excludeFromBackup', {
+        'path': directory,
+      });
+    } on MissingPluginException {
+      // A host without the channel (tests, an older Runner) still gets a
+      // working Tor directory; only the backup flag is missed.
+    } on PlatformException catch (error) {
+      developer.log(
+        'Could not exclude the Tor data directory from backup: '
+        '${error.message}',
+        name: 'agents_app.bootstrap',
+        level: 900,
+      );
+    }
   }
 
   /// Reclaims managed storage from downloaded GGUFs no configured model asks

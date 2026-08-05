@@ -76,4 +76,40 @@ void main() {
       expect(thinking['Gemma 3 1B'], isFalse);
     });
   });
+
+  // The test host is a desktop, so the platform half of the filter passes
+  // everything and the memory half can be exercised alone.
+  group('presetsFor', () {
+    List<String> namesAt(int? totalMemoryMb) => [
+      for (final preset in presetsFor(totalMemoryMb: totalMemoryMb))
+        preset.name,
+    ];
+
+    test('unknown memory never hides a preset', () {
+      expect(namesAt(null), [
+        for (final preset in localModelPresets) preset.name,
+      ]);
+    });
+
+    test('a 16 GB machine sees the desktop-sized presets', () {
+      expect(namesAt(16384), contains('Gemma 4 E4B (Mac)'));
+    });
+
+    test('an 8 GB machine loses only the 16 GB preset', () {
+      final names = namesAt(8192);
+      expect(names, isNot(contains('Gemma 4 E4B (Mac)')));
+      expect(names, contains('Gemma 3 4B'));
+      expect(names, contains('LFM2.5 VL 1.6B (Mac)'));
+    });
+
+    test('a 4 GB device keeps only the smallest model', () {
+      expect(namesAt(4096), ['Gemma 3 1B']);
+    });
+
+    test('reported totals just under the marketing size still pass', () {
+      // 8 GB devices report slightly less than 8192 MB; the 512 MB slack
+      // keeps their own tier visible.
+      expect(namesAt(7900), contains('Gemma 3 4B'));
+    });
+  });
 }

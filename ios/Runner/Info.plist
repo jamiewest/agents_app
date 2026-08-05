@@ -30,8 +30,10 @@
 	<string>Agents App uses the camera to capture photos to attach to chat messages.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Agents App hosts agents on your local network so other devices can connect to them.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Agents you grant the Location tool can read your current location to answer location-aware questions.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Agents App uses the microphone when recording video attachments.</string>
+	<string>Agents App uses the microphone to record audio messages in chat.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Agents App accesses your photo library so you can attach images to chat messages.</string>
 	<key>UIApplicationSceneManifest</key>
@@ -57,10 +59,6 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>bluetooth-central</string>
-	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

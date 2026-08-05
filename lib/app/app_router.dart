@@ -23,9 +23,12 @@ import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/logging_screen.dart';
 import '../ui/screens/profile_settings_screen.dart';
 import '../ui/screens/network_pairing_screen.dart';
+import '../ui/screens/paired_devices_screen.dart';
 import '../ui/screens/tor_settings_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../ui/widgets/settings_section_shell.dart';
+import '../ui/screens/skill_detail_screen.dart';
+import '../ui/screens/skills_screen.dart';
 import '../ui/screens/task_detail_screen.dart';
 import '../ui/screens/tasks_screen.dart';
 import '../ui/screens/web_search_settings_screen.dart';
@@ -36,7 +39,7 @@ import 'app_bootstrap.dart';
 import 'app_shell.dart';
 
 /// Builds the app's router: an onboarding guard plus a stateful shell with
-/// Chats, Tasks, Workflows, and Settings branches.
+/// Chats, Tasks, Skills, Workflows, and Settings branches.
 GoRouter createAppRouter({
   required ServiceProvider services,
   required AppBootstrap bootstrap,
@@ -164,6 +167,23 @@ GoRouter createAppRouter({
         StatefulShellBranch(
           routes: [
             GoRoute(
+              path: '/skills',
+              builder: (context, state) => SkillsScreen(services: services),
+              routes: [
+                GoRoute(
+                  path: 's/:id',
+                  builder: (context, state) => SkillDetailScreen(
+                    services: services,
+                    skillId: state.pathParameters['id']!,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
               path: '/workflows',
               builder: (context, state) => WorkflowsScreen(services: services),
               routes: [
@@ -193,6 +213,14 @@ GoRouter createAppRouter({
                   path: 'network/pair',
                   builder: (context, state) =>
                       NetworkPairingScreen(services: services),
+                ),
+                GoRoute(
+                  path: 'network/devices',
+                  pageBuilder: (context, state) => _fadeThroughPage(
+                    state,
+                    PairedDevicesScreen(services: services),
+                    pageKey: '/settings/network/devices',
+                  ),
                 ),
                 GoRoute(
                   path: 'profile',

@@ -67,6 +67,7 @@ class _AppShellState extends State<AppShell> {
   static const _destinations = [
     (icon: LucideIcons.messageCircle300, label: 'Chats'),
     (icon: LucideIcons.alarmClock300, label: 'Tasks'),
+    (icon: LucideIcons.sparkles300, label: 'Skills'),
     (icon: LucideIcons.workflow300, label: 'Workflows'),
     (icon: LucideIcons.settings300, label: 'Settings'),
   ];

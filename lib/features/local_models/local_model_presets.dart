@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:agents_flutter/agents_flutter.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:universal_platform/universal_platform.dart';
 
 /// A known-good local GGUF model with sensible runtime defaults.
 ///
@@ -231,13 +231,23 @@ const List<LocalModelPreset> localModelPresets = [
   ),
 ];
 
-/// The presets offered on the current platform.
+/// The presets offered on the current device.
 ///
 /// The browser drops the Mac-tuned presets ([LocalModelPreset.webCompatible]
-/// explains why); every other platform sees the full list.
-List<LocalModelPreset> get availableLocalModelPresets => kIsWeb
-    ? [
-        for (final preset in localModelPresets)
-          if (preset.webCompatible) preset,
-      ]
-    : localModelPresets;
+/// explains why), and phones drop them for the same underlying reasons: the
+/// artifacts that rule out the web runtime — MTP drafters, desktop-sized
+/// downloads — fail or thrash on mobile hardware too. Only desktops see the
+/// full list.
+///
+/// [totalMemoryMb] is the device's physical memory when an exact measurement
+/// exists, or null when it is unknown or estimated. Presets whose
+/// [LocalModelPreset.minMemoryMb] exceeds it are dropped, with half a
+/// gigabyte of slack because reported totals land just under the marketing
+/// size. Null never empties the list — unknown memory skips the filter
+/// rather than hiding models a machine might well hold.
+List<LocalModelPreset> presetsFor({int? totalMemoryMb}) => [
+  for (final preset in localModelPresets)
+    if ((preset.webCompatible || UniversalPlatform.isDesktop) &&
+        (totalMemoryMb == null || totalMemoryMb + 512 >= preset.minMemoryMb))
+      preset,
+];

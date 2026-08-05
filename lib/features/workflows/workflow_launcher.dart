@@ -8,6 +8,7 @@ import 'package:extensions/ai.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 
 import 'role_agent.dart';
+import 'workflow_checkpoint_store.dart';
 import 'workflow_run_controller.dart';
 import 'workflow_spec.dart';
 
@@ -38,13 +39,15 @@ void registerWorkflowWireConverters() {
 ///
 /// Each agent node resolves its configured agent (falling back to the
 /// first saved agent) and is cast into its role. Pass [checkpoints] to
-/// resume into an existing checkpoint store; otherwise a fresh in-memory
-/// manager records a checkpoint per superstep. Throws [StateError] when
-/// no agents are configured or the spec doesn't validate.
+/// resume into an existing checkpoint trail; otherwise the spec's
+/// persisted trail is cleared and the run records a fresh one — a
+/// checkpoint per superstep, kept in the app's record store so it
+/// survives restarts. Throws [StateError] when no agents are configured
+/// or the spec doesn't validate.
 Future<WorkflowRunController> createSpecRunController(
   ServiceProvider services,
   WorkflowSpec spec, {
-  InMemoryCheckpointManager? checkpoints,
+  CheckpointManagerImpl? checkpoints,
 }) async {
   registerWorkflowWireConverters();
   final agents = await services
@@ -63,9 +66,17 @@ Future<WorkflowRunController> createSpecRunController(
       roleInstructions: node.instructions,
     ),
   );
+  var manager = checkpoints;
+  if (manager == null) {
+    final store = WorkflowCheckpointStore(
+      services.getRequiredService<RecordStore>(),
+    );
+    await store.clearSession(spec.id);
+    manager = store.managerFor(spec.id);
+  }
   return WorkflowRunController(
     workflow: compiled.workflow,
     encodeResponse: compiled.encodeResponse,
-    checkpoints: checkpoints ?? InMemoryCheckpointManager(sessionId: spec.id),
+    checkpoints: manager,
   );
 }
