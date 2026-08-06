@@ -492,10 +492,16 @@ class _StepIndicator extends StatelessWidget {
                   ),
           ),
           const SizedBox(width: 6),
-          Text(
-            titles[i],
-            style: labelStyle?.copyWith(
-              color: i == step ? scheme.onSurface : scheme.onSurfaceVariant,
+          // Loose so labels only shrink under pressure; on narrow widths
+          // they truncate instead of overflowing the row.
+          Flexible(
+            child: Text(
+              titles[i],
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: labelStyle?.copyWith(
+                color: i == step ? scheme.onSurface : scheme.onSurfaceVariant,
+              ),
             ),
           ),
         ],

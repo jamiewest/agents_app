@@ -328,6 +328,27 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // The wizard's step chips share the width with their labels; on a phone
+    // inside the Agent Center the three-step API flow used to overflow.
+    testWidgets('add-agent wizard step indicator fits a compact width', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/agents/add?type=api'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AddAgentWizard), findsOneWidget);
+      expect(find.text('Add agent — Provider'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('the Settings home no longer hosts appearance controls or a '
         'network-sharing row', (tester) async {
       final services = _buildServices();
