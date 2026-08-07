@@ -545,10 +545,8 @@ class _ClientDialogState extends State<_ClientDialog> {
                       ),
                     ),
                 ],
-                onChanged: (value) =>
-                    _profileId = (value == null || value.isEmpty)
-                    ? null
-                    : value,
+                onChanged: (value) => _profileId =
+                    (value == null || value.isEmpty) ? null : value,
               ),
             ],
             const SizedBox(height: 8),

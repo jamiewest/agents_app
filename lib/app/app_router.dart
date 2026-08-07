@@ -8,6 +8,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../ui/screens/about_screen.dart';
 import '../ui/screens/add_agent_wizard.dart';
 import '../ui/screens/channel_screen.dart';
 import '../ui/screens/chats_home.dart'
@@ -19,15 +20,21 @@ import '../ui/screens/agent_center_shell.dart';
 import '../ui/screens/agent_detail_screen.dart';
 import '../ui/screens/agent_editor_page.dart';
 import '../ui/screens/appearance_settings_screen.dart';
+import '../ui/screens/general_settings_screen.dart';
+import '../ui/screens/hardware_settings_screen.dart';
 import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/logging_screen.dart';
+import '../ui/screens/memory_settings_screen.dart';
 import '../ui/screens/profile_settings_screen.dart';
 import '../ui/screens/network_pairing_screen.dart';
+import '../ui/screens/notification_settings_screen.dart';
 import '../ui/screens/paired_devices_screen.dart';
 import '../ui/screens/tor_settings_screen.dart';
 import '../ui/screens/settings_home_screen.dart';
 import '../ui/widgets/settings_section_shell.dart';
+import '../ui/widgets/settings_shell.dart';
 import '../ui/screens/skill_detail_screen.dart';
+import '../ui/screens/storage_settings_screen.dart';
 import '../ui/screens/skills_screen.dart';
 import '../ui/screens/task_detail_screen.dart';
 import '../ui/screens/tasks_screen.dart';
@@ -201,79 +208,153 @@ GoRouter createAppRouter({
         ),
         StatefulShellBranch(
           routes: [
-            GoRoute(
-              path: '/settings',
-              pageBuilder: (context, state) => _fadeThroughPage(
-                state,
-                SettingsHomeScreen(services: services),
-                pageKey: '/settings',
-              ),
+            // Every settings route lives under one plain ShellRoute so the
+            // adaptive [SettingsShell] — the persistent section sidebar on
+            // wide layouts — is built once and stays mounted while only the
+            // open page swaps beneath it. On narrow layouts the shell is a
+            // pass-through and the branch behaves exactly as before.
+            ShellRoute(
+              builder: (context, state, child) =>
+                  SettingsShell(services: services, child: child),
               routes: [
                 GoRoute(
-                  path: 'network/pair',
-                  builder: (context, state) =>
-                      NetworkPairingScreen(services: services),
-                ),
-                GoRoute(
-                  path: 'network/devices',
+                  path: '/settings',
                   pageBuilder: (context, state) => _fadeThroughPage(
                     state,
-                    PairedDevicesScreen(services: services),
-                    pageKey: '/settings/network/devices',
-                  ),
-                ),
-                GoRoute(
-                  path: 'profile',
-                  pageBuilder: (context, state) => _fadeThroughPage(
-                    state,
-                    ProfileSettingsScreen(services: services),
-                    pageKey: '/settings/profile',
-                  ),
-                ),
-                GoRoute(
-                  path: 'appearance',
-                  pageBuilder: (context, state) => _fadeThroughPage(
-                    state,
-                    AppearanceSettingsScreen(services: services),
-                    pageKey: '/settings/appearance',
-                  ),
-                ),
-                GoRoute(
-                  path: 'tor',
-                  pageBuilder: (context, state) => _fadeThroughPage(
-                    state,
-                    TorSettingsScreen(services: services),
-                    pageKey: '/settings/tor',
-                  ),
-                ),
-                GoRoute(
-                  path: 'web-search',
-                  pageBuilder: (context, state) => _fadeThroughPage(
-                    state,
-                    WebSearchSettingsScreen(services: services),
-                    pageKey: '/settings/web-search',
+                    SettingsHomeScreen(services: services),
+                    pageKey: '/settings',
                   ),
                   routes: [
                     GoRoute(
-                      path: 'trace',
+                      path: 'network/pair',
                       builder: (context, state) =>
-                          WebSearchTraceScreen(services: services),
+                          NetworkPairingScreen(services: services),
+                    ),
+                    GoRoute(
+                      path: 'network/devices',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        PairedDevicesScreen(services: services),
+                        pageKey: '/settings/network/devices',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'profile',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        ProfileSettingsScreen(services: services),
+                        pageKey: '/settings/profile',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'general',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        GeneralSettingsScreen(services: services),
+                        pageKey: '/settings/general',
+                      ),
+                      routes: [
+                        // The onboarding revisit lives under Settings, not
+                        // /onboarding, because the router guard sends anyone
+                        // with a usable agent away from there. Hosting it
+                        // here keeps the guard intact for first run.
+                        GoRoute(
+                          path: 'onboarding',
+                          builder: (context, state) => OnboardingScreen(
+                            services: services,
+                            revisit: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    GoRoute(
+                      path: 'about',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        AboutScreen(services: services),
+                        pageKey: '/settings/about',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'memory',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        MemorySettingsScreen(services: services),
+                        pageKey: '/settings/memory',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'storage',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        StorageSettingsScreen(services: services),
+                        pageKey: '/settings/storage',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'hardware',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        HardwareSettingsScreen(services: services),
+                        pageKey: '/settings/hardware',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'notifications',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        NotificationSettingsScreen(services: services),
+                        pageKey: '/settings/notifications',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'appearance',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        AppearanceSettingsScreen(services: services),
+                        pageKey: '/settings/appearance',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'tor',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        TorSettingsScreen(services: services),
+                        pageKey: '/settings/tor',
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'web-search',
+                      pageBuilder: (context, state) => _fadeThroughPage(
+                        state,
+                        WebSearchSettingsScreen(services: services),
+                        pageKey: '/settings/web-search',
+                      ),
+                      routes: [
+                        GoRoute(
+                          path: 'trace',
+                          builder: (context, state) =>
+                              WebSearchTraceScreen(services: services),
+                        ),
+                      ],
                     ),
                   ],
                 ),
+                // The Agent Center is its own nested stateful shell, a
+                // sibling of the /settings page (mirroring how the Chats
+                // sidebar shell sits in the Chats branch). The secondary nav
+                // is built once and only the content branch swaps, so
+                // changing tabs never re-animates the menu; each branch is a
+                // navigator, so a list pushes to an item's page in place
+                // with the nav still visible. Branch order matches
+                // [AgentCenterTab.values] so the shell maps its index.
+                _agentCenterShell(services),
+                // Logs & diagnostics uses the same section-shell design: a
+                // persistent Events/Prompts nav around a swapping content
+                // branch.
+                _loggingShell(services),
               ],
             ),
-            // The Agent Center is its own nested stateful shell, a sibling of
-            // the /settings page (mirroring how the Chats sidebar shell sits
-            // in the Chats branch). The secondary nav is built once and only
-            // the content branch swaps, so changing tabs never re-animates
-            // the menu; each branch is a navigator, so a list pushes to an
-            // item's page in place with the nav still visible. Branch order
-            // matches [AgentCenterTab.values] so the shell maps its index.
-            _agentCenterShell(services),
-            // Logs & diagnostics uses the same section-shell design: a
-            // persistent Events/Prompts nav around a swapping content branch.
-            _loggingShell(services),
           ],
         ),
       ],

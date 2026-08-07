@@ -45,6 +45,10 @@ class AppSliverHeader extends StatelessWidget {
     final openDrawer = AppShellScope.openDrawerOf(context);
     return SliverAppBar(
       pinned: true,
+      // The leading slot is fully managed here; without this, a page whose
+      // navigator can pop (a Settings sub-page in the two-pane shell, where
+      // the sidebar is the navigation) would get an implied back button.
+      automaticallyImplyLeading: false,
       leading: switch ((backLocation, openDrawer)) {
         (final String location, _) => IconButton(
           tooltip: 'Back',

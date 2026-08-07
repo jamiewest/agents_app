@@ -9,6 +9,7 @@ import 'package:agents_app/data/theme_settings.dart';
 import 'package:agents_app/app/app_bootstrap.dart';
 import 'package:agents_app/app/app_router.dart';
 import 'package:agents_app/ui/screens/agent_center_nav.dart';
+import 'package:agents_app/ui/widgets/settings_shell.dart';
 import 'package:agents_app/ui/screens/agent_catalog_view.dart';
 import 'package:agents_app/ui/screens/agent_center_shell.dart';
 import 'package:agents_app/ui/screens/agent_detail_screen.dart';
@@ -47,6 +48,12 @@ ServiceProvider _buildServices() {
     )
     ..addSingleton<PushoverSettings>(
       (sp) => PushoverSettings(sp.getRequiredService<SecretStore>()),
+    )
+    ..addSingleton<EmbeddingSettings>(
+      (sp) => EmbeddingSettings(
+        keyValueStore: InMemoryKeyValueStore(),
+        manager: sp.getRequiredService<ConfiguredAgentsManager>(),
+      ),
     )
     ..addRecordStore(recordStore: (_) => InMemoryRecordStore())
     ..addSingleton<UsageStore>(
@@ -147,9 +154,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // The very same shell instance persists across the switch, and only
-      // the content changed.
+      // the content changed. On this width the tabs are the settings
+      // sidebar's rows — no second tab strip.
       expect(find.byType(AgentCenterShell), findsOneWidget);
-      expect(find.byType(SectionNav), findsOneWidget);
+      expect(find.byType(SectionNav), findsNothing);
       expect(
         tester.widget<AgentCatalogView>(find.byType(AgentCatalogView)).kind,
         AgentCenterTab.models,
@@ -168,10 +176,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Detail content shows in the content area; the persistent nav is
-      // still there beside it.
+      // Detail content shows in the content area; the persistent nav — the
+      // settings sidebar carrying the Agent Center rows — is still beside
+      // it.
       expect(find.byType(AgentDetailScreen), findsOneWidget);
-      expect(find.byType(SectionNav), findsOneWidget);
+      expect(find.byType(SettingsSidebar), findsOneWidget);
+      expect(find.byType(SectionNav), findsNothing);
     });
 
     testWidgets('branch stacks are preserved across tab switches', (
@@ -217,26 +227,24 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the settings card opens the Agent Center on Agents', (
-      tester,
-    ) async {
+    testWidgets('the sidebar Agents row opens the catalog', (tester) async {
       final services = _buildServices();
       await _seed(services);
 
       await pumpAt(tester, services, '/settings');
-      await tester.tap(find.text('Agent Center'));
+      await tester.tap(find.text('Agents'));
       await tester.pumpAndSettle();
 
       expect(find.byType(AgentCatalogView), findsOneWidget);
       expect(find.text('Test Agent'), findsOneWidget);
     });
 
-    testWidgets('back returns to Settings from any tab or pushed page', (
-      tester,
-    ) async {
+    testWidgets('wide: the sidebar leaves the center from any tab or pushed '
+        'page', (tester) async {
       // The center is a sibling route of /settings, not a page pushed over
-      // it, so back has to navigate — from a non-default tab and from a
-      // page pushed inside one alike.
+      // it, so nothing pops it. On wide layouts the settings sidebar is the
+      // way out — the shell shows no back control — from a non-default tab
+      // and from a page pushed inside one alike.
       final services = _buildServices();
       await _seed(services);
 
@@ -246,14 +254,15 @@ void main() {
         '/settings/agents/view/agent-1',
       ]) {
         await pumpAt(tester, services, location);
-        await tester.tap(find.byTooltip('Back to settings'));
-        await tester.pumpAndSettle();
-
         expect(
-          find.byType(SettingsHomeScreen),
-          findsOneWidget,
+          find.byTooltip('Back to settings'),
+          findsNothing,
           reason: location,
         );
+
+        await tester.tap(find.text('Profile'));
+        await tester.pumpAndSettle();
+
         // The section shell is gone, not merely covered.
         expect(find.byType(AgentCenterShell), findsNothing, reason: location);
       }
@@ -661,12 +670,12 @@ void main() {
 
       await pumpAt(tester, services, '/settings/agents');
 
-      // The resizable side panel is gone: the Agent Center looks like the
-      // Settings page it was opened from, at every width. The catalog's own
-      // two-pane split keeps its handle; the shell contributes none.
-      expect(find.byType(SectionNav), findsOneWidget);
+      // On wide layouts the tab strip has dissolved into the settings
+      // sidebar, whose group label carries the section's name; the shell
+      // contributes just a title bar, and no back control.
+      expect(find.byType(SectionNav), findsNothing);
       expect(find.text('Agent Center'), findsOneWidget);
-      expect(find.byType(SettingsBackButton), findsOneWidget);
+      expect(find.byType(SettingsBackButton), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter/widgets.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../widgets/settings_section_shell.dart';
@@ -42,3 +43,28 @@ enum AgentCenterTab {
 final List<SectionDestination> agentCenterDestinations = [
   for (final tab in AgentCenterTab.values) (label: tab.label, icon: tab.icon),
 ];
+
+/// The live Agent Center branch navigator, published while its shell is
+/// mounted.
+///
+/// The settings sidebar renders the center's tabs but sits outside its
+/// route subtree, so it cannot reach the [StatefulNavigationShell] the way
+/// the compact tab strip can. Switching tabs must go through
+/// `shell.goBranch` — a plain `go` to a tab's path resets that branch's
+/// stack, forgetting a pushed detail or editor. Null whenever the center is
+/// not on screen; then a `go` is right, since there is no live stack to
+/// lose.
+final ValueNotifier<StatefulNavigationShell?> agentCenterShellBinding =
+    ValueNotifier(null);
+
+/// Navigates to [tab] the way its live shell would, or by path when the
+/// Agent Center is not currently mounted.
+void openAgentCenterTab(BuildContext context, AgentCenterTab tab) {
+  final shell = agentCenterShellBinding.value;
+  if (shell == null) {
+    context.go(tab.path);
+    return;
+  }
+  final index = AgentCenterTab.values.indexOf(tab);
+  shell.goBranch(index, initialLocation: index == shell.currentIndex);
+}

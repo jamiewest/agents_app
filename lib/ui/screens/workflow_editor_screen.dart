@@ -19,6 +19,7 @@ import '../../features/workflows/workflow_spec.dart';
 import '../../features/workflows/workflow_spec_store.dart';
 import '../app_theme.dart';
 import '../widgets/page_body.dart';
+import '../widgets/workflow_prompt_dialog.dart';
 import '../widgets/workflow_run_inspector.dart';
 
 const double _nodeWidth = 170;
@@ -290,11 +291,15 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
       );
       return;
     }
-    final prompt = await _promptDialog();
+    final prompt = await showWorkflowPromptDialog(
+      context,
+      initialPrompt: spec.prompt,
+    );
     if (prompt == null || prompt.trim().isEmpty || !mounted) return;
 
     setState(() => _starting = true);
     try {
+      spec.prompt = prompt.trim();
       await _save();
       final controller = await createSpecRunController(widget.services, spec);
       final previous = _run;
@@ -310,40 +315,6 @@ class _WorkflowEditorScreenState extends State<WorkflowEditorScreen> {
     } finally {
       if (mounted) setState(() => _starting = false);
     }
-  }
-
-  Future<String?> _promptDialog() {
-    final controller = TextEditingController(
-      text: 'Suggest a name for a coffee shop run by robots.',
-    );
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Run workflow'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          minLines: 1,
-          maxLines: 4,
-          decoration: const InputDecoration(
-            labelText: 'Prompt',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (value) => Navigator.pop(context, value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(context, controller.text),
-            icon: const Icon(LucideIcons.play300, size: 18),
-            label: const Text('Run'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _closeRun() {

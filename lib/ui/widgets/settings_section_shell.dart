@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app_theme.dart';
+import 'settings_page.dart';
 
 /// One tab of a settings section shell.
 typedef SectionDestination = ({String label, IconData icon});
@@ -75,7 +76,12 @@ class SettingsSectionShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      leading: SettingsBackButton(location: backLocation),
+      // In the shell's two-pane layout the sidebar beside the section is the
+      // navigation, and "back" would land on a pick-a-section placeholder.
+      automaticallyImplyLeading: false,
+      leading: SettingsScope.twoPaneOf(context)
+          ? null
+          : SettingsBackButton(location: backLocation),
       title: Text(title),
       // Matches [AppSliverHeader]: the header shares the body's surface and
       // takes no elevation tint when content scrolls under it.

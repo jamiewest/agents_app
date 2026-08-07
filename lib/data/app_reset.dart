@@ -31,6 +31,7 @@ import 'package:extensions_flutter/extensions_flutter.dart';
 
 import '../features/inventory/inventory_store.dart';
 import '../features/local_models/downloaded_model_artifacts.dart';
+import '../features/local_models/local_model_disk.dart';
 import '../features/local_models/local_model_store.dart';
 
 export 'app_restart_stub.dart'
@@ -90,6 +91,7 @@ Future<void> resetAppData(ServiceProvider services) async {
 
   // An empty keep-set deletes every stored model artifact.
   await pruneLocalModelFiles(const {});
+  await pruneLocalModelDownloads(const {});
   await pruneDownloadedModelArtifacts(const {});
 
   // The inventory lives in its own SQLite file outside the record store.

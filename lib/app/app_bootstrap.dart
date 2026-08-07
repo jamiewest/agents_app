@@ -13,11 +13,13 @@ import 'package:tor_flutter/tor_flutter.dart';
 
 import '../data/demo_seed.dart';
 import '../features/local_models/downloaded_model_artifacts.dart';
+import '../features/local_models/local_model_disk.dart';
 import '../features/inventory/inventory_access_settings.dart';
 import '../features/tor/tor_settings.dart';
 import '../features/tor/tor_sharing_settings.dart';
 import '../data/legacy/legacy_chat_migration.dart';
 import '../features/local_models/local_model_store.dart';
+import '../data/chat_settings.dart';
 import '../data/theme_settings.dart';
 import '../chat_toolkit/views/configured_agents/configured_agents.dart';
 
@@ -47,6 +49,7 @@ class AppBootstrap {
     await _services.getService<EmbeddingSettings>()?.reload();
     await _services.getService<ThinkingSettings>()?.load();
     await _services.getService<ThemeSettings>()?.load();
+    await _services.getService<ChatSettings>()?.load();
     await _services.getService<PushoverSettings>()?.load();
     await _services.getService<WebSearchSettings>()?.load();
     await _services.getService<WebSearchTraceLog>()?.load();
@@ -155,7 +158,9 @@ class AppBootstrap {
     if (!localModelPersistenceSupported) return;
     final manager = _services.getRequiredService<ConfiguredAgentsManager>();
     final fileModelIds = <String>{};
+    final allModelIds = <String>{};
     for (final model in await manager.sources.listModels()) {
+      allModelIds.add(model.id);
       if (model.settings['llama.modelSource'] != 'file') continue;
       fileModelIds.add(model.id);
       for (final kind in LlamaArtifactKind.values) {
@@ -184,8 +189,11 @@ class AppBootstrap {
       }
     }
     // Reclaim storage from models deleted (or picked-then-cancelled) in a way
-    // that skipped the normal delete path.
+    // that skipped the normal delete path. Downloads keep every configured
+    // model's directory — not just the picked-file ones — since any local
+    // model may have downloaded artifacts worth keeping.
     await pruneLocalModelFiles(fileModelIds);
+    await pruneLocalModelDownloads(allModelIds);
   }
 
   /// The model-settings key holding the picked file name for [kind]; empty

@@ -5,7 +5,7 @@
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../../features/local_models/downloaded_model_artifacts.dart';
+import '../../../features/local_models/local_model_disk.dart';
 import '../../../features/local_models/local_model_store.dart';
 
 /// Mutable view-model for the configured-agents UI.
@@ -72,8 +72,7 @@ class ConfiguredAgentsController extends ChangeNotifier {
             : const <ModelConfig>[];
         await manager.deleteSource(id, cascade: cascade);
         for (final model in doomed) {
-          await deleteLocalModelFiles(model.id);
-          await deleteDownloadedModelArtifacts(model);
+          await deleteLocalModelBytes(model);
         }
       });
 
@@ -84,16 +83,23 @@ class ConfiguredAgentsController extends ChangeNotifier {
   /// Deletes the model [id], optionally cascading, then reloads.
   ///
   /// Also removes the model's stored GGUFs so a deleted local model does not
-  /// leave gigabytes stranded in storage — both the files picked into the
-  /// app's own storage and, on the web, the ones the runtime downloaded into
-  /// managed storage. The latter is keyed by URL, which only the model's
-  /// settings record, so it is read before the config is gone.
+  /// leave gigabytes stranded in storage — the files picked into the app's
+  /// own storage and the ones the runtime downloaded, in whichever store
+  /// this platform keeps them. Downloads are located through the model's
+  /// settings, which only the config records, so it is read before the
+  /// config is gone.
   Future<String?> deleteModel(String id, {bool cascade = false}) =>
       _run(() async {
         final model = await manager.sources.getModel(id);
         await manager.deleteModel(id, cascade: cascade);
-        await deleteLocalModelFiles(id);
-        if (model != null) await deleteDownloadedModelArtifacts(model);
+        // The config vanished before its bytes could be located; the picked
+        // files are still keyed by id, and the startup prunes reclaim the
+        // rest.
+        if (model == null) {
+          await deleteLocalModelFiles(id);
+          return;
+        }
+        await deleteLocalModelBytes(model);
       });
 
   /// Saves [agent] then reloads.

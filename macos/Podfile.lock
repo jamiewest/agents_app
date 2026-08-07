@@ -136,7 +136,7 @@ SPEC CHECKSUMS:
   record_macos: 2e43c16b84ce188b8137754ee648322a2dcdf7fa
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
-  tor_flutter_arti: a15ba529678de57c204196e0cd525e1de4f1f374
+  tor_flutter_arti: 82ec1684a4e2da99c6dc260c8dfb21dd611ba85b
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
   wakelock_plus: 917609be14d812ddd9e9528876538b2263aaa03b
 

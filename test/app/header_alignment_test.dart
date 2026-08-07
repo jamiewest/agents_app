@@ -40,6 +40,12 @@ ServiceProvider _buildServices() {
     ..addSingleton<PushoverSettings>(
       (sp) => PushoverSettings(sp.getRequiredService<SecretStore>()),
     )
+    ..addSingleton<EmbeddingSettings>(
+      (sp) => EmbeddingSettings(
+        keyValueStore: kv,
+        manager: sp.getRequiredService<ConfiguredAgentsManager>(),
+      ),
+    )
     ..addRecordStore(recordStore: (_) => InMemoryRecordStore())
     ..addSingleton<UsageStore>(
       (sp) => UsageStore(sp.getRequiredService<RecordStore>()),

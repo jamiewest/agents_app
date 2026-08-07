@@ -1,14 +1,19 @@
 import 'dart:io' as io;
 
 import 'package:agents_app/features/local_models/local_model_store_io.dart';
+import 'package:agents_app/data/chat_settings.dart';
 import 'package:agents_app/data/theme_settings.dart';
 import 'package:agents_app/app/app_bootstrap.dart';
 import 'package:agents_app/app/app_router.dart';
 import 'package:agents_app/ui/screens/add_agent_wizard.dart';
+import 'package:agents_app/ui/screens/agent_center_shell.dart';
 import 'package:agents_app/ui/screens/chats_home.dart';
+import 'package:agents_app/ui/screens/appearance_settings_screen.dart';
 import 'package:agents_app/ui/screens/onboarding_screen.dart';
+import 'package:agents_app/ui/screens/profile_settings_screen.dart';
 import 'package:agents_app/ui/screens/settings_home_screen.dart';
 import 'package:agents_app/ui/widgets/settings_section_shell.dart';
+import 'package:agents_app/ui/widgets/settings_shell.dart';
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions/ai.dart' as ai;
 import 'package:extensions/extensions.dart';
@@ -34,10 +39,26 @@ const _agent = SavedAgentConfig(
 ServiceProvider _buildServices() {
   final kv = InMemoryKeyValueStore();
   final services = ServiceCollection()
+    ..addSingleton<AppInfo>(
+      (_) => AppInfo()
+        ..populate(
+          appName: 'Agent Teams',
+          packageName: 'dev.example.agents',
+          version: '9.9.9',
+          buildNumber: '42',
+        ),
+    )
     ..addSingleton<ThemeSettings>((_) => ThemeSettings(kv))
+    ..addSingleton<ChatSettings>((_) => ChatSettings(kv))
     ..addSingleton<UserProfileSettings>((_) => UserProfileSettings(kv))
     ..addSingleton<PushoverSettings>(
       (sp) => PushoverSettings(sp.getRequiredService<SecretStore>()),
+    )
+    ..addSingleton<EmbeddingSettings>(
+      (sp) => EmbeddingSettings(
+        keyValueStore: kv,
+        manager: sp.getRequiredService<ConfiguredAgentsManager>(),
+      ),
     )
     ..addRecordStore(recordStore: (_) => InMemoryRecordStore())
     ..addSingleton<UsageStore>(
@@ -232,43 +253,66 @@ void main() {
     });
 
     // Logs & diagnostics is entered by branch switch rather than a push, so
-    // nothing pops it; its header carries an explicit back button.
-    for (final (label, width) in [('wide', 1200.0), ('compact', 420.0)]) {
-      testWidgets('Logs & diagnostics goes back to settings home ($label)', (
-        tester,
-      ) async {
-        final services = _buildServices();
-        await _seedUsableAgent(services);
-        tester.view.physicalSize = Size(width, 1200);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
+    // nothing pops it. On compact widths its header carries an explicit back
+    // button; on wide layouts the settings sidebar is the way out and the
+    // back control is dropped.
+    testWidgets('Logs & diagnostics goes back to settings home (compact)', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(420, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
 
-        for (final location in [
-          '/settings/logging',
-          '/settings/logging/prompts',
-        ]) {
-          await tester.pumpWidget(_app(services, initialLocation: location));
-          await tester.pumpAndSettle();
-          expect(
-            find.byType(SettingsHomeScreen),
-            findsNothing,
-            reason: location,
-          );
+      for (final location in [
+        '/settings/logging',
+        '/settings/logging/prompts',
+      ]) {
+        await tester.pumpWidget(_app(services, initialLocation: location));
+        await tester.pumpAndSettle();
+        expect(find.byType(SettingsHomeScreen), findsNothing, reason: location);
 
-          await tester.tap(find.byType(SettingsBackButton));
-          await tester.pumpAndSettle();
+        await tester.tap(find.byType(SettingsBackButton));
+        await tester.pumpAndSettle();
 
-          expect(
-            find.byType(SettingsHomeScreen),
-            findsOneWidget,
-            reason: location,
-          );
-        }
-      });
-    }
+        expect(
+          find.byType(SettingsHomeScreen),
+          findsOneWidget,
+          reason: location,
+        );
+      }
+    });
 
-    // Appearance and Profile are pushed sub-pages of Settings, so back is a
-    // real pop; the shared header still spells the destination out.
+    testWidgets('wide: the sidebar leaves Logs & diagnostics', (tester) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(1200, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      for (final location in [
+        '/settings/logging',
+        '/settings/logging/prompts',
+      ]) {
+        await tester.pumpWidget(_app(services, initialLocation: location));
+        await tester.pumpAndSettle();
+        expect(find.byType(SettingsBackButton), findsNothing, reason: location);
+        expect(find.byType(SettingsSidebar), findsOneWidget, reason: location);
+
+        await tester.tap(find.text('Profile'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byType(ProfileSettingsScreen),
+          findsOneWidget,
+          reason: location,
+        );
+      }
+    });
+
+    // Appearance and Profile are pushed sub-pages of Settings, so on compact
+    // widths back is a real pop; the shared header still spells the
+    // destination out.
     for (final (label, path) in [
       ('Appearance', '/settings/appearance'),
       ('Profile', '/settings/profile'),
@@ -276,7 +320,7 @@ void main() {
       testWidgets('$label opens from Settings and comes back', (tester) async {
         final services = _buildServices();
         await _seedUsableAgent(services);
-        tester.view.physicalSize = const Size(1200, 1400);
+        tester.view.physicalSize = const Size(420, 1400);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
 
@@ -294,6 +338,347 @@ void main() {
       });
     }
 
+    // On wide layouts Settings is master-detail: the persistent sidebar
+    // opens sections beside itself, the home route is a placeholder, and no
+    // back control is shown anywhere — the sidebar is the navigation.
+    testWidgets('wide: the sidebar opens sections beside a placeholder home', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(1200, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_app(services, initialLocation: '/settings'));
+      await tester.pumpAndSettle();
+      expect(find.text('Select a settings section.'), findsOneWidget);
+
+      await tester.tap(find.text('Appearance'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AppearanceSettingsScreen), findsOneWidget);
+      expect(find.byType(SettingsSidebar), findsOneWidget);
+      expect(find.byTooltip('Back'), findsNothing);
+
+      await tester.tap(find.text('Profile'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ProfileSettingsScreen), findsOneWidget);
+    });
+
+    // The reset row moved off the Settings home into General's danger zone,
+    // so the destructive action sits behind one deliberate step.
+    testWidgets('General: reset lives behind the danger zone', (tester) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_app(services, initialLocation: '/settings'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reset app data'), findsNothing);
+
+      await tester.tap(find.text('General'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reset app data'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reset app data?'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Erase everything'), findsNothing);
+    });
+
+    // Revisited onboarding is hosted inside Settings — the /onboarding guard
+    // sends configured users to /chats — and its actions route to the
+    // Settings-hosted flows.
+    testWidgets('General: onboarding revisits inside Settings', (tester) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      // 600, not 420: the add-agent wizard's step indicator overflows at
+      // phone widths (a pre-existing wizard layout issue, not what this
+      // test is about).
+      tester.view.physicalSize = const Size(600, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/general'),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start onboarding'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OnboardingScreen), findsOneWidget);
+
+      await tester.tap(find.text('API agent'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AddAgentWizard), findsOneWidget);
+      expect(find.byType(OnboardingScreen), findsNothing);
+    });
+
+    // The Memory page is the UI over EmbeddingSettings: only models on
+    // OpenAI-compatible sources are offered, and the choice round-trips
+    // through the persisted setting.
+    testWidgets('Memory picks an embedding model and persists it', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      final manager = services.getRequiredService<ConfiguredAgentsManager>();
+      await manager.saveSource(
+        const ModelSourceConfig(
+          id: 'source-openai',
+          providerType: ProviderType.openAiCompatible,
+          displayName: 'Local server',
+          endpoint: 'http://localhost:1234/v1',
+        ),
+      );
+      await manager.saveModel(
+        const ModelConfig(
+          id: 'model-embed',
+          sourceId: 'source-openai',
+          modelId: 'text-embedding-3-small',
+          displayName: 'Embed Small',
+        ),
+      );
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/memory'),
+      );
+      await tester.pumpAndSettle();
+
+      // The seeded chat model rides a localLlama source, so only the
+      // OpenAI-compatible entry is offered beside the default.
+      expect(find.text('Keyword matching'), findsOneWidget);
+      expect(find.text('Embed Small'), findsOneWidget);
+      expect(find.text('Test Agent'), findsNothing);
+
+      final settings = services.getRequiredService<EmbeddingSettings>();
+      await tester.tap(find.text('Embed Small'));
+      await tester.pumpAndSettle();
+      expect(await settings.selectedModelId, 'model-embed');
+
+      await tester.tap(find.text('Keyword matching'));
+      await tester.pumpAndSettle();
+      expect(await settings.selectedModelId, isNull);
+    });
+
+    testWidgets('Memory without an eligible source points at sources', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/memory'),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open model sources'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsSectionShell), findsOneWidget);
+      expect(find.text('Sources'), findsWidgets);
+    });
+
+    // Storage measures both native byte stores — the picked-file copies and
+    // the download service's directories — and its delete clears them while
+    // the model's configuration survives.
+    testWidgets('Storage measures a local model and deletes its bytes', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      // A URL-backed model's bytes live in the download store; a picked-file
+      // copy for it would be pruned at startup as an orphan.
+      io.File('${storeRoot.path}/local_llama/model-1/weights.gguf')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(List.filled(2048, 7));
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/storage'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('fake-model'), findsOneWidget);
+      expect(find.text('2.0 KB · downloaded'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Delete files'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete files'));
+      await tester.pumpAndSettle();
+
+      expect(
+        io.Directory('${storeRoot.path}/local_models/model-1').existsSync(),
+        isFalse,
+      );
+      expect(
+        io.Directory('${storeRoot.path}/local_llama/model-1').existsSync(),
+        isFalse,
+      );
+      expect(find.text('Nothing downloaded yet'), findsOneWidget);
+      expect(
+        await services
+            .getRequiredService<ConfiguredAgentsManager>()
+            .sources
+            .getModel('model-1'),
+        isNotNull,
+        reason: 'deleting bytes must keep the configuration',
+      );
+    });
+
+    // The auto-title toggle drives ChatSettings, which the title
+    // summarizer's client callback consults live.
+    testWidgets('General: the auto-title toggle persists', (tester) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/general'),
+      );
+      await tester.pumpAndSettle();
+
+      final chat = services.getRequiredService<ChatSettings>();
+      expect(chat.autoTitleEnabled, isTrue);
+
+      await tester.tap(find.text('Auto-title conversations'));
+      await tester.pumpAndSettle();
+      expect(chat.autoTitleEnabled, isFalse);
+
+      // Survives a reload from storage — the persisted value, not just the
+      // in-memory flag, flipped.
+      await chat.load();
+      expect(chat.autoTitleEnabled, isFalse);
+    });
+
+    testWidgets('Notifications shows status and opens the credentials '
+        'dialog', (tester) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/notifications'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Add an application token'), findsOneWidget);
+
+      await tester.tap(find.text('Pushover credentials'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pushover notifications'), findsOneWidget);
+      expect(find.text('Application token'), findsOneWidget);
+      expect(find.text('User key'), findsOneWidget);
+    });
+
+    testWidgets('Profile computes lifetime stats locally', (tester) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      services.getRequiredService<UsageStore>().recordAttributed(
+        ChatUsageRecord(
+          timestamp: DateTime.now(),
+          modelId: 'model-1',
+          sourceId: 'source-1',
+          provider: 'local_llama',
+          inputTokenCount: 100,
+          outputTokenCount: 50,
+        ),
+        agentId: 'agent-1',
+      );
+      tester.view.physicalSize = const Size(420, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/profile'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Lifetime tokens'), findsOneWidget);
+      expect(find.text('150'), findsOneWidget);
+      expect(find.text('Model calls'), findsOneWidget);
+      expect(find.text('Days active'), findsOneWidget);
+    });
+
+    // Hardware reports real measurements: the CPU facts from the platform
+    // and the live memory sample from the llama runtime's monitor.
+    testWidgets('Hardware reports CPU facts and live memory', (tester) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _app(services, initialLocation: '/settings/hardware'),
+      );
+      // Not pumpAndSettle: the page keeps a periodic refresh timer that
+      // would never settle. First let the router's async redirect mount the
+      // page and its transition play, then give the real subprocess reads
+      // (sysctl, df) behind the facts real-time windows until they land.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      for (var i = 0; i < 20 && !tester.any(find.text('CPU')); i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 250)),
+        );
+        await tester.pump();
+      }
+
+      // The macOS test runner measures for real: CPU facts, a RAM card
+      // with a free-space line, and a disk card.
+      expect(find.text('CPU'), findsOneWidget);
+      expect(
+        find.textContaining('${io.Platform.numberOfProcessors} cores'),
+        findsOneWidget,
+      );
+      expect(find.text('RAM'), findsOneWidget);
+      expect(find.text('Disk'), findsOneWidget);
+      expect(find.textContaining('free'), findsWidgets);
+      expect(
+        find.text('Live readings are not available on this platform.'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('About reports the running version and opens licenses', (
+      tester,
+    ) async {
+      final services = _buildServices();
+      await _seedUsableAgent(services);
+      tester.view.physicalSize = const Size(420, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_app(services, initialLocation: '/settings'));
+      await tester.pumpAndSettle();
+      // The home row already names the version once package info is loaded.
+      expect(find.text('Version 9.9.9 (42)'), findsOneWidget);
+
+      await tester.tap(find.text('About'));
+      await tester.pumpAndSettle();
+      expect(find.text('9.9.9 (42)'), findsOneWidget);
+      expect(find.text('dev.example.agents'), findsOneWidget);
+
+      await tester.tap(find.text('Open source licenses'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(LicensePage), findsOneWidget);
+    });
+
     // The Agent Center and Logs are sibling routes entered with `go`, not
     // pages pushed onto a stack, so there is no direction to slide along.
     // Both directions cross-fade, and the shell keeps one page identity
@@ -309,22 +694,25 @@ void main() {
       await tester.pumpWidget(_app(services, initialLocation: '/settings'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Agent Center'));
+      // The Agent Center's tabs are the sidebar's own rows on this width.
+      await tester.tap(find.text('Agents'));
       await tester.pumpAndSettle();
       expect(find.byType(SettingsHomeScreen), findsNothing);
-      final shell = tester.element(find.byType(SettingsSectionShell));
+      final shell = tester.element(find.byType(AgentCenterShell));
 
       await tester.tap(find.text('Models'));
       await tester.pumpAndSettle();
       expect(
-        tester.element(find.byType(SettingsSectionShell)),
+        tester.element(find.byType(AgentCenterShell)),
         same(shell),
         reason: 'switching tabs must not remount the section',
       );
 
-      await tester.tap(find.byType(SettingsBackButton));
+      // Wide layouts drop the back control; leaving is a sidebar navigation.
+      expect(find.byType(SettingsBackButton), findsNothing);
+      await tester.tap(find.text('Profile'));
       await tester.pumpAndSettle();
-      expect(find.byType(SettingsHomeScreen), findsOneWidget);
+      expect(find.byType(AgentCenterShell), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

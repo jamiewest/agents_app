@@ -7,13 +7,42 @@ import 'package:flutter/material.dart';
 import 'app_sliver_header.dart';
 import 'page_body.dart';
 
+/// The Settings layout mode, shared down to every page in the Settings
+/// branch by the settings shell.
+///
+/// On wide layouts the shell keeps a persistent section sidebar beside the
+/// page, so pages drop the navigation chrome the sidebar makes redundant —
+/// most visibly the back-to-settings control, which would otherwise lead to
+/// a placeholder pane sitting beside the very list the user can see.
+class SettingsScope extends InheritedWidget {
+  /// Creates a [SettingsScope].
+  const SettingsScope({required this.twoPane, required super.child, super.key});
+
+  /// Whether the settings shell is showing its persistent section sidebar
+  /// beside the page.
+  final bool twoPane;
+
+  /// Whether the nearest settings shell is in its two-pane (wide) layout.
+  ///
+  /// False outside the Settings branch, so widgets shared with other
+  /// surfaces keep their normal chrome there.
+  static bool twoPaneOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<SettingsScope>()?.twoPane ??
+      false;
+
+  @override
+  bool updateShouldNotify(SettingsScope oldWidget) =>
+      twoPane != oldWidget.twoPane;
+}
+
 /// The chrome every Settings sub-page wears.
 ///
 /// The same single-row header the Settings destination itself uses, with a
 /// back control where the drawer button sits there, over content laid out on
 /// the app's reading column. Sub-pages use this rather than their own
 /// [Scaffold] and [AppBar] so a drill-down out of Settings never changes the
-/// header's height, type, or colour.
+/// header's height, type, or colour. In the shell's two-pane layout the back
+/// control is dropped: the sidebar beside the page is the navigation.
 class SettingsPage extends StatelessWidget {
   /// Creates a [SettingsPage] titled [title] over [children].
   const SettingsPage({
@@ -42,7 +71,7 @@ class SettingsPage extends StatelessWidget {
       slivers: [
         AppSliverHeader(
           title: title,
-          backLocation: backLocation,
+          backLocation: SettingsScope.twoPaneOf(context) ? null : backLocation,
           actions: actions,
         ),
         SliverToBoxAdapter(

@@ -125,12 +125,26 @@ Future<void> pruneLocalModelFiles(Set<String> keepModelIds) async {
   }
 }
 
-Future<String> _rootPath() async {
+/// The base directory that holds every local-model byte store: this
+/// library's `local_models/` and the download service's `local_llama/`
+/// directories both live directly under it.
+///
+/// Exposed for the disk-accounting library (`local_model_disk_io.dart`),
+/// which must agree with this store — and with tests using
+/// [debugLocalModelStoreRoot] — about where model bytes live.
+Future<String> localModelStorageBasePath() async {
   final override = debugLocalModelStoreRoot;
   final base =
       override ?? await (_baseDir ??= getApplicationSupportDirectory());
-  return '${base.path}/$_rootDirName';
+  return base.path;
 }
+
+/// The stored-files directory for [modelId], whether or not it exists yet.
+Future<String> localModelStoreDirPath(String modelId) =>
+    _modelDirPath(modelId, create: false);
+
+Future<String> _rootPath() async =>
+    '${await localModelStorageBasePath()}/$_rootDirName';
 
 Future<String> _modelDirPath(String modelId, {required bool create}) async {
   final dir = Directory('${await _rootPath()}/${_safe(modelId)}');

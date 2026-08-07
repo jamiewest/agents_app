@@ -103,6 +103,7 @@ class WorkflowSpec {
   WorkflowSpec({
     required this.id,
     required this.name,
+    this.prompt = defaultPrompt,
     List<WorkflowNodeSpec>? nodes,
     List<WorkflowEdgeSpec>? edges,
   }) : nodes = nodes ?? [],
@@ -113,6 +114,7 @@ class WorkflowSpec {
       WorkflowSpec(
         id: id,
         name: record['name'] as String? ?? 'Untitled workflow',
+        prompt: record['prompt'] as String? ?? defaultPrompt,
         nodes: [
           for (final node in (record['nodes'] as List?) ?? const [])
             WorkflowNodeSpec.fromRecord((node as Map).cast<String, Object?>()),
@@ -278,11 +280,18 @@ class WorkflowSpec {
     edges: [const WorkflowEdgeSpec('n1', 'n2')],
   );
 
+  /// The prompt a fresh workflow starts with.
+  static const String defaultPrompt =
+      'Suggest a name for a coffee shop run by robots.';
+
   /// Stable identity in the store.
   final String id;
 
   /// Display name.
   String name;
+
+  /// The prompt this workflow runs against; each workflow keeps its own.
+  String prompt;
 
   /// The graph's nodes.
   final List<WorkflowNodeSpec> nodes;
@@ -306,6 +315,7 @@ class WorkflowSpec {
   /// This spec as a stored record.
   Map<String, Object?> toRecord() => {
     'name': name,
+    'prompt': prompt,
     'nodes': [for (final node in nodes) node.toRecord()],
     'edges': [
       for (final edge in edges) {'from': edge.from, 'to': edge.to},

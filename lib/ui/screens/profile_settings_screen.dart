@@ -2,10 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:agents_flutter/agents_flutter.dart';
 import 'package:extensions_flutter/extensions_flutter.dart';
 import 'package:flutter/material.dart';
 
+import '../../chat_toolkit/views/chat_message_view/llm_message_view.dart'
+    show formatTokenCount;
+import '../app_theme.dart';
 import '../widgets/settings_page.dart';
 
 /// The Profile sub-page: what every agent is told about the person it is
@@ -127,6 +132,151 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
           ),
         ),
       ),
+      const Divider(height: 32),
+      const SettingsGroupLabel('Your stats'),
+      const SettingsGroupCaption(
+        'Computed on this device from its own chat history. Nothing is '
+        'collected or sent anywhere.',
+      ),
+      _ProfileStats(usage: widget.services.getRequiredService<UsageStore>()),
     ],
   );
+}
+
+/// Lifetime usage numbers, computed locally from the durable usage ledger.
+class _ProfileStats extends StatefulWidget {
+  const _ProfileStats({required this.usage});
+
+  final UsageStore usage;
+
+  @override
+  State<_ProfileStats> createState() => _ProfileStatsState();
+}
+
+/// The computed stat values, or null while loading.
+typedef _Stats = ({
+  int tokens,
+  int calls,
+  int daysActive,
+  DateTime? busiestDay,
+});
+
+class _ProfileStatsState extends State<_ProfileStats> {
+  _Stats? _stats;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  /// Aggregates every attributed usage row: total tokens, call count,
+  /// distinct active days, and the day with the most tokens.
+  Future<void> _load() async {
+    final points = await widget.usage.tokenPointsSince(DateTime.utc(2000));
+    var tokens = 0;
+    final byDay = <DateTime, int>{};
+    for (final point in points) {
+      final dayTokens = point.input + point.output;
+      tokens += dayTokens;
+      final day = DateTime(point.at.year, point.at.month, point.at.day);
+      byDay[day] = (byDay[day] ?? 0) + dayTokens;
+    }
+    DateTime? busiest;
+    var busiestTokens = -1;
+    for (final entry in byDay.entries) {
+      if (entry.value > busiestTokens) {
+        busiest = entry.key;
+        busiestTokens = entry.value;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _stats = (
+        tokens: tokens,
+        calls: points.length,
+        daysActive: byDay.length,
+        busiestDay: busiest,
+      );
+    });
+  }
+
+  static const List<String> _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = _stats;
+    if (stats == null) return const SizedBox(height: 96);
+    if (stats.calls == 0) {
+      return const SettingsGroupCaption(
+        'No usage yet — the numbers fill in as you chat.',
+      );
+    }
+    final busiest = stats.busiestDay;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card.filled(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Wrap(
+            spacing: AppSpacing.xxxl,
+            runSpacing: AppSpacing.lg,
+            children: [
+              _Stat(
+                value: formatTokenCount(stats.tokens),
+                label: 'Lifetime tokens',
+              ),
+              _Stat(value: '${stats.calls}', label: 'Model calls'),
+              _Stat(value: '${stats.daysActive}', label: 'Days active'),
+              _Stat(
+                value: busiest == null
+                    ? '—'
+                    : '${_months[busiest.month - 1]} ${busiest.day}',
+                label: 'Busiest day',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One stat: a large value over its small label.
+class _Stat extends StatelessWidget {
+  const _Stat({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value, style: theme.textTheme.titleLarge),
+        Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
 }

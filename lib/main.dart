@@ -14,6 +14,7 @@ import 'package:tor_flutter/tor_flutter.dart';
 import 'app/agents_app.dart';
 import 'data/mac_keychain_secret_store.dart';
 import 'data/prompt_log_inspector.dart';
+import 'data/chat_settings.dart';
 import 'data/theme_settings.dart';
 import 'features/inventory/inventory_access_settings.dart';
 import 'features/inventory/inventory_store.dart';
@@ -36,6 +37,9 @@ final _builder = Host.createApplicationBuilder()
     flutter.services.addRecordStore();
     flutter.services.tryAddSingleton<ThemeSettings>(
       (sp) => ThemeSettings(sp.getRequiredService<KeyValueStore>()),
+    );
+    flutter.services.tryAddSingleton<ChatSettings>(
+      (sp) => ChatSettings(sp.getRequiredService<KeyValueStore>()),
     );
     // Unified log of every prompt sent to any model (local or cloud), so the
     // in-app inspector shows exactly what each model received.
@@ -91,7 +95,12 @@ final _builder = Host.createApplicationBuilder()
       // conversation (skills provider + create_skill tool).
       ..addSkillStore()
       ..addChatTitleSummarizer(
-        residentTitleClient: (sp) => residentLocalTitleClient(sp),
+        // Consulted on every pass, so flipping the Settings toggle stops or
+        // resumes titling without touching the background service.
+        residentTitleClient: (sp) =>
+            sp.getRequiredService<ChatSettings>().autoTitleEnabled
+            ? residentLocalTitleClient(sp)
+            : null,
       );
     // App-wide item inventory the agents manage through the inventory
     // tools. sqflite has no web backend wired up here, so the store — and

@@ -19,14 +19,15 @@ import '../app_theme.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/app_sliver_header.dart';
 import '../widgets/page_body.dart';
+import '../widgets/workflow_prompt_dialog.dart';
 import '../widgets/workflow_run_inspector.dart';
 
 /// The Workflows destination: run a saved multi-agent workflow and watch it
 /// work.
 ///
-/// Saved specs are built on the canvas and run from here against the prompt
-/// below; the inspector renders the live graph, per-stage streamed output,
-/// the event log, and any human-in-the-loop requests.
+/// Saved specs are built on the canvas and run from here against their own
+/// saved prompt; the inspector renders the live graph, per-stage streamed
+/// output, the event log, and any human-in-the-loop requests.
 class WorkflowsScreen extends StatefulWidget {
   /// Creates a [WorkflowsScreen].
   const WorkflowsScreen({required this.services, super.key});
@@ -40,9 +41,6 @@ class WorkflowsScreen extends StatefulWidget {
 
 class _WorkflowsScreenState extends State<WorkflowsScreen> {
   late final Future<List<SavedAgentConfig>> _agentsFuture;
-  final TextEditingController _prompt = TextEditingController(
-    text: 'Suggest a name for a coffee shop run by robots.',
-  );
   WorkflowRunController? _run;
   bool _starting = false;
 
@@ -65,7 +63,6 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
 
   @override
   void dispose() {
-    _prompt.dispose();
     _run?.dispose();
     super.dispose();
   }
@@ -87,12 +84,23 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
   }
 
   /// Runs a saved workflow right here, without opening the editor.
+  ///
+  /// The run dialog opens on the workflow's saved prompt; edits are
+  /// persisted back so the workflow keeps its own prompt.
   Future<void> _runSavedSpec(WorkflowSpec spec) async {
     if (_starting || _runActive) return;
-    final prompt = _prompt.text.trim();
-    if (prompt.isEmpty) return;
+    final entered = await showWorkflowPromptDialog(
+      context,
+      initialPrompt: spec.prompt,
+    );
+    final prompt = entered?.trim();
+    if (prompt == null || prompt.isEmpty || !mounted) return;
     setState(() => _starting = true);
     try {
+      if (prompt != spec.prompt) {
+        spec.prompt = prompt;
+        await _workflows.save(spec);
+      }
       _lastSpec = spec;
       final controller = await createSpecRunController(widget.services, spec);
       final previous = _run;
@@ -154,8 +162,6 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
         busy: _starting || _runActive,
         onRun: (spec) => _runSavedSpec(spec),
       ),
-      const SizedBox(height: AppSpacing.lg),
-      _PromptCard(prompt: _prompt, busy: _starting || _runActive),
       if (run != null) ...[
         const SizedBox(height: AppSpacing.lg),
         WorkflowRunInspector(
@@ -213,29 +219,6 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
           ],
         );
       },
-    ),
-  );
-}
-
-/// The prompt every saved workflow runs against.
-class _PromptCard extends StatelessWidget {
-  const _PromptCard({required this.prompt, required this.busy});
-
-  final TextEditingController prompt;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) => WorkflowSectionCard(
-    child: TextField(
-      controller: prompt,
-      enabled: !busy,
-      minLines: 1,
-      maxLines: 4,
-      decoration: const InputDecoration(
-        labelText: 'Prompt',
-        helperText: 'Every saved workflow runs against this.',
-        border: OutlineInputBorder(),
-      ),
     ),
   );
 }
@@ -304,14 +287,17 @@ class _SavedWorkflowsSection extends StatelessWidget {
                   title: Text(spec.name),
                   subtitle: Text(
                     '${spec.nodes.length} nodes · '
-                    '${spec.edges.length} connections',
+                    '${spec.edges.length} connections · '
+                    '${spec.prompt}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   onTap: () => context.go('/workflows/edit/${spec.id}'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        tooltip: 'Run with the prompt below',
+                        tooltip: 'Run with this workflow\'s prompt',
                         icon: const Icon(LucideIcons.play300, size: 18),
                         onPressed: busy ? null : () => onRun(spec),
                       ),
